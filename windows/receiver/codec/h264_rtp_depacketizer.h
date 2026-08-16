@@ -36,6 +36,7 @@ private:
     std::vector<uint8_t> fuBuffer_;
     std::vector<uint8_t> cachedSps_;
     std::vector<uint8_t> cachedPps_;
+    std::vector<uint8_t> reconstructedFrameBuffer_;
     uint32_t currentTimestamp_{0};
     uint16_t lastSequenceNumber_{0};
     bool hasPendingTimestamp_{false};

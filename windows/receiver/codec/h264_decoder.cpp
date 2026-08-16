@@ -15,7 +15,6 @@ H264Decoder::~H264Decoder() {
 }
 
 bool H264Decoder::Initialize(int width, int height) {
-    std::lock_guard<std::mutex> lock(mutex_);
     if (isInitialized_) return true;
 
     targetWidth_ = width > 0 ? width : 1280;
@@ -86,7 +85,6 @@ bool H264Decoder::Initialize(int width, int height) {
 }
 
 void H264Decoder::Shutdown() {
-    std::lock_guard<std::mutex> lock(mutex_);
     if (!isInitialized_) return;
 
     if (decoderMft_) {
@@ -203,19 +201,20 @@ bool H264Decoder::ExtractSampleNv12(IMFSample* pSample, std::vector<uint8_t>& ou
     if (outNv12.size() != expectedNv12Size) {
         outNv12.resize(expectedNv12Size);
     }
-    // Initialize to clean neutral studio black (Y=16, UV=128)
-    std::fill_n(outNv12.begin(), dispW * dispH, static_cast<uint8_t>(16));
-    std::fill_n(outNv12.begin() + (dispW * dispH), dispW * dispH / 2, static_cast<uint8_t>(128));
 
     BYTE* pSrc = nullptr;
     DWORD currentLen = 0;
     hr = mediaBuffer->Lock(&pSrc, nullptr, &currentLen);
     if (SUCCEEDED(hr) && pSrc) {
         if (dispW == codedW && dispH == codedH) {
+            // Fast path: zero-copy direct memcpy, no black fill needed
             size_t copyBytes = (std::min)(static_cast<size_t>(currentLen), expectedNv12Size);
             memcpy(outNv12.data(), pSrc, copyBytes);
         } else {
-            // Crop out bottom/side macroblock padding:
+            // Crop path: fill black first then copy visible region
+            memset(outNv12.data(), 16, dispW * dispH);
+            memset(outNv12.data() + (dispW * dispH), 128, dispW * dispH / 2);
+
             // Y Plane: copy dispH rows of dispW bytes from row stride codedW
             for (int y = 0; y < dispH; ++y) {
                 memcpy(outNv12.data() + (y * dispW), pSrc + (y * codedW), dispW);
@@ -246,7 +245,6 @@ bool H264Decoder::DecodeAccessUnit(
 ) {
     if (!h264Data || size == 0) return false;
 
-    std::lock_guard<std::mutex> lock(mutex_);
     if (!isInitialized_ && !Initialize(targetWidth_, targetHeight_)) {
         return false;
     }

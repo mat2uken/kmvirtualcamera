@@ -197,9 +197,11 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
     int offsetHalfX = offsetX / 2;
     int offsetHalfY = offsetY / 2;
 
-    // 1. Process Y and UV planes branchlessly based on rotation angle
+    // 1. Process Y and UV planes branchlessly based on rotation angle with zero heap allocation
+    int xMapY[1920];
+    int xMapUv[960];
+
     if (rot == 0) {
-        std::vector<int> xMapY(fitW);
         for (int x = 0; x < fitW; ++x) xMapY[x] = (x * sampleW) / fitW;
 
         for (int y = 0; y < fitH; ++y) {
@@ -211,7 +213,6 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
             }
         }
 
-        std::vector<int> xMapUv(fitHalfW);
         for (int x = 0; x < fitHalfW; ++x) xMapUv[x] = ((x * srcHalfW) / fitHalfW) * 2;
 
         for (int y = 0; y < fitHalfH; ++y) {
@@ -225,7 +226,6 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
             }
         }
     } else if (rot == 90) {
-        std::vector<int> xMapY(fitW);
         for (int x = 0; x < fitW; ++x) xMapY[x] = (sampleH - 1) - ((x * sampleH) / fitW);
 
         for (int y = 0; y < fitH; ++y) {
@@ -236,7 +236,6 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
             }
         }
 
-        std::vector<int> xMapUv(fitHalfW);
         for (int x = 0; x < fitHalfW; ++x) xMapUv[x] = (srcHalfH - 1) - ((x * srcHalfH) / fitHalfW);
 
         for (int y = 0; y < fitHalfH; ++y) {
@@ -249,7 +248,6 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
             }
         }
     } else if (rot == 180) {
-        std::vector<int> xMapY(fitW);
         for (int x = 0; x < fitW; ++x) xMapY[x] = (sampleW - 1) - ((x * sampleW) / fitW);
 
         for (int y = 0; y < fitH; ++y) {
@@ -261,7 +259,6 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
             }
         }
 
-        std::vector<int> xMapUv(fitHalfW);
         for (int x = 0; x < fitHalfW; ++x) xMapUv[x] = ((srcHalfW - 1) - ((x * srcHalfW) / fitHalfW)) * 2;
 
         for (int y = 0; y < fitHalfH; ++y) {
@@ -275,7 +272,6 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
             }
         }
     } else if (rot == 270) {
-        std::vector<int> xMapY(fitW);
         for (int x = 0; x < fitW; ++x) xMapY[x] = (x * sampleH) / fitW;
 
         for (int y = 0; y < fitH; ++y) {
@@ -286,7 +282,6 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
             }
         }
 
-        std::vector<int> xMapUv(fitHalfW);
         for (int x = 0; x < fitHalfW; ++x) xMapUv[x] = (x * srcHalfH) / fitHalfW;
 
         for (int y = 0; y < fitHalfH; ++y) {

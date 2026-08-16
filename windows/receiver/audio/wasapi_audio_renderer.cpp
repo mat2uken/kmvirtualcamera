@@ -2,19 +2,22 @@
 
 namespace km::audio {
 
-WasapiAudioRenderer::WasapiAudioRenderer() = default;
+WasapiAudioRenderer::WasapiAudioRenderer() {
+    InitializeCriticalSectionAndSpinCount(&cs_, 4000);
+}
 
 WasapiAudioRenderer::~WasapiAudioRenderer() {
     Stop();
+    DeleteCriticalSection(&cs_);
 }
 
 bool WasapiAudioRenderer::Initialize(const std::wstring& endpointId) {
-    std::lock_guard<std::recursive_mutex> lock(renderMutex_);
+    EnterCriticalSection(&cs_);
     Stop();
 
     Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator;
     HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) { LeaveCriticalSection(&cs_); return false; }
 
     Microsoft::WRL::ComPtr<IMMDevice> device;
     if (endpointId.empty()) {
@@ -22,10 +25,10 @@ bool WasapiAudioRenderer::Initialize(const std::wstring& endpointId) {
     } else {
         hr = enumerator->GetDevice(endpointId.c_str(), &device);
     }
-    if (FAILED(hr) || !device) return false;
+    if (FAILED(hr) || !device) { LeaveCriticalSection(&cs_); return false; }
 
     hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &audioClient_);
-    if (FAILED(hr) || !audioClient_) return false;
+    if (FAILED(hr) || !audioClient_) { LeaveCriticalSection(&cs_); return false; }
 
     // Configure 48kHz stereo 16-bit PCM format
     waveFormat_.wFormatTag = WAVE_FORMAT_PCM;
@@ -58,49 +61,53 @@ bool WasapiAudioRenderer::Initialize(const std::wstring& endpointId) {
             CoTaskMemFree(mixFormat);
         }
     }
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) { LeaveCriticalSection(&cs_); return false; }
 
     hr = audioClient_->GetBufferSize(&bufferFrameCount_);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) { LeaveCriticalSection(&cs_); return false; }
 
     hr = audioClient_->GetService(__uuidof(IAudioRenderClient), &renderClient_);
+    LeaveCriticalSection(&cs_);
     return SUCCEEDED(hr);
 }
 
 void WasapiAudioRenderer::Start() {
-    std::lock_guard<std::recursive_mutex> lock(renderMutex_);
+    EnterCriticalSection(&cs_);
     if (audioClient_ && !isRunning_) {
         audioClient_->Start();
         isRunning_ = true;
     }
+    LeaveCriticalSection(&cs_);
 }
 
 void WasapiAudioRenderer::Stop() {
-    std::lock_guard<std::recursive_mutex> lock(renderMutex_);
+    // Note: cs_ may already be held by Initialize() which calls Stop() recursively
+    EnterCriticalSection(&cs_);
     if (audioClient_ && isRunning_) {
         audioClient_->Stop();
         isRunning_ = false;
     }
     renderClient_.Reset();
     audioClient_.Reset();
+    LeaveCriticalSection(&cs_);
 }
 
 void WasapiAudioRenderer::RenderPcm16(std::span<const int16_t> pcmSamples, int channels) {
     if (!isRunning_ || !renderClient_ || !audioClient_ || pcmSamples.empty() || channels <= 0) return;
 
-    std::lock_guard<std::recursive_mutex> lock(renderMutex_);
-    if (!renderClient_) return;
+    EnterCriticalSection(&cs_);
+    if (!renderClient_) { LeaveCriticalSection(&cs_); return; }
 
     UINT32 padding = 0;
-    if (FAILED(audioClient_->GetCurrentPadding(&padding))) return;
+    if (FAILED(audioClient_->GetCurrentPadding(&padding))) { LeaveCriticalSection(&cs_); return; }
 
     UINT32 availableFrames = (bufferFrameCount_ > padding) ? (bufferFrameCount_ - padding) : 0;
     UINT32 inputFrames = static_cast<UINT32>(pcmSamples.size() / channels);
     UINT32 framesToWrite = (std::min)(availableFrames, inputFrames);
-    if (framesToWrite == 0) return;
+    if (framesToWrite == 0) { LeaveCriticalSection(&cs_); return; }
 
     BYTE* pData = nullptr;
-    if (FAILED(renderClient_->GetBuffer(framesToWrite, &pData)) || !pData) return;
+    if (FAILED(renderClient_->GetBuffer(framesToWrite, &pData)) || !pData) { LeaveCriticalSection(&cs_); return; }
 
     if (waveFormat_.wFormatTag == WAVE_FORMAT_PCM && waveFormat_.wBitsPerSample == 16 && waveFormat_.nChannels == 2) {
         if (channels == 2) {
@@ -125,6 +132,7 @@ void WasapiAudioRenderer::RenderPcm16(std::span<const int16_t> pcmSamples, int c
     }
 
     renderClient_->ReleaseBuffer(framesToWrite, 0);
+    LeaveCriticalSection(&cs_);
 }
 
 } // namespace km::audio

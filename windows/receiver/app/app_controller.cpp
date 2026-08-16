@@ -3,10 +3,16 @@
 
 namespace km::app {
 
-AppController::AppController() = default;
+AppController::AppController() {
+    hVideoFrameReadyEvent_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+}
 
 AppController::~AppController() {
     Shutdown();
+    if (hVideoFrameReadyEvent_) {
+        CloseHandle(hVideoFrameReadyEvent_);
+        hVideoFrameReadyEvent_ = nullptr;
+    }
 }
 
 bool AppController::Initialize(HINSTANCE hInstance, std::wstring baseUrl) {
@@ -144,14 +150,8 @@ void AppController::SignalingWorkerProc() {
                 },
                 [this](const uint8_t* data, size_t size, int width, int height, int64_t tsUs) {
                     if (!data || size == 0 || !isVideoWorkerRunning_) return;
-                    {
-                        std::lock_guard<std::mutex> lock(videoQueueMutex_);
-                        if (videoQueue_.size() >= 30) {
-                            videoQueue_.pop_front();
-                        }
-                        videoQueue_.push_back(QueuedH264Frame{ std::vector<uint8_t>(data, data + size), tsUs });
-                    }
-                    videoQueueCv_.notify_one();
+                    lockFreeVideoQueue_.Push(data, size, tsUs);
+                    SetEvent(hVideoFrameReadyEvent_);
                 },
                 [this](const int16_t* pcm, size_t samples, int channels, int sampleRate) {
                     audioRenderer_.RenderPcm16(std::span<const int16_t>(pcm, samples * channels), channels);
@@ -194,37 +194,35 @@ void AppController::SignalingWorkerProc() {
 
 void AppController::VideoWorkerProc() {
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    std::vector<uint8_t> localH264Buffer;
     std::vector<uint8_t> localDecodedBuffer;
     std::vector<uint8_t> localNv12Buffer(protocol::kPayloadBytes);
+    localH264Buffer.reserve(256 * 1024);
 
     while (isVideoWorkerRunning_) {
-        QueuedH264Frame frame;
-        {
-            std::unique_lock<std::mutex> lock(videoQueueMutex_);
-            videoQueueCv_.wait(lock, [this]() {
-                return !isVideoWorkerRunning_ || !videoQueue_.empty();
-            });
-            if (!isVideoWorkerRunning_) break;
-            frame = std::move(videoQueue_.front());
-            videoQueue_.pop_front();
-        }
+        WaitForSingleObject(hVideoFrameReadyEvent_, 100);
+        if (!isVideoWorkerRunning_) break;
 
-        int decW = 0, decH = 0;
-        if (h264Decoder_.DecodeAccessUnit(frame.data.data(), frame.data.size(), frame.tsUs, localDecodedBuffer, decW, decH)) {
-            nv12Converter_.ConvertNv12ToNv12Letterbox(
-                localDecodedBuffer.data(), decW,
-                decW, decH,
-                localNv12Buffer.data(),
-                1280, 720,
-                rotationDegrees_.load()
-            );
+        // Drain all available frames from lock-free queue
+        int64_t tsUs = 0;
+        while (lockFreeVideoQueue_.Pop(localH264Buffer, tsUs)) {
+            int decW = 0, decH = 0;
+            if (h264Decoder_.DecodeAccessUnit(localH264Buffer.data(), localH264Buffer.size(), tsUs, localDecodedBuffer, decW, decH)) {
+                nv12Converter_.ConvertNv12ToNv12Letterbox(
+                    localDecodedBuffer.data(), decW,
+                    decW, decH,
+                    localNv12Buffer.data(),
+                    1280, 720,
+                    rotationDegrees_.load(std::memory_order_relaxed)
+                );
 
-            mainWindow_->RenderPreviewFrame(localNv12Buffer);
-            pipePublisher_.PublishFrame(localNv12Buffer.data(), protocol::kPayloadBytes, frame.tsUs);
+                mainWindow_->RenderPreviewFrame(localNv12Buffer);
+                pipePublisher_.PublishFrame(localNv12Buffer.data(), protocol::kPayloadBytes, tsUs);
 
-            uint64_t count = ++frameCount_;
-            if (count % 90 == 1) {
-                std::cout << "[VideoPipeline] Stream active: " << count << " frames decoded (" << decW << "x" << decH << " -> 1280x720)" << std::endl;
+                uint64_t count = frameCount_.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (count % 90 == 1) {
+                    std::cout << "[VideoPipeline] Stream active: " << count << " frames decoded (" << decW << "x" << decH << " -> 1280x720)" << std::endl;
+                }
             }
         }
     }
@@ -245,7 +243,7 @@ void AppController::Shutdown() {
     }
 
     isVideoWorkerRunning_ = false;
-    videoQueueCv_.notify_all();
+    SetEvent(hVideoFrameReadyEvent_);
     if (videoWorkerThread_.joinable()) {
         videoWorkerThread_.join();
     }

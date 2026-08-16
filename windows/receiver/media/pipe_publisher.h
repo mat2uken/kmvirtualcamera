@@ -3,10 +3,8 @@
 #include "../../common/frame_pipe_protocol.h"
 #include <windows.h>
 #include <vector>
-#include <mutex>
 #include <thread>
 #include <atomic>
-#include <condition_variable>
 
 namespace km::media {
 
@@ -28,13 +26,12 @@ private:
     std::atomic<bool> isRunning_{false};
     std::thread serverThread_;
     HANDLE hStopEvent_{nullptr};
+    HANDLE hNewFrameEvent_{nullptr};
 
-    std::mutex queueMutex_;
-    std::condition_variable queueCv_;
+    SRWLOCK srwLock_ = SRWLOCK_INIT;
     std::vector<uint8_t> latestPayload_;
     uint64_t sequence_{0};
     int64_t latestCaptureTimeUs_{0};
-    bool hasNewFrame_{false};
 };
 
 } // namespace km::media

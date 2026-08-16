@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 #include <functional>
-#include <mutex>
-#include <condition_variable>
 #include <thread>
 #include "qr_view.h"
 #include "d3d11_preview.h"
@@ -55,11 +53,10 @@ private:
     QrView qrView_;
     D3D11Preview d3dPreview_;
 
-    std::mutex previewMutex_;
-    std::condition_variable previewCv_;
+    SRWLOCK previewSrwLock_ = SRWLOCK_INIT;
+    HANDLE hPreviewFrameEvent_{nullptr};
     std::vector<uint8_t> previewBuffer_;
     bool isPreviewWorkerRunning_{false};
-    bool hasNewPreviewFrame_{false};
     std::thread previewThread_;
 
     std::function<void(int index)> onAudioDeviceChanged_;

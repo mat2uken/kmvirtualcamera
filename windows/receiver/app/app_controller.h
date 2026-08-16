@@ -14,15 +14,9 @@
 #include "../audio/wasapi_audio_renderer.h"
 #include "../vcam/virtual_camera_registrar.h"
 
-#include <deque>
-#include <condition_variable>
+#include "lockfree_h264_queue.h"
 
 namespace km::app {
-
-struct QueuedH264Frame {
-    std::vector<uint8_t> data;
-    int64_t tsUs{0};
-};
 
 class AppController {
 public:
@@ -58,9 +52,8 @@ private:
 
     std::atomic<bool> isVideoWorkerRunning_{false};
     std::thread videoWorkerThread_;
-    std::mutex videoQueueMutex_;
-    std::condition_variable videoQueueCv_;
-    std::deque<QueuedH264Frame> videoQueue_;
+    LockFreeH264Queue lockFreeVideoQueue_;
+    HANDLE hVideoFrameReadyEvent_{nullptr};
 
     std::atomic<uint64_t> frameCount_{0};
     std::atomic<int> rotationDegrees_{0};

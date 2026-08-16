@@ -4,8 +4,8 @@
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <wrl/client.h>
+#include <string>
 #include <vector>
-#include <mutex>
 #include <atomic>
 #include <span>
 
@@ -29,7 +29,7 @@ private:
     Microsoft::WRL::ComPtr<IAudioRenderClient> renderClient_;
     UINT32 bufferFrameCount_{0};
     WAVEFORMATEX waveFormat_{};
-    std::recursive_mutex renderMutex_;
+    CRITICAL_SECTION cs_;
 };
 
 } // namespace km::audio

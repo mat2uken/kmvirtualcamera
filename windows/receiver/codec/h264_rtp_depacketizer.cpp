@@ -10,6 +10,7 @@ H264RtpDepacketizer::H264RtpDepacketizer(FrameCallback callback, KeyframeRequest
     : callback_(std::move(callback)), keyframeRequestCallback_(std::move(keyframeCb)) {
     accessUnitBuffer_.reserve(256 * 1024);
     fuBuffer_.reserve(256 * 1024);
+    reconstructedFrameBuffer_.reserve(256 * 1024);
 }
 
 void H264RtpDepacketizer::Reset() {
@@ -17,6 +18,7 @@ void H264RtpDepacketizer::Reset() {
     fuBuffer_.clear();
     cachedSps_.clear();
     cachedPps_.clear();
+    reconstructedFrameBuffer_.clear();
     hasPendingTimestamp_ = false;
     hasLastSeq_ = false;
     isFuActive_ = false;
@@ -37,23 +39,23 @@ void H264RtpDepacketizer::EmitAccessUnit() {
         } else if (waitingForKeyframe_) {
             if (isKeyframe_) {
                 // If SPS / PPS were cached but not in the IDR packet, prepend them
-                std::vector<uint8_t> fullFrame;
+                reconstructedFrameBuffer_.clear();
                 if (!cachedSps_.empty() && !cachedPps_.empty()) {
                     // Check if SPS is already at start of accessUnitBuffer_
                     bool hasSps = (accessUnitBuffer_.size() > 4 && (accessUnitBuffer_[4] & 0x1F) == 7);
                     if (!hasSps) {
-                        fullFrame.insert(fullFrame.end(), kStartSequence, kStartSequence + 4);
-                        fullFrame.insert(fullFrame.end(), cachedSps_.begin(), cachedSps_.end());
-                        fullFrame.insert(fullFrame.end(), kStartSequence, kStartSequence + 4);
-                        fullFrame.insert(fullFrame.end(), cachedPps_.begin(), cachedPps_.end());
+                        reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), kStartSequence, kStartSequence + 4);
+                        reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), cachedSps_.begin(), cachedSps_.end());
+                        reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), kStartSequence, kStartSequence + 4);
+                        reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), cachedPps_.begin(), cachedPps_.end());
                     }
                 }
-                fullFrame.insert(fullFrame.end(), accessUnitBuffer_.begin(), accessUnitBuffer_.end());
+                reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), accessUnitBuffer_.begin(), accessUnitBuffer_.end());
 
                 waitingForKeyframe_ = false;
                 waitingKeyframeCount_ = 0;
                 if (callback_) {
-                    callback_(fullFrame.data(), fullFrame.size(), currentTimestamp_);
+                    callback_(reconstructedFrameBuffer_.data(), reconstructedFrameBuffer_.size(), currentTimestamp_);
                 }
             } else {
                 // Periodically re-request PLI every 10 dropped frames (~300ms) until IDR arrives

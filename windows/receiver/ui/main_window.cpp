@@ -9,13 +9,20 @@ constexpr int ID_ROTATION_COMBO = 1004;
 constexpr int ID_ROT_LEFT_BTN = 1005;
 constexpr int ID_ROT_RIGHT_BTN = 1006;
 
-MainWindow::MainWindow() = default;
+MainWindow::MainWindow() {
+    InitializeSRWLock(&previewSrwLock_);
+    hPreviewFrameEvent_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+}
 
 MainWindow::~MainWindow() {
     isPreviewWorkerRunning_ = false;
-    previewCv_.notify_all();
+    if (hPreviewFrameEvent_) SetEvent(hPreviewFrameEvent_);
     if (previewThread_.joinable()) {
         previewThread_.join();
+    }
+    if (hPreviewFrameEvent_) {
+        CloseHandle(hPreviewFrameEvent_);
+        hPreviewFrameEvent_ = nullptr;
     }
     if (hFont_) {
         DeleteObject(hFont_);
@@ -189,15 +196,18 @@ bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
 void MainWindow::PreviewWorkerProc() {
     std::vector<uint8_t> localBuffer;
     while (isPreviewWorkerRunning_) {
-        {
-            std::unique_lock<std::mutex> lock(previewMutex_);
-            previewCv_.wait(lock, [this]() {
-                return !isPreviewWorkerRunning_ || hasNewPreviewFrame_;
-            });
-            if (!isPreviewWorkerRunning_) break;
-            localBuffer = previewBuffer_;
-            hasNewPreviewFrame_ = false;
+        WaitForSingleObject(hPreviewFrameEvent_, 100);
+        if (!isPreviewWorkerRunning_) break;
+
+        AcquireSRWLockShared(&previewSrwLock_);
+        if (!previewBuffer_.empty()) {
+            if (localBuffer.size() != previewBuffer_.size()) {
+                localBuffer.resize(previewBuffer_.size());
+            }
+            std::memcpy(localBuffer.data(), previewBuffer_.data(), previewBuffer_.size());
         }
+        ReleaseSRWLockShared(&previewSrwLock_);
+
         if (!localBuffer.empty()) {
             d3dPreview_.RenderNv12Frame(localBuffer, 1280, 720);
         }
@@ -251,15 +261,13 @@ void MainWindow::SetVirtualCameraStatus(bool isStarted) {
 
 void MainWindow::RenderPreviewFrame(std::span<const uint8_t> nv12Data) {
     if (nv12Data.empty()) return;
-    {
-        std::lock_guard<std::mutex> lock(previewMutex_);
-        if (previewBuffer_.size() != nv12Data.size()) {
-            previewBuffer_.resize(nv12Data.size());
-        }
-        std::memcpy(previewBuffer_.data(), nv12Data.data(), nv12Data.size());
-        hasNewPreviewFrame_ = true;
+    AcquireSRWLockExclusive(&previewSrwLock_);
+    if (previewBuffer_.size() != nv12Data.size()) {
+        previewBuffer_.resize(nv12Data.size());
     }
-    previewCv_.notify_one();
+    std::memcpy(previewBuffer_.data(), nv12Data.data(), nv12Data.size());
+    ReleaseSRWLockExclusive(&previewSrwLock_);
+    SetEvent(hPreviewFrameEvent_);
 }
 
 LRESULT CALLBACK MainWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {

@@ -7,6 +7,8 @@ PipePublisher::PipePublisher() {
     latestPayload_.resize(protocol::kPayloadBytes);
     protocol::FillBlackNv12(latestPayload_);
     hStopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    hNewFrameEvent_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    InitializeSRWLock(&srwLock_);
 }
 
 PipePublisher::~PipePublisher() {
@@ -14,6 +16,10 @@ PipePublisher::~PipePublisher() {
     if (hStopEvent_) {
         CloseHandle(hStopEvent_);
         hStopEvent_ = nullptr;
+    }
+    if (hNewFrameEvent_) {
+        CloseHandle(hNewFrameEvent_);
+        hNewFrameEvent_ = nullptr;
     }
 }
 
@@ -26,7 +32,7 @@ void PipePublisher::Start() {
 void PipePublisher::Stop() {
     if (!isRunning_.exchange(false)) return;
     SetEvent(hStopEvent_);
-    queueCv_.notify_all();
+    SetEvent(hNewFrameEvent_);
     if (serverThread_.joinable()) {
         serverThread_.join();
     }
@@ -35,14 +41,12 @@ void PipePublisher::Stop() {
 void PipePublisher::PublishFrame(const uint8_t* nv12Data, size_t dataSize, int64_t captureTimeUs) {
     if (!nv12Data || dataSize != protocol::kPayloadBytes || !isRunning_) return;
 
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        std::memcpy(latestPayload_.data(), nv12Data, protocol::kPayloadBytes);
-        sequence_++;
-        latestCaptureTimeUs_ = captureTimeUs;
-        hasNewFrame_ = true;
-    }
-    queueCv_.notify_one();
+    AcquireSRWLockExclusive(&srwLock_);
+    std::memcpy(latestPayload_.data(), nv12Data, protocol::kPayloadBytes);
+    sequence_++;
+    latestCaptureTimeUs_ = captureTimeUs;
+    ReleaseSRWLockExclusive(&srwLock_);
+    SetEvent(hNewFrameEvent_);
 }
 
 bool PipePublisher::WriteExact(HANDLE hPipe, const uint8_t* buffer, DWORD bytesToWrite, OVERLAPPED& ov, HANDLE hStopEvent) {
@@ -125,16 +129,17 @@ void PipePublisher::ServerThreadProc() {
             uint64_t seq = 0;
             int64_t tsUs = 0;
 
-            {
-                std::unique_lock<std::mutex> lock(queueMutex_);
-                queueCv_.wait(lock, [&]() { return hasNewFrame_ || !isRunning_; });
-                if (!isRunning_) break;
+            // Wait for new frame using lightweight event instead of condition_variable
+            HANDLE waitEvents[2] = { hNewFrameEvent_, hStopEvent_ };
+            DWORD waitRes = WaitForMultipleObjects(2, waitEvents, FALSE, INFINITE);
+            if (waitRes == WAIT_OBJECT_0 + 1 || !isRunning_) break;
 
-                std::memcpy(framePayload.data(), latestPayload_.data(), protocol::kPayloadBytes);
-                seq = sequence_;
-                tsUs = latestCaptureTimeUs_;
-                hasNewFrame_ = false;
-            }
+            // Copy latest frame under SRWLOCK (shared read would work but exclusive is fine for single consumer)
+            AcquireSRWLockShared(&srwLock_);
+            std::memcpy(framePayload.data(), latestPayload_.data(), protocol::kPayloadBytes);
+            seq = sequence_;
+            tsUs = latestCaptureTimeUs_;
+            ReleaseSRWLockShared(&srwLock_);
 
             // Prepare header
             protocol::FrameHeader header = protocol::CreateDefaultHeader(seq, tsUs);
