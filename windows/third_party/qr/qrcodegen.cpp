@@ -65,7 +65,7 @@ QrSegment QrSegment::makeNumeric(const char *digits) {
     vector<bool> bb;
     for (size_t i = 0; i < len; ) {
         int n = 0;
-        int count = std::min(static_cast<size_t>(3), len - i);
+        int count = (std::min)(static_cast<size_t>(3), len - i);
         for (int j = 0; j < count; j++, i++) {
             char c = digits[i];
             if (c < '0' || c > '9')
@@ -86,7 +86,7 @@ QrSegment QrSegment::makeAlphanumeric(const char *text) {
     vector<bool> bb;
     for (size_t i = 0; i < len; ) {
         int temp = 0;
-        int count = std::min(static_cast<size_t>(2), len - i);
+        int count = (std::min)(static_cast<size_t>(2), len - i);
         for (int j = 0; j < count; j++, i++) {
             const char *p = std::strchr(ALPHANUMERIC_CHARSET, text[i]);
             if (p == nullptr)
@@ -142,14 +142,20 @@ static const int NUM_ERROR_CORRECTION_BLOCKS[4][41] = {
     {-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 72, 74, 79},
 };
 
+static int getNumRawDataModules(int ver) {
+    int result = (16 * ver + 128) * ver + 64;
+    if (ver >= 2) {
+        int numAlign = ver / 7 + 2;
+        result -= (25 * numAlign - 10) * numAlign - 55;
+        if (ver >= 7)
+            result -= 36;
+    }
+    return result;
+}
+
 static int getNumDataCodewords(int version, QrCode::Ecc ecl) {
     int v = version, e = static_cast<int>(ecl);
-    int total = (16 * v * v + 128 * v + 137) / 8;
-    int reserved = 0;
-    if (v >= 2) reserved += (4 * ((v / 7) + 2) - 3) * 25 - 60;
-    if (v >= 7) reserved += 36;
-    total = (total - reserved) * 8 / 8;
-    return total - ECC_CODEWORDS_PER_BLOCK[e][v] * NUM_ERROR_CORRECTION_BLOCKS[e][v];
+    return getNumRawDataModules(v) / 8 - ECC_CODEWORDS_PER_BLOCK[e][v] * NUM_ERROR_CORRECTION_BLOCKS[e][v];
 }
 
 QrCode QrCode::encodeText(const char *text, Ecc ecl) {
@@ -201,6 +207,18 @@ QrCode QrCode::encodeSegments(const vector<QrSegment> &segs, Ecc ecl, int minVer
     return QrCode(version, ecl, bytes, mask);
 }
 
+static vector<int> getAlignmentPatternPositionsForVersion(int version) {
+    if (version == 1) return {};
+    int numPatterns = version / 7 + 2;
+    int step = (version == 32) ? 26 : ((version * 4 + numPatterns * 2 + 1) / (numPatterns * 2 - 2)) * 2;
+    vector<int> result(numPatterns);
+    result[0] = 6;
+    for (int i = numPatterns - 1, pos = version * 4 + 10; i >= 1; i--, pos -= step) {
+        result[i] = pos;
+    }
+    return result;
+}
+
 QrCode::QrCode(int ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int msk) :
     version(ver),
     size(ver * 4 + 17),
@@ -212,20 +230,27 @@ QrCode::QrCode(int ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int msk) 
     vector<uint8_t> allCodewords = getPayload(dataCodewords);
 
     // Draw data codewords
-    size_t i = 0;
+    size_t bitIndex = 0;
+    size_t totalBits = allCodewords.size() * 8;
+    bool upward = true;
+
     for (int right = size - 1; right >= 1; right -= 2) {
         if (right == 6) right = 5;
         for (int vert = 0; vert < size; vert++) {
+            int y = upward ? (size - 1 - vert) : vert;
             for (int j = 0; j < 2; j++) {
                 int x = right - j;
-                bool upward = ((right + 1) & 2) == 0;
-                int y = upward ? size - 1 - vert : vert;
-                if (!isFunction[y][x] && i < allCodewords.size() * 8) {
-                    modules[y][x] = (allCodewords[i / 8] >> (7 - (i % 8))) & 1;
-                    i++;
+                if (!isFunction[y][x]) {
+                    if (bitIndex < totalBits) {
+                        modules[y][x] = ((allCodewords[bitIndex / 8] >> (7 - (bitIndex % 8))) & 1) != 0;
+                        bitIndex++;
+                    } else {
+                        modules[y][x] = false;
+                    }
                 }
             }
         }
+        upward = !upward;
     }
 
     if (msk == -1) {
@@ -253,23 +278,53 @@ int QrCode::getMask() const { return mask; }
 bool QrCode::getModule(int x, int y) const { return (0 <= x && x < size && 0 <= y && y < size) && modules[y][x]; }
 
 void QrCode::drawFunctionPatterns() {
+    // Timing patterns
     for (int i = 0; i < size; i++) {
         setFunctionModule(6, i, i % 2 == 0);
         setFunctionModule(i, 6, i % 2 == 0);
     }
+    // Finder patterns
     drawFinderPattern(3, 3);
     drawFinderPattern(size - 4, 3);
     drawFinderPattern(3, size - 4);
+
+    // Alignment patterns
+    vector<int> alignPos = getAlignmentPatternPositionsForVersion(version);
+    for (size_t i = 0; i < alignPos.size(); i++) {
+        for (size_t j = 0; j < alignPos.size(); j++) {
+            if ((i == 0 && j == 0) || (i == 0 && j == alignPos.size() - 1) || (i == alignPos.size() - 1 && j == 0))
+                continue;
+            drawAlignmentPattern(alignPos[i], alignPos[j]);
+        }
+    }
+
+    // Version info
     drawVersion();
+
+    // Reserve Format bits dummy
+    drawFormatBits(0);
 }
 
 void QrCode::drawFinderPattern(int x, int y) {
     for (int dy = -4; dy <= 4; dy++) {
         for (int dx = -4; dx <= 4; dx++) {
-            int dist = std::max(std::abs(dx), std::abs(dy));
+            int dist = (std::max)(std::abs(dx), std::abs(dy));
             int xx = x + dx, yy = y + dy;
-            if (0 <= xx && xx < size && 0 <= yy && yy < size)
+            if (0 <= xx && xx < size && 0 <= yy && yy < size) {
                 setFunctionModule(xx, yy, dist != 2 && dist != 4);
+            }
+        }
+    }
+}
+
+void QrCode::drawAlignmentPattern(int x, int y) {
+    for (int dy = -2; dy <= 2; dy++) {
+        for (int dx = -2; dx <= 2; dx++) {
+            int dist = (std::max)(std::abs(dx), std::abs(dy));
+            int xx = x + dx, yy = y + dy;
+            if (0 <= xx && xx < size && 0 <= yy && yy < size) {
+                setFunctionModule(xx, yy, dist != 1);
+            }
         }
     }
 }
@@ -324,7 +379,8 @@ static vector<uint8_t> reedSolomonComputeDivisor(int degree) {
     for (int i = 0; i < degree; i++) {
         for (size_t j = 0; j < result.size(); j++) {
             result[j] = reedSolomonMultiply(result[j], root);
-            if (j + 1 < result.size()) result[j] ^= result[j + 1];
+            if (j + 1 < result.size())
+                result[j] ^= result[j + 1];
         }
         root = reedSolomonMultiply(root, 0x02);
     }
@@ -346,7 +402,7 @@ static vector<uint8_t> reedSolomonComputeRemainder(const vector<uint8_t> &data, 
 vector<uint8_t> QrCode::getPayload(const vector<uint8_t> &dataCodewords) const {
     int numBlocks = NUM_ERROR_CORRECTION_BLOCKS[static_cast<int>(errorCorrectionLevel)][version];
     int blockEccLen = ECC_CODEWORDS_PER_BLOCK[static_cast<int>(errorCorrectionLevel)][version];
-    int rawCodewords = (16 * version * version + 128 * version + 137) / 8;
+    int rawCodewords = getNumRawDataModules(version) / 8;
     int numShortBlocks = numBlocks - rawCodewords % numBlocks;
     int shortBlockLen = rawCodewords / numBlocks;
 
@@ -404,6 +460,20 @@ long QrCode::getPenaltyScore() const {
             } else {
                 runColor = modules[y][x];
                 runX = 1;
+            }
+        }
+    }
+    for (int x = 0; x < size; x++) {
+        bool runColor = false;
+        int runY = 0;
+        for (int y = 0; y < size; y++) {
+            if (modules[y][x] == runColor) {
+                runY++;
+                if (runY == 5) result += 3;
+                else if (runY > 5) result += 1;
+            } else {
+                runColor = modules[y][x];
+                runY = 1;
             }
         }
     }

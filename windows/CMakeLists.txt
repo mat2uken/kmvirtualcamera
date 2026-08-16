@@ -185,6 +185,15 @@ target_link_libraries(test_win_http_live PRIVATE
     winhttp
 )
 
+add_executable(test_qr_generator
+    tests/test_qr_generator.cpp
+    third_party/qr/qrcodegen.cpp
+)
+target_include_directories(test_qr_generator PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/qr
+)
+add_test(NAME QrGeneratorTest COMMAND test_qr_generator)
+
 add_executable(test_receiver_startup
     tests/test_receiver_startup.cpp
     receiver/app/app_controller.cpp

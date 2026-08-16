@@ -9,6 +9,10 @@ constexpr int ID_NEW_SESSION_BTN = 1003;
 MainWindow::MainWindow() = default;
 
 MainWindow::~MainWindow() {
+    if (hFont_) {
+        DeleteObject(hFont_);
+        hFont_ = nullptr;
+    }
     if (hWnd_) {
         DestroyWindow(hWnd_);
         hWnd_ = nullptr;
@@ -65,58 +69,75 @@ bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
 
     if (!hWnd_) return false;
 
+    // Create modern clean font (Segoe UI / Meiryo UI)
+    hFont_ = CreateFontW(
+        -13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI"
+    );
+    if (!hFont_) {
+        hFont_ = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    }
+
     // Create Left Panel UI controls
-    // QR Code Area: (20, 15, 300, 290)
-    // Join URL Edit control: (20, 315, 300, 24)
+    // QR Code Area: (25, 20, 270, 270)
+    // Join URL Edit control: (25, 300, 270, 26)
     hUrlEdit_ = CreateWindowExW(
         WS_EX_CLIENTEDGE, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY,
-        20, 315, 300, 24,
+        25, 300, 270, 26,
         hWnd_, nullptr, hInstance, nullptr
     );
+    if (hFont_) SendMessageW(hUrlEdit_, WM_SETFONT, (WPARAM)hFont_, TRUE);
 
-    // Status Label: (20, 345, 300, 30)
+    // Status Label: (25, 335, 270, 42)
     hStatusLabel_ = CreateWindowExW(
         0, L"STATIC", L"初期化中...",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        20, 345, 300, 30,
+        25, 335, 270, 42,
         hWnd_, nullptr, hInstance, nullptr
     );
+    if (hFont_) SendMessageW(hStatusLabel_, WM_SETFONT, (WPARAM)hFont_, TRUE);
 
     // Audio Output Label & Dropdown
-    CreateWindowExW(0, L"STATIC", L"音声出力先 (VB-CABLE CABLE Input):", WS_CHILD | WS_VISIBLE, 20, 385, 300, 20, hWnd_, nullptr, hInstance, nullptr);
+    hAudioLabel_ = CreateWindowExW(0, L"STATIC", L"音声出力先 (VB-CABLE CABLE Input):", WS_CHILD | WS_VISIBLE, 25, 385, 270, 18, hWnd_, nullptr, hInstance, nullptr);
+    if (hFont_) SendMessageW(hAudioLabel_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
     hAudioCombo_ = CreateWindowExW(
         0, L"COMBOBOX", L"",
         WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
-        20, 410, 300, 150,
+        25, 408, 270, 150,
         hWnd_, (HMENU)(INT_PTR)ID_AUDIO_COMBO, hInstance, nullptr
     );
+    if (hFont_) SendMessageW(hAudioCombo_, WM_SETFONT, (WPARAM)hFont_, TRUE);
 
     // Virtual Camera toggle button
     hVcamButton_ = CreateWindowExW(
         0, L"BUTTON", L"仮想カメラ開始",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        20, 455, 145, 36,
+        25, 455, 130, 36,
         hWnd_, (HMENU)(INT_PTR)ID_VCAM_BTN, hInstance, nullptr
     );
+    if (hFont_) SendMessageW(hVcamButton_, WM_SETFONT, (WPARAM)hFont_, TRUE);
 
     // New Session button
     hNewSessionBtn_ = CreateWindowExW(
         0, L"BUTTON", L"新しいセッション",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        175, 455, 145, 36,
+        165, 455, 130, 36,
         hWnd_, (HMENU)(INT_PTR)ID_NEW_SESSION_BTN, hInstance, nullptr
     );
+    if (hFont_) SendMessageW(hNewSessionBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
 
-    // Create Right Panel: D3D11 Video Preview window (340, 15, 720, 540)
+    // Create Right Panel: D3D11 Video Preview window (315, 20, 755, 550)
     hPreviewWnd_ = CreateWindowExW(
         0, wcChild.lpszClassName, L"",
         WS_CHILD | WS_VISIBLE,
-        340, 15, 720, 540,
+        315, 20, 755, 550,
         hWnd_, nullptr, hInstance, nullptr
     );
 
-    d3dPreview_.Initialize(hPreviewWnd_, 720, 540);
+    d3dPreview_.Initialize(hPreviewWnd_, 755, 550);
     return true;
 }
 
@@ -192,8 +213,8 @@ LRESULT MainWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hWnd, &ps);
 
-            // Draw QR code in left area: (20, 20, 320, 320)
-            qrView_.Draw(hdc, 20, 20, 320, 320);
+            // Draw QR code in left area: (25, 20, 270, 270)
+            qrView_.Draw(hdc, 25, 20, 270, 270);
 
             EndPaint(hWnd, &ps);
             return 0;

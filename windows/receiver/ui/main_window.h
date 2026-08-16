@@ -36,10 +36,12 @@ private:
     HWND hWnd_{nullptr};
     HWND hPreviewWnd_{nullptr};
     HWND hAudioCombo_{nullptr};
+    HWND hAudioLabel_{nullptr};
     HWND hVcamButton_{nullptr};
     HWND hNewSessionBtn_{nullptr};
     HWND hStatusLabel_{nullptr};
     HWND hUrlEdit_{nullptr};
+    HFONT hFont_{nullptr};
 
     QrView qrView_;
     D3D11Preview d3dPreview_;
