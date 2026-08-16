@@ -1,6 +1,7 @@
 # Node / Cloudflare
 node_modules/
 dist/
+dist-release/
 cloud/dist/
 .wrangler/
 npm-debug.log*
