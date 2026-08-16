@@ -141,8 +141,21 @@ Run-Step "8. WebRTC DTLS Handshake & Role Negotiation Unit Test" {
     }
 }
 
-# 9. Playwright Automated Browser Streaming E2E Test
-Run-Step "9. Playwright Automated Browser Streaming & Answer SDP Validation" {
+# 9. Bandwidth Estimator & ABR Adaptive Bitrate Control Test
+Run-Step "9. Bandwidth Estimator & ABR Adaptive Bitrate Control Test" {
+    $exe = Join-Path $rootDir "windows\build\Release\test_bandwidth_estimator.exe"
+    if (-not (Test-Path $exe)) {
+        throw "test_bandwidth_estimator.exe not found at $exe"
+    }
+    $out = & $exe 2>&1
+    Write-Host "     $($out | Out-String)" -ForegroundColor Gray
+    if ($LASTEXITCODE -ne 0) {
+        throw "test_bandwidth_estimator failed"
+    }
+}
+
+# 10. Playwright Automated Browser Streaming E2E Test
+Run-Step "10. Playwright Automated Browser Streaming & Answer SDP Validation" {
     $script = Join-Path $rootDir "scripts\test_browser_stream_e2e.mjs"
     $out = & node $script 2>&1
     Write-Host "     $($out | Out-String)" -ForegroundColor Gray
@@ -151,8 +164,8 @@ Run-Step "9. Playwright Automated Browser Streaming & Answer SDP Validation" {
     }
 }
 
-# 10. Live Receiver.exe + Playwright Browser E2E Integration Test (Real Hardware Video Pipeline)
-Run-Step "10. Live Receiver.exe + Playwright Browser E2E Integration Test" {
+# 11. Live Receiver.exe + Playwright Browser E2E Integration Test (Real Hardware Video Pipeline)
+Run-Step "11. Live Receiver.exe + Playwright Browser E2E Integration Test" {
     $script = Join-Path $rootDir "scripts\test_live_receiver_and_browser.mjs"
     $out = & node $script 2>&1
     Write-Host "     $($out | Out-String)" -ForegroundColor Gray

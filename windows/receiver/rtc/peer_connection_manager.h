@@ -9,6 +9,7 @@
 #include "../signaling/signaling_models.h"
 
 #include "../codec/h264_rtp_depacketizer.h"
+#include "bandwidth_estimator.h"
 
 // Forward declarations if libdatachannel is compiled conditionally or dynamically
 namespace rtc {
@@ -46,6 +47,11 @@ public:
     // Applies remote Offer SDP, generates Answer, and waits for Non-Trickle ICE gathering complete
     bool ProcessOfferAndGenerateAnswer(const std::string& offerSdp, std::string& outAnswerSdp);
 
+    void RequestBitrate(uint32_t bitrateBps);
+    uint32_t GetEstimatedBitrate() const;
+    uint32_t GetMeasuredThroughput() const;
+    float GetLossRatio() const;
+
     void Close();
 
 private:
@@ -55,6 +61,7 @@ private:
     std::shared_ptr<rtc::Track> videoTrack_;
     std::shared_ptr<rtc::Track> audioTrack_;
     codec::H264RtpDepacketizer h264Depacketizer_;
+    BandwidthEstimator bandwidthEstimator_;
 
     StateChangeCallback stateCallback_;
     VideoFrameCallback videoCallback_;

@@ -1,6 +1,7 @@
 #include "peer_connection_manager.h"
 #include <rtc/rtc.hpp>
 #include <rtc/h264rtpdepacketizer.hpp>
+#include <rtc/rtcpreceivingsession.hpp>
 #include <chrono>
 #include <thread>
 #include <iostream>
@@ -30,52 +31,60 @@ bool PeerConnectionManager::Initialize(
         });
     }
 
-    stateCallback_ = std::move(stateCb);
-    videoCallback_ = std::move(videoCb);
-    audioCallback_ = std::move(audioCb);
+    stateCallback_ = stateCb;
+    videoCallback_ = videoCb;
+    audioCallback_ = audioCb;
+    isGatheringComplete_ = false;
 
     rtc::Configuration rtcConfig;
     for (const auto& s : config.iceServers) {
-        for (const auto& url : s.urls) {
-            rtc::IceServer server(url);
-            if (!s.username.empty()) {
-                server.username = s.username;
-                server.password = s.credential;
+        for (const auto& stunUrl : s.urls) {
+            if (stunUrl.rfind("stun:", 0) == 0) {
+                std::string hostPort = stunUrl.substr(5);
+                auto colon = hostPort.find(':');
+                if (colon != std::string::npos) {
+                    std::string host = hostPort.substr(0, colon);
+                    uint16_t port = static_cast<uint16_t>(std::stoi(hostPort.substr(colon + 1)));
+                    rtcConfig.iceServers.emplace_back(host, port);
+                } else {
+                    rtcConfig.iceServers.emplace_back(hostPort, 3478);
+                }
             }
-            rtcConfig.iceServers.push_back(server);
         }
     }
 
     // Add redundant global STUN servers
-    rtcConfig.iceServers.emplace_back("stun:stun.l.google.com:19302");
-    rtcConfig.iceServers.emplace_back("stun:stun1.l.google.com:19302");
-    rtcConfig.iceServers.emplace_back("stun:stun2.l.google.com:19302");
-    rtcConfig.iceServers.emplace_back("stun:stun3.l.google.com:19302");
-    rtcConfig.iceServers.emplace_back("stun:stun4.l.google.com:19302");
-    rtcConfig.iceServers.emplace_back("stun:stun.cloudflare.com:3478");
-    rtcConfig.iceServers.emplace_back("stun:global.stun.twilio.com:3478");
+    rtcConfig.iceServers.emplace_back("stun.l.google.com", 19302);
+    rtcConfig.iceServers.emplace_back("stun1.l.google.com", 19302);
+    rtcConfig.iceServers.emplace_back("stun2.l.google.com", 19302);
+    rtcConfig.iceServers.emplace_back("stun3.l.google.com", 19302);
+    rtcConfig.iceServers.emplace_back("stun4.l.google.com", 19302);
 
     try {
         pc_ = std::make_shared<rtc::PeerConnection>(rtcConfig);
 
         pc_->onStateChange([this](rtc::PeerConnection::State state) {
-            PeerState s = PeerState::New;
-            switch (state) {
-                case rtc::PeerConnection::State::New: s = PeerState::New; break;
-                case rtc::PeerConnection::State::Connecting: s = PeerState::Connecting; break;
-                case rtc::PeerConnection::State::Connected: {
-                    s = PeerState::Connected;
-                    if (videoTrack_) {
-                        videoTrack_->requestKeyframe();
-                    }
-                    break;
-                }
-                case rtc::PeerConnection::State::Disconnected: s = PeerState::Disconnected; break;
-                case rtc::PeerConnection::State::Failed: s = PeerState::Failed; break;
-                case rtc::PeerConnection::State::Closed: s = PeerState::Closed; break;
-            }
             if (stateCallback_) {
-                stateCallback_(s);
+                switch (state) {
+                    case rtc::PeerConnection::State::New:
+                        stateCallback_(PeerState::New);
+                        break;
+                    case rtc::PeerConnection::State::Connecting:
+                        stateCallback_(PeerState::Connecting);
+                        break;
+                    case rtc::PeerConnection::State::Connected:
+                        stateCallback_(PeerState::Connected);
+                        break;
+                    case rtc::PeerConnection::State::Disconnected:
+                        stateCallback_(PeerState::Disconnected);
+                        break;
+                    case rtc::PeerConnection::State::Failed:
+                        stateCallback_(PeerState::Failed);
+                        break;
+                    case rtc::PeerConnection::State::Closed:
+                        stateCallback_(PeerState::Closed);
+                        break;
+                }
             }
         });
 
@@ -85,6 +94,7 @@ bool PeerConnectionManager::Initialize(
             }
         });
 
+        bandwidthEstimator_.Reset();
         h264Depacketizer_.Reset();
         h264Depacketizer_.SetCallback([this](const uint8_t* nalData, size_t size, uint32_t ts) {
             if (videoCallback_ && size > 0) {
@@ -92,8 +102,11 @@ bool PeerConnectionManager::Initialize(
             }
         });
         h264Depacketizer_.SetKeyframeRequestCallback([this]() {
+            bandwidthEstimator_.OnLossEventDetected();
             if (videoTrack_) {
                 videoTrack_->requestKeyframe();
+                uint32_t reduced = bandwidthEstimator_.GetCurrentEstimatedBitrate();
+                videoTrack_->requestBitrate(reduced);
             }
         });
 
@@ -106,17 +119,37 @@ bool PeerConnectionManager::Initialize(
 
             if (typeStr == "video" || descStr.find("video") != std::string::npos || descStr.find("H264") != std::string::npos || descStr.find("h264") != std::string::npos) {
                 videoTrack_ = track;
+                videoTrack_->setMediaHandler(std::make_shared<rtc::RtcpReceivingSession>());
 
                 videoTrack_->onMessage([this](rtc::message_variant msg) {
                     if (std::holds_alternative<rtc::binary>(msg)) {
                         const auto& bin = std::get<rtc::binary>(msg);
+                        auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()
+                        ).count();
+
+                        if (bin.size() >= 12) {
+                            const uint8_t* p = reinterpret_cast<const uint8_t*>(bin.data());
+                            uint16_t seq = (static_cast<uint16_t>(p[2]) << 8) | p[3];
+                            bandwidthEstimator_.OnRtpPacketReceived(bin.size(), seq, nowMs);
+                        }
+
                         h264Depacketizer_.ProcessRtpPacket(reinterpret_cast<const uint8_t*>(bin.data()), bin.size());
+
+                        uint32_t targetBps = 0;
+                        if (bandwidthEstimator_.EvaluateEstimation(nowMs, targetBps)) {
+                            if (videoTrack_) {
+                                videoTrack_->requestBitrate(targetBps);
+                            }
+                        }
                     }
                 });
 
                 videoTrack_->requestKeyframe();
+                videoTrack_->requestBitrate(bandwidthEstimator_.GetCurrentEstimatedBitrate());
             } else if (typeStr == "audio" || descStr.find("audio") != std::string::npos || descStr.find("opus") != std::string::npos) {
                 audioTrack_ = track;
+                audioTrack_->setMediaHandler(std::make_shared<rtc::RtcpReceivingSession>());
                 audioTrack_->onFrame([this](rtc::binary frame, rtc::FrameInfo info) {
                     if (audioCallback_ && !frame.empty()) {
                         audioCallback_(reinterpret_cast<const int16_t*>(frame.data()), frame.size() / 2, 2, 48000);
@@ -138,13 +171,7 @@ bool PeerConnectionManager::ProcessOfferAndGenerateAnswer(const std::string& off
 
     try {
         isGatheringComplete_ = false;
-
-        // Apply remote Offer. In RFC 8842, the browser offer has a=setup:actpass.
-        // By specifying Role::Active for the remote offer, libdatachannel designates
-        // itself as Role::Passive (DTLS Server, mIsClient = false) and produces a valid
-        // Answer SDP with a=setup:passive.
         pc_->setRemoteDescription(rtc::Description(offerSdp, rtc::Description::Type::Offer, rtc::Description::Role::Active));
-
         if (pc_->gatheringState() == rtc::PeerConnection::GatheringState::Complete) {
             isGatheringComplete_ = true;
         }
@@ -172,6 +199,24 @@ bool PeerConnectionManager::ProcessOfferAndGenerateAnswer(const std::string& off
     }
 }
 
+void PeerConnectionManager::RequestBitrate(uint32_t bitrateBps) {
+    if (videoTrack_) {
+        videoTrack_->requestBitrate(bitrateBps);
+    }
+}
+
+uint32_t PeerConnectionManager::GetEstimatedBitrate() const {
+    return bandwidthEstimator_.GetCurrentEstimatedBitrate();
+}
+
+uint32_t PeerConnectionManager::GetMeasuredThroughput() const {
+    return bandwidthEstimator_.GetMeasuredThroughputBps();
+}
+
+float PeerConnectionManager::GetLossRatio() const {
+    return bandwidthEstimator_.GetCurrentLossRatio();
+}
+
 void PeerConnectionManager::Close() {
     if (pc_) {
         try {
@@ -183,6 +228,7 @@ void PeerConnectionManager::Close() {
     videoTrack_.reset();
     audioTrack_.reset();
     h264Depacketizer_.Reset();
+    bandwidthEstimator_.Reset();
 }
 
 } // namespace km::rtc_net

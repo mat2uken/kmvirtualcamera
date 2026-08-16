@@ -94,6 +94,7 @@ add_executable(Receiver WIN32
     receiver/app/app_controller.cpp
     receiver/signaling/win_http_client.cpp
     receiver/rtc/peer_connection_manager.cpp
+    receiver/rtc/bandwidth_estimator.cpp
     receiver/codec/h264_decoder.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
@@ -237,6 +238,7 @@ add_executable(test_receiver_startup
     receiver/app/app_controller.cpp
     receiver/signaling/win_http_client.cpp
     receiver/rtc/peer_connection_manager.cpp
+    receiver/rtc/bandwidth_estimator.cpp
     receiver/codec/h264_decoder.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
@@ -281,6 +283,7 @@ target_link_libraries(test_receiver_startup PRIVATE
 add_executable(test_webrtc_dtls
     tests/test_webrtc_dtls.cpp
     receiver/rtc/peer_connection_manager.cpp
+    receiver/rtc/bandwidth_estimator.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
 )
 target_include_directories(test_webrtc_dtls PRIVATE
@@ -300,3 +303,13 @@ target_link_libraries(test_webrtc_dtls PRIVATE
     mbedx509
     ws2_32
 )
+
+add_executable(test_bandwidth_estimator
+    receiver/test_bandwidth_estimator.cpp
+    receiver/rtc/bandwidth_estimator.cpp
+)
+target_include_directories(test_bandwidth_estimator PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+)
+add_test(NAME BandwidthEstimatorTest COMMAND test_bandwidth_estimator)
