@@ -94,7 +94,9 @@ void AppController::StartNewSignalingSession() {
 
 void AppController::SignalingWorkerProc() {
     mainWindow_->SetStatusText(L"セッション作成中 (Cloudflare HTTPS API)...");
-    std::cout << "[Signaling] Creating session on " << std::string(baseUrl_.begin(), baseUrl_.end()) << "..." << std::endl;
+    std::string baseUrlNarrow;
+    for (wchar_t c : baseUrl_) { baseUrlNarrow += static_cast<char>(c); }
+    std::cout << "[Signaling] Creating session on " << baseUrlNarrow << "..." << std::endl;
 
     auto sessionOpt = httpClient_->CreateSession("windows-receiver");
     if (!sessionOpt.has_value() || !isSignalingRunning_) {
@@ -144,7 +146,7 @@ void AppController::SignalingWorkerProc() {
                     if (!data || size == 0 || !isVideoWorkerRunning_) return;
                     {
                         std::lock_guard<std::mutex> lock(videoQueueMutex_);
-                        if (videoQueue_.size() >= 2) {
+                        if (videoQueue_.size() >= 30) {
                             videoQueue_.pop_front();
                         }
                         videoQueue_.push_back(QueuedH264Frame{ std::vector<uint8_t>(data, data + size), tsUs });

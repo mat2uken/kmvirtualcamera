@@ -12,6 +12,11 @@ constexpr int ID_ROT_RIGHT_BTN = 1006;
 MainWindow::MainWindow() = default;
 
 MainWindow::~MainWindow() {
+    isPreviewWorkerRunning_ = false;
+    previewCv_.notify_all();
+    if (previewThread_.joinable()) {
+        previewThread_.join();
+    }
     if (hFont_) {
         DeleteObject(hFont_);
         hFont_ = nullptr;
@@ -176,7 +181,27 @@ bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
     );
 
     d3dPreview_.Initialize(hPreviewWnd_, 755, 550);
+    isPreviewWorkerRunning_ = true;
+    previewThread_ = std::thread(&MainWindow::PreviewWorkerProc, this);
     return true;
+}
+
+void MainWindow::PreviewWorkerProc() {
+    std::vector<uint8_t> localBuffer;
+    while (isPreviewWorkerRunning_) {
+        {
+            std::unique_lock<std::mutex> lock(previewMutex_);
+            previewCv_.wait(lock, [this]() {
+                return !isPreviewWorkerRunning_ || hasNewPreviewFrame_;
+            });
+            if (!isPreviewWorkerRunning_) break;
+            localBuffer = previewBuffer_;
+            hasNewPreviewFrame_ = false;
+        }
+        if (!localBuffer.empty()) {
+            d3dPreview_.RenderNv12Frame(localBuffer, 1280, 720);
+        }
+    }
 }
 
 void MainWindow::Show(int nCmdShow) {
@@ -225,7 +250,16 @@ void MainWindow::SetVirtualCameraStatus(bool isStarted) {
 }
 
 void MainWindow::RenderPreviewFrame(std::span<const uint8_t> nv12Data) {
-    d3dPreview_.RenderNv12Frame(nv12Data, 1280, 720);
+    if (nv12Data.empty()) return;
+    {
+        std::lock_guard<std::mutex> lock(previewMutex_);
+        if (previewBuffer_.size() != nv12Data.size()) {
+            previewBuffer_.resize(nv12Data.size());
+        }
+        std::memcpy(previewBuffer_.data(), nv12Data.data(), nv12Data.size());
+        hasNewPreviewFrame_ = true;
+    }
+    previewCv_.notify_one();
 }
 
 LRESULT CALLBACK MainWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {

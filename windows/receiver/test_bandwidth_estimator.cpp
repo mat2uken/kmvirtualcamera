@@ -7,7 +7,7 @@ using namespace km::rtc_net;
 void TestInitialState() {
     std::cout << "[TEST] 1. Initial State..." << std::endl;
     BandwidthEstimator bwe;
-    assert(bwe.GetCurrentEstimatedBitrate() == 3'500'000);
+    assert(bwe.GetCurrentEstimatedBitrate() == 2'500'000);
     assert(bwe.GetMeasuredThroughputBps() == 0);
     assert(bwe.GetCurrentLossRatio() == 0.0f);
     std::cout << "  -> PASS" << std::endl;

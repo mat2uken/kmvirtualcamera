@@ -9,11 +9,11 @@
 namespace km::rtc_net {
 
 struct BandwidthEstimatorConfig {
-    uint32_t minBitrateBps{500'000};    // 500 kbps
-    uint32_t maxBitrateBps{5'000'000};  // 5.0 Mbps
-    uint32_t startBitrateBps{3'500'000};// 3.5 Mbps
-    int64_t windowDurationMs{1000};     // 1 second estimation window
-    float lossThresholdDecrease{0.04f}; // 4% loss triggers backoff
+    uint32_t minBitrateBps{1'000'000};    // 1.0 Mbps
+    uint32_t maxBitrateBps{2'800'000};    // 2.8 Mbps max (prevents Wi-Fi bufferbloat)
+    uint32_t startBitrateBps{2'500'000};  // 2.5 Mbps (sweet spot for 720p 30fps)
+    int64_t windowDurationMs{1000};       // 1 second estimation window
+    float lossThresholdDecrease{0.04f};   // 4% loss triggers backoff
 };
 
 class BandwidthEstimator {

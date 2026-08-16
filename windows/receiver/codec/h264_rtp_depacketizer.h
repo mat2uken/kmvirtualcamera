@@ -44,6 +44,7 @@ private:
     bool frameHasLoss_{false};
     bool isKeyframe_{false};
     bool waitingForKeyframe_{true};
+    uint32_t waitingKeyframeCount_{0};
 };
 
 } // namespace km::codec

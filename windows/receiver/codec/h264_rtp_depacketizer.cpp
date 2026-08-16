@@ -23,12 +23,14 @@ void H264RtpDepacketizer::Reset() {
     frameHasLoss_ = false;
     isKeyframe_ = false;
     waitingForKeyframe_ = true;
+    waitingKeyframeCount_ = 0;
 }
 
 void H264RtpDepacketizer::EmitAccessUnit() {
     if (!accessUnitBuffer_.empty()) {
         if (frameHasLoss_) {
             waitingForKeyframe_ = true;
+            waitingKeyframeCount_ = 0;
             if (keyframeRequestCallback_) {
                 keyframeRequestCallback_();
             }
@@ -49,11 +51,17 @@ void H264RtpDepacketizer::EmitAccessUnit() {
                 fullFrame.insert(fullFrame.end(), accessUnitBuffer_.begin(), accessUnitBuffer_.end());
 
                 waitingForKeyframe_ = false;
+                waitingKeyframeCount_ = 0;
                 if (callback_) {
                     callback_(fullFrame.data(), fullFrame.size(), currentTimestamp_);
                 }
             } else {
-                // Discard non-keyframe P-frames while waiting for IDR refresh to prevent block noise!
+                // Periodically re-request PLI every 10 dropped frames (~300ms) until IDR arrives
+                if (++waitingKeyframeCount_ % 10 == 0) {
+                    if (keyframeRequestCallback_) {
+                        keyframeRequestCallback_();
+                    }
+                }
             }
         } else {
             // Normal clean stream frame

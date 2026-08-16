@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
 #include "qr_view.h"
 #include "d3d11_preview.h"
 #include "../audio/audio_device_enumerator.h"
@@ -33,6 +36,7 @@ public:
 private:
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    void PreviewWorkerProc();
 
     HWND hWnd_{nullptr};
     HWND hPreviewWnd_{nullptr};
@@ -50,6 +54,13 @@ private:
 
     QrView qrView_;
     D3D11Preview d3dPreview_;
+
+    std::mutex previewMutex_;
+    std::condition_variable previewCv_;
+    std::vector<uint8_t> previewBuffer_;
+    bool isPreviewWorkerRunning_{false};
+    bool hasNewPreviewFrame_{false};
+    std::thread previewThread_;
 
     std::function<void(int index)> onAudioDeviceChanged_;
     std::function<void()> onToggleVirtualCamera_;

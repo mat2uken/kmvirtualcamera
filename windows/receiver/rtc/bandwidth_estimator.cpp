@@ -84,7 +84,7 @@ bool BandwidthEstimator::EvaluateEstimation(int64_t currentTimeMs, uint32_t& out
                 // Stable network: Additive increase
                 currentBitrateEstimateBps_ = (std::min)(
                     config_.maxBitrateBps,
-                    currentBitrateEstimateBps_ + 250'000
+                    currentBitrateEstimateBps_ + 100'000
                 );
             }
         }
