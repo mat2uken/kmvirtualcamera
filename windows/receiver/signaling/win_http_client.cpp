@@ -69,6 +69,13 @@ static std::string EscapeJson(const std::string& s) {
 }
 
 WinHttpClient::WinHttpClient(std::wstring baseUrl) {
+    // Sanitize baseUrl (remove whitespace and quotes)
+    size_t start = baseUrl.find_first_not_of(L" \t\r\n\"'");
+    if (start != std::wstring::npos) {
+        size_t end = baseUrl.find_last_not_of(L" \t\r\n\"'");
+        baseUrl = baseUrl.substr(start, end - start + 1);
+    }
+
     URL_COMPONENTS urlComp{};
     urlComp.dwStructSize = sizeof(urlComp);
     urlComp.dwHostNameLength = static_cast<DWORD>(-1);
@@ -208,6 +215,14 @@ std::optional<CreateSessionResponse> WinHttpClient::CreateSession(const std::str
 
     if (r.sessionId.empty() || r.receiverToken.empty() || r.joinUrl.empty()) {
         return std::nullopt;
+    }
+
+    if (isHttps_ && r.joinUrl.find("127.0.0.1") != std::string::npos) {
+        std::string publicHost(host_.begin(), host_.end());
+        size_t pos = r.joinUrl.find("/send/");
+        if (pos != std::string::npos) {
+            r.joinUrl = "https://" + publicHost + r.joinUrl.substr(pos);
+        }
     }
     return r;
 }

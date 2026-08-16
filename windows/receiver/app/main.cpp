@@ -2,6 +2,30 @@
 #include <mfapi.h>
 #include "app_controller.h"
 
+static std::wstring SanitizeUrlArg(const std::wstring& raw) {
+    std::wstring s = raw;
+    // Trim leading / trailing spaces and quotes
+    size_t start = s.find_first_not_of(L" \t\r\n\"'");
+    if (start == std::wstring::npos) return L"";
+    size_t end = s.find_last_not_of(L" \t\r\n\"'");
+    s = s.substr(start, end - start + 1);
+
+    // If starts with --url=, remove prefix
+    if (s.rfind(L"--url=", 0) == 0) {
+        s = s.substr(6);
+    } else if (s.rfind(L"--url ", 0) == 0) {
+        s = s.substr(6);
+    }
+
+    // Re-trim quotes from URL
+    start = s.find_first_not_of(L" \t\r\n\"'");
+    if (start != std::wstring::npos) {
+        end = s.find_last_not_of(L" \t\r\n\"'");
+        s = s.substr(start, end - start + 1);
+    }
+    return s;
+}
+
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(nCmdShow);
@@ -18,13 +42,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
     std::wstring baseUrl = L"http://127.0.0.1:8787";
     if (pCmdLine && wcslen(pCmdLine) > 0) {
-        // Simple command line parsing for URL
-        std::wstring cmd = pCmdLine;
-        size_t pos = cmd.find(L"--url=");
-        if (pos != std::wstring::npos) {
-            baseUrl = cmd.substr(pos + 6);
-        } else if (cmd.find(L"http") == 0) {
-            baseUrl = cmd;
+        std::wstring sanitized = SanitizeUrlArg(pCmdLine);
+        if (!sanitized.empty()) {
+            baseUrl = sanitized;
         }
     }
 

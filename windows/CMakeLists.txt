@@ -172,3 +172,15 @@ target_link_libraries(test_pipe_integration PRIVATE
     advapi32
 )
 add_test(NAME PipeIntegrationTest COMMAND test_pipe_integration)
+
+add_executable(test_win_http_live
+    tests/test_win_http_live.cpp
+    receiver/signaling/win_http_client.cpp
+)
+target_include_directories(test_win_http_live PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver/signaling
+)
+target_link_libraries(test_win_http_live PRIVATE
+    winhttp
+)

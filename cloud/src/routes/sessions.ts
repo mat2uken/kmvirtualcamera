@@ -84,7 +84,15 @@ sessions.post("/", async (c) => {
     );
   }
 
-  const baseUrl = (c.env.PUBLIC_BASE_URL || "http://127.0.0.1:8787").replace(/\/+$/, "");
+  let baseUrl = c.env.PUBLIC_BASE_URL?.trim();
+  if (!baseUrl || baseUrl.includes("127.0.0.1") || baseUrl.includes("localhost")) {
+    try {
+      baseUrl = new URL(c.req.url).origin;
+    } catch {
+      baseUrl = baseUrl || "http://127.0.0.1:8787";
+    }
+  }
+  baseUrl = baseUrl.replace(/\/+$/, "");
   const joinUrl = `${baseUrl}/send/#v=1&s=${sessionId}&j=${joinToken}`;
 
   const responsePayload: CreateSessionResponse = {
