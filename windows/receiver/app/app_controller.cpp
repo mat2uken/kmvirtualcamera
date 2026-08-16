@@ -3,10 +3,7 @@
 
 namespace km::app {
 
-AppController::AppController() {
-    nv12Buffer_.resize(protocol::kPayloadBytes);
-    protocol::FillBlackNv12(nv12Buffer_);
-}
+AppController::AppController() = default;
 
 AppController::~AppController() {
     Shutdown();
@@ -16,6 +13,9 @@ bool AppController::Initialize(HINSTANCE hInstance, std::wstring baseUrl) {
     baseUrl_ = baseUrl;
     httpClient_ = std::make_unique<signaling::WinHttpClient>(baseUrl_);
     rtcManager_ = std::make_unique<rtc_net::PeerConnectionManager>();
+
+    isVideoWorkerRunning_ = true;
+    videoWorkerThread_ = std::thread(&AppController::VideoWorkerProc, this);
 
     // 1. Enumerate Audio endpoints
     audioDevices_ = audioEnumerator_.EnumerateRenderDevices();
@@ -141,26 +141,15 @@ void AppController::SignalingWorkerProc() {
                     }
                 },
                 [this](const uint8_t* data, size_t size, int width, int height, int64_t tsUs) {
-                    std::lock_guard<std::mutex> lock(videoProcessMutex_);
-                    int decW = 0, decH = 0;
-                    if (h264Decoder_.DecodeAccessUnit(data, size, tsUs, decodedFrameBuffer_, decW, decH)) {
-                        // Letterbox scale decoded frame (portrait or landscape) into standard 1280x720 NV12 canvas with user-selected rotation
-                        nv12Converter_.ConvertNv12ToNv12Letterbox(
-                            decodedFrameBuffer_.data(), decW,
-                            decW, decH,
-                            nv12Buffer_.data(),
-                            1280, 720,
-                            rotationDegrees_.load()
-                        );
-
-                        mainWindow_->RenderPreviewFrame(nv12Buffer_);
-                        pipePublisher_.PublishFrame(nv12Buffer_.data(), protocol::kPayloadBytes, tsUs);
-
-                        uint64_t count = ++frameCount_;
-                        if (count % 90 == 1) {
-                            std::cout << "[VideoPipeline] Stream active: " << count << " frames decoded (" << decW << "x" << decH << " -> 1280x720)" << std::endl;
+                    if (!data || size == 0 || !isVideoWorkerRunning_) return;
+                    {
+                        std::lock_guard<std::mutex> lock(videoQueueMutex_);
+                        if (videoQueue_.size() >= 2) {
+                            videoQueue_.pop_front();
                         }
+                        videoQueue_.push_back(QueuedH264Frame{ std::vector<uint8_t>(data, data + size), tsUs });
                     }
+                    videoQueueCv_.notify_one();
                 },
                 [this](const int16_t* pcm, size_t samples, int channels, int sampleRate) {
                     audioRenderer_.RenderPcm16(std::span<const int16_t>(pcm, samples * channels), channels);
@@ -201,6 +190,44 @@ void AppController::SignalingWorkerProc() {
     }
 }
 
+void AppController::VideoWorkerProc() {
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    std::vector<uint8_t> localDecodedBuffer;
+    std::vector<uint8_t> localNv12Buffer(protocol::kPayloadBytes);
+
+    while (isVideoWorkerRunning_) {
+        QueuedH264Frame frame;
+        {
+            std::unique_lock<std::mutex> lock(videoQueueMutex_);
+            videoQueueCv_.wait(lock, [this]() {
+                return !isVideoWorkerRunning_ || !videoQueue_.empty();
+            });
+            if (!isVideoWorkerRunning_) break;
+            frame = std::move(videoQueue_.front());
+            videoQueue_.pop_front();
+        }
+
+        int decW = 0, decH = 0;
+        if (h264Decoder_.DecodeAccessUnit(frame.data.data(), frame.data.size(), frame.tsUs, localDecodedBuffer, decW, decH)) {
+            nv12Converter_.ConvertNv12ToNv12Letterbox(
+                localDecodedBuffer.data(), decW,
+                decW, decH,
+                localNv12Buffer.data(),
+                1280, 720,
+                rotationDegrees_.load()
+            );
+
+            mainWindow_->RenderPreviewFrame(localNv12Buffer);
+            pipePublisher_.PublishFrame(localNv12Buffer.data(), protocol::kPayloadBytes, frame.tsUs);
+
+            uint64_t count = ++frameCount_;
+            if (count % 90 == 1) {
+                std::cout << "[VideoPipeline] Stream active: " << count << " frames decoded (" << decW << "x" << decH << " -> 1280x720)" << std::endl;
+            }
+        }
+    }
+}
+
 void AppController::RunMessageLoop() {
     MSG msg{};
     while (GetMessageW(&msg, nullptr, 0, 0)) {
@@ -213,6 +240,12 @@ void AppController::Shutdown() {
     isSignalingRunning_ = false;
     if (signalingThread_.joinable()) {
         signalingThread_.join();
+    }
+
+    isVideoWorkerRunning_ = false;
+    videoQueueCv_.notify_all();
+    if (videoWorkerThread_.joinable()) {
+        videoWorkerThread_.join();
     }
 
     vcamRegistrar_.StopVirtualCamera();

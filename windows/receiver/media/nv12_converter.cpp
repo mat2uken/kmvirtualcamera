@@ -190,41 +190,6 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
     uint8_t* dstYPlane = dstNv12;
     uint8_t* dstUvPlane = dstNv12 + (dstWidth * dstHeight);
 
-    // 1. Copy Y Plane with rotation
-    for (int y = 0; y < fitH; ++y) {
-        int effY = (y * sampleEffH) / fitH;
-        uint8_t* dstRow = dstYPlane + ((offsetY + y) * dstWidth) + offsetX;
-
-        for (int x = 0; x < fitW; ++x) {
-            int effX = (x * sampleEffW) / fitW;
-            int origX = 0, origY = 0;
-
-            switch (rot) {
-                case 90:
-                    origX = effY;
-                    origY = (sampleH - 1) - effX;
-                    break;
-                case 180:
-                    origX = (sampleW - 1) - effX;
-                    origY = (sampleH - 1) - effY;
-                    break;
-                case 270:
-                    origX = (sampleW - 1) - effY;
-                    origY = effX;
-                    break;
-                default: // 0
-                    origX = effX;
-                    origY = effY;
-                    break;
-            }
-
-            origX = std::clamp(origX, 0, sampleW - 1);
-            origY = std::clamp(origY, 0, sampleH - 1);
-            dstRow[x] = srcYPlane[origY * srcPitch + origX];
-        }
-    }
-
-    // 2. Copy UV Plane with rotation (2 bytes per chrominance sample)
     int srcHalfW = sampleW / 2;
     int srcHalfH = sampleH / 2;
     int fitHalfW = fitW / 2;
@@ -232,42 +197,106 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
     int offsetHalfX = offsetX / 2;
     int offsetHalfY = offsetY / 2;
 
-    int sampleHalfEffW = (rot == 90 || rot == 270) ? srcHalfH : srcHalfW;
-    int sampleHalfEffH = (rot == 90 || rot == 270) ? srcHalfW : srcHalfH;
+    // 1. Process Y and UV planes branchlessly based on rotation angle
+    if (rot == 0) {
+        std::vector<int> xMapY(fitW);
+        for (int x = 0; x < fitW; ++x) xMapY[x] = (x * sampleW) / fitW;
 
-    for (int y = 0; y < fitHalfH; ++y) {
-        int effHalfY = (y * sampleHalfEffH) / fitHalfH;
-        uint8_t* dstRow = dstUvPlane + ((offsetHalfY + y) * dstWidth) + (offsetHalfX * 2);
-
-        for (int x = 0; x < fitHalfW; ++x) {
-            int effHalfX = (x * sampleHalfEffW) / fitHalfW;
-            int origHalfX = 0, origHalfY = 0;
-
-            switch (rot) {
-                case 90:
-                    origHalfX = effHalfY;
-                    origHalfY = (srcHalfH - 1) - effHalfX;
-                    break;
-                case 180:
-                    origHalfX = (srcHalfW - 1) - effHalfX;
-                    origHalfY = (srcHalfH - 1) - effHalfY;
-                    break;
-                case 270:
-                    origHalfX = (srcHalfW - 1) - effHalfY;
-                    origHalfY = effHalfX;
-                    break;
-                default: // 0
-                    origHalfX = effHalfX;
-                    origHalfY = effHalfY;
-                    break;
+        for (int y = 0; y < fitH; ++y) {
+            int srcY = (y * sampleH) / fitH;
+            const uint8_t* pSrc = srcYPlane + (srcY * srcPitch);
+            uint8_t* pDst = dstYPlane + ((offsetY + y) * dstWidth) + offsetX;
+            for (int x = 0; x < fitW; ++x) {
+                pDst[x] = pSrc[xMapY[x]];
             }
+        }
 
-            origHalfX = std::clamp(origHalfX, 0, srcHalfW - 1);
-            origHalfY = std::clamp(origHalfY, 0, srcHalfH - 1);
+        std::vector<int> xMapUv(fitHalfW);
+        for (int x = 0; x < fitHalfW; ++x) xMapUv[x] = ((x * srcHalfW) / fitHalfW) * 2;
 
-            const uint8_t* srcSample = srcUvPlane + (origHalfY * srcPitch) + (origHalfX * 2);
-            dstRow[x * 2] = srcSample[0];     // U
-            dstRow[x * 2 + 1] = srcSample[1]; // V
+        for (int y = 0; y < fitHalfH; ++y) {
+            int srcY = (y * srcHalfH) / fitHalfH;
+            const uint8_t* pSrc = srcUvPlane + (srcY * srcPitch);
+            uint8_t* pDst = dstUvPlane + ((offsetHalfY + y) * dstWidth) + (offsetHalfX * 2);
+            for (int x = 0; x < fitHalfW; ++x) {
+                int sx = xMapUv[x];
+                pDst[x * 2] = pSrc[sx];
+                pDst[x * 2 + 1] = pSrc[sx + 1];
+            }
+        }
+    } else if (rot == 90) {
+        std::vector<int> xMapY(fitW);
+        for (int x = 0; x < fitW; ++x) xMapY[x] = (sampleH - 1) - ((x * sampleH) / fitW);
+
+        for (int y = 0; y < fitH; ++y) {
+            int origX = (y * sampleW) / fitH;
+            uint8_t* pDst = dstYPlane + ((offsetY + y) * dstWidth) + offsetX;
+            for (int x = 0; x < fitW; ++x) {
+                pDst[x] = srcYPlane[xMapY[x] * srcPitch + origX];
+            }
+        }
+
+        std::vector<int> xMapUv(fitHalfW);
+        for (int x = 0; x < fitHalfW; ++x) xMapUv[x] = (srcHalfH - 1) - ((x * srcHalfH) / fitHalfW);
+
+        for (int y = 0; y < fitHalfH; ++y) {
+            int origHalfX = ((y * srcHalfW) / fitHalfH) * 2;
+            uint8_t* pDst = dstUvPlane + ((offsetHalfY + y) * dstWidth) + (offsetHalfX * 2);
+            for (int x = 0; x < fitHalfW; ++x) {
+                const uint8_t* pSrc = srcUvPlane + (xMapUv[x] * srcPitch) + origHalfX;
+                pDst[x * 2] = pSrc[0];
+                pDst[x * 2 + 1] = pSrc[1];
+            }
+        }
+    } else if (rot == 180) {
+        std::vector<int> xMapY(fitW);
+        for (int x = 0; x < fitW; ++x) xMapY[x] = (sampleW - 1) - ((x * sampleW) / fitW);
+
+        for (int y = 0; y < fitH; ++y) {
+            int origY = (sampleH - 1) - ((y * sampleH) / fitH);
+            const uint8_t* pSrc = srcYPlane + (origY * srcPitch);
+            uint8_t* pDst = dstYPlane + ((offsetY + y) * dstWidth) + offsetX;
+            for (int x = 0; x < fitW; ++x) {
+                pDst[x] = pSrc[xMapY[x]];
+            }
+        }
+
+        std::vector<int> xMapUv(fitHalfW);
+        for (int x = 0; x < fitHalfW; ++x) xMapUv[x] = ((srcHalfW - 1) - ((x * srcHalfW) / fitHalfW)) * 2;
+
+        for (int y = 0; y < fitHalfH; ++y) {
+            int origY = (srcHalfH - 1) - ((y * srcHalfH) / fitHalfH);
+            const uint8_t* pSrc = srcUvPlane + (origY * srcPitch);
+            uint8_t* pDst = dstUvPlane + ((offsetHalfY + y) * dstWidth) + (offsetHalfX * 2);
+            for (int x = 0; x < fitHalfW; ++x) {
+                int sx = xMapUv[x];
+                pDst[x * 2] = pSrc[sx];
+                pDst[x * 2 + 1] = pSrc[sx + 1];
+            }
+        }
+    } else if (rot == 270) {
+        std::vector<int> xMapY(fitW);
+        for (int x = 0; x < fitW; ++x) xMapY[x] = (x * sampleH) / fitW;
+
+        for (int y = 0; y < fitH; ++y) {
+            int origX = (sampleW - 1) - ((y * sampleW) / fitH);
+            uint8_t* pDst = dstYPlane + ((offsetY + y) * dstWidth) + offsetX;
+            for (int x = 0; x < fitW; ++x) {
+                pDst[x] = srcYPlane[xMapY[x] * srcPitch + origX];
+            }
+        }
+
+        std::vector<int> xMapUv(fitHalfW);
+        for (int x = 0; x < fitHalfW; ++x) xMapUv[x] = (x * srcHalfH) / fitHalfW;
+
+        for (int y = 0; y < fitHalfH; ++y) {
+            int origHalfX = ((srcHalfW - 1) - ((y * srcHalfW) / fitHalfH)) * 2;
+            uint8_t* pDst = dstUvPlane + ((offsetHalfY + y) * dstWidth) + (offsetHalfX * 2);
+            for (int x = 0; x < fitHalfW; ++x) {
+                const uint8_t* pSrc = srcUvPlane + (xMapUv[x] * srcPitch) + origHalfX;
+                pDst[x * 2] = pSrc[0];
+                pDst[x * 2 + 1] = pSrc[1];
+            }
         }
     }
 }

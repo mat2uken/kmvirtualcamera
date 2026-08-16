@@ -37,6 +37,14 @@ bool H264Decoder::Initialize(int width, int height) {
     }
 
     // Enable Low Latency mode on Decoder MFT
+    Microsoft::WRL::ComPtr<ICodecAPI> codecApi;
+    if (SUCCEEDED(decoderMft_.As(&codecApi)) && codecApi) {
+        VARIANT varLowLatency{};
+        varLowLatency.vt = VT_BOOL;
+        varLowLatency.boolVal = VARIANT_TRUE;
+        codecApi->SetValue(&CODECAPI_AVLowLatencyMode, &varLowLatency);
+    }
+
     Microsoft::WRL::ComPtr<IMFAttributes> attributes;
     if (SUCCEEDED(decoderMft_->GetAttributes(&attributes)) && attributes) {
         attributes->SetUINT32(CODECAPI_AVDecVideoThumbnailGenerationMode, 0);
@@ -114,6 +122,9 @@ HRESULT H264Decoder::CreateInputType(int width, int height, IMFMediaType** ppTyp
 
     hr = type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
     if (FAILED(hr)) return hr;
+
+    type->SetUINT32(MF_LOW_LATENCY, 1);
+    type->SetUINT32(MF_MT_REALTIME_CONTENT, 1);
 
     *ppType = type.Detach();
     return S_OK;

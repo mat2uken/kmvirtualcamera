@@ -51,6 +51,39 @@ export async function waitForIceGatheringComplete(
   });
 }
 
+function enhanceSdpForLowLatency(sdp: string, bitrateBps = 4_000_000): string {
+  const lines = sdp.split("\r\n");
+  const result: string[] = [];
+  let inVideo = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("m=video")) {
+      inVideo = true;
+      result.push(line);
+      result.push(`b=AS:${Math.round(bitrateBps / 1000)}`);
+      result.push(`b=TIAS:${bitrateBps}`);
+      continue;
+    } else if (line.startsWith("m=audio") || line.startsWith("m=application")) {
+      inVideo = false;
+    }
+
+    if (inVideo && line.startsWith("a=rtpmap:") && line.includes("H264/90000")) {
+      const pt = line.split(" ")[0].substring(9);
+      result.push(line);
+      result.push(`a=rtcp-fb:${pt} goog-remb`);
+      result.push(`a=rtcp-fb:${pt} transport-cc`);
+      result.push(`a=rtcp-fb:${pt} ccm fir`);
+      result.push(`a=rtcp-fb:${pt} nack`);
+      result.push(`a=rtcp-fb:${pt} nack pli`);
+      continue;
+    }
+
+    result.push(line);
+  }
+  return result.join("\r\n");
+}
+
 export class WebRtcSender {
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
@@ -139,7 +172,7 @@ export class WebRtcSender {
     return this.localStream;
   }
 
-  async applyBitrateParameters(targetBitrateBps = 3_500_000, targetFps = 30): Promise<void> {
+  async applyBitrateParameters(targetBitrateBps = 4_000_000, targetFps = 30): Promise<void> {
     if (!this.pc) return;
     const senders = this.pc.getSenders();
     for (const sender of senders) {
@@ -172,7 +205,7 @@ export class WebRtcSender {
     rtcConfig: RTCConfiguration,
     onStateChange: (state: RTCPeerConnectionState) => void,
     onStatsUpdate?: (stats: Record<string, unknown>) => void,
-    targetBitrateBps = 3_500_000,
+    targetBitrateBps = 4_000_000,
     targetFps = 30,
     onIceStateChange?: (state: RTCIceConnectionState) => void,
     onDiagnosticLog?: (msg: string) => void
@@ -260,7 +293,7 @@ export class WebRtcSender {
       }, 2000);
     }
 
-    return localSdp;
+    return enhanceSdpForLowLatency(localSdp, targetBitrateBps);
   }
 
   async setAnswer(sdp: string, onDiagnosticLog?: (msg: string) => void): Promise<void> {
@@ -269,7 +302,7 @@ export class WebRtcSender {
     }
     onDiagnosticLog?.(`Answer SDPを適用中 (${sdp.length} 文字)...`);
     // RFC 4145 / RFC 8842: Answerer must use active or passive, never actpass
-    const sanitizedSdp = sdp.replace(/a=setup:actpass/g, "a=setup:passive");
+    const sanitizedSdp = enhanceSdpForLowLatency(sdp.replace(/a=setup:actpass/g, "a=setup:passive"));
     await this.pc.setRemoteDescription({ type: "answer", sdp: sanitizedSdp });
     onDiagnosticLog?.("Answer SDPを適用完了。ICE接続検証中...");
   }

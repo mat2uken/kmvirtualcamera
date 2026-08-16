@@ -124,18 +124,29 @@ void D3D11Preview::RenderNv12Frame(std::span<const uint8_t> nv12Data, int width,
     const uint8_t* uvPlane = nv12Data.data() + (width * height);
 
     for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            int yVal = static_cast<int>(yPlane[y * width + x]) - 16;
-            int uvIdx = (y / 2) * width + (x / 2) * 2;
-            int uVal = static_cast<int>(uvPlane[uvIdx]) - 128;
-            int vVal = static_cast<int>(uvPlane[uvIdx + 1]) - 128;
+        const uint8_t* yRow = yPlane + (y * width);
+        const uint8_t* uvRow = uvPlane + ((y / 2) * width);
+        uint32_t* dstRow = bgraStaging_.data() + (y * width);
 
-            int c = yVal * 298 + 128;
-            int r = std::clamp((c + 409 * vVal) >> 8, 0, 255);
-            int g = std::clamp((c - 100 * uVal - 208 * vVal) >> 8, 0, 255);
-            int b = std::clamp((c + 516 * uVal) >> 8, 0, 255);
+        for (int x = 0; x < width; x += 2) {
+            int uVal = static_cast<int>(uvRow[x]) - 128;
+            int vVal = static_cast<int>(uvRow[x + 1]) - 128;
 
-            bgraStaging_[y * width + x] = (0xFF000000) | (r << 16) | (g << 8) | b;
+            int rCoeff = 409 * vVal;
+            int gCoeff = -100 * uVal - 208 * vVal;
+            int bCoeff = 516 * uVal;
+
+            int c0 = (static_cast<int>(yRow[x]) - 16) * 298 + 128;
+            int r0 = std::clamp((c0 + rCoeff) >> 8, 0, 255);
+            int g0 = std::clamp((c0 + gCoeff) >> 8, 0, 255);
+            int b0 = std::clamp((c0 + bCoeff) >> 8, 0, 255);
+            dstRow[x] = 0xFF000000 | (r0 << 16) | (g0 << 8) | b0;
+
+            int c1 = (static_cast<int>(yRow[x + 1]) - 16) * 298 + 128;
+            int r1 = std::clamp((c1 + rCoeff) >> 8, 0, 255);
+            int g1 = std::clamp((c1 + gCoeff) >> 8, 0, 255);
+            int b1 = std::clamp((c1 + bCoeff) >> 8, 0, 255);
+            dstRow[x + 1] = 0xFF000000 | (r1 << 16) | (g1 << 8) | b1;
         }
     }
 

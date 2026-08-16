@@ -91,6 +91,11 @@ bool PeerConnectionManager::Initialize(
                 videoCallback_(nalData, size, 1280, 720, static_cast<int64_t>(ts));
             }
         });
+        h264Depacketizer_.SetKeyframeRequestCallback([this]() {
+            if (videoTrack_) {
+                videoTrack_->requestKeyframe();
+            }
+        });
 
         pc_->onTrack([this](std::shared_ptr<rtc::Track> track) {
             allTracks_.push_back(track);

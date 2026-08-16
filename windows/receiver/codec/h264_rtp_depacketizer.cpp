@@ -6,8 +6,8 @@ namespace km::codec {
 
 static const uint8_t kStartSequence[4] = { 0x00, 0x00, 0x00, 0x01 };
 
-H264RtpDepacketizer::H264RtpDepacketizer(FrameCallback callback)
-    : callback_(std::move(callback)) {
+H264RtpDepacketizer::H264RtpDepacketizer(FrameCallback callback, KeyframeRequestCallback keyframeCb)
+    : callback_(std::move(callback)), keyframeRequestCallback_(std::move(keyframeCb)) {
     accessUnitBuffer_.reserve(256 * 1024);
     fuBuffer_.reserve(256 * 1024);
 }
@@ -16,16 +16,19 @@ void H264RtpDepacketizer::Reset() {
     accessUnitBuffer_.clear();
     fuBuffer_.clear();
     hasPendingTimestamp_ = false;
+    hasLastSeq_ = false;
     isFuActive_ = false;
+    frameHasLoss_ = false;
 }
 
 void H264RtpDepacketizer::EmitAccessUnit() {
     if (!accessUnitBuffer_.empty()) {
-        if (callback_) {
+        if (!frameHasLoss_ && callback_) {
             callback_(accessUnitBuffer_.data(), accessUnitBuffer_.size(), currentTimestamp_);
         }
         accessUnitBuffer_.clear();
     }
+    frameHasLoss_ = false;
 }
 
 void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* rtpData, size_t size) {
@@ -45,6 +48,22 @@ void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* rtpData, size_t size) 
 
     uint8_t byte1 = rtpData[1];
     bool markerBit = (byte1 & 0x80) != 0;
+
+    uint16_t seq = (static_cast<uint16_t>(rtpData[2]) << 8) | static_cast<uint16_t>(rtpData[3]);
+    if (hasLastSeq_) {
+        uint16_t diff = seq - lastSequenceNumber_;
+        if (diff > 1 && diff < 32768) {
+            // Packet loss detected in transit over network!
+            frameHasLoss_ = true;
+            isFuActive_ = false;
+            fuBuffer_.clear();
+            if (keyframeRequestCallback_) {
+                keyframeRequestCallback_();
+            }
+        }
+    }
+    lastSequenceNumber_ = seq;
+    hasLastSeq_ = true;
 
     uint32_t timestamp = (static_cast<uint32_t>(rtpData[4]) << 24) |
                          (static_cast<uint32_t>(rtpData[5]) << 16) |

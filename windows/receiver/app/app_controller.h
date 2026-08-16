@@ -14,7 +14,15 @@
 #include "../audio/wasapi_audio_renderer.h"
 #include "../vcam/virtual_camera_registrar.h"
 
+#include <deque>
+#include <condition_variable>
+
 namespace km::app {
+
+struct QueuedH264Frame {
+    std::vector<uint8_t> data;
+    int64_t tsUs{0};
+};
 
 class AppController {
 public:
@@ -28,6 +36,7 @@ public:
 private:
     void StartNewSignalingSession();
     void SignalingWorkerProc();
+    void VideoWorkerProc();
 
     std::wstring baseUrl_{L"http://127.0.0.1:8787"};
     std::unique_ptr<ui::MainWindow> mainWindow_;
@@ -47,11 +56,14 @@ private:
     std::atomic<bool> isSignalingRunning_{false};
     std::thread signalingThread_;
 
-    std::vector<uint8_t> nv12Buffer_;
-    std::vector<uint8_t> decodedFrameBuffer_;
+    std::atomic<bool> isVideoWorkerRunning_{false};
+    std::thread videoWorkerThread_;
+    std::mutex videoQueueMutex_;
+    std::condition_variable videoQueueCv_;
+    std::deque<QueuedH264Frame> videoQueue_;
+
     std::atomic<uint64_t> frameCount_{0};
     std::atomic<int> rotationDegrees_{0};
-    std::mutex videoProcessMutex_;
 };
 
 } // namespace km::app
