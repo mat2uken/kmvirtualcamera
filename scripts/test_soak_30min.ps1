@@ -47,7 +47,7 @@ while ((Get-Date) -lt $endTime) {
     }
 
     $timeRemaining = $endTime - (Get-Date)
-    Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] Iteration $iteration: Pipeline OK ($([math]::Round($elapsedMs, 1))ms) | Memory: $([math]::Round($mem, 1))MB | Remaining: $($timeRemaining.ToString('hh\:mm\:ss'))" -ForegroundColor Gray
+    Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] Iteration $($iteration): Pipeline OK ($([math]::Round($elapsedMs, 1))ms) | Memory: $([math]::Round($mem, 1))MB | Remaining: $($timeRemaining.ToString('hh\:mm\:ss'))" -ForegroundColor Gray
 
     Start-Sleep -Seconds $SampleIntervalSeconds
 }
