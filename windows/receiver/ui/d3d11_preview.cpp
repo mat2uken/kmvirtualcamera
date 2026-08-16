@@ -112,8 +112,12 @@ void D3D11Preview::Resize(int width, int height) {
 }
 
 void D3D11Preview::RenderNv12Frame(std::span<const uint8_t> nv12Data, int width, int height) {
-    if (!device_ || !context_ || !swapChain_ || !renderTargetView_ || nv12Data.empty()) return;
+    if (nv12Data.empty() || width <= 0 || height <= 0 || !hWnd_) return;
     std::lock_guard<std::mutex> lock(renderMutex_);
+
+    if (bgraStaging_.size() != static_cast<size_t>(width * height)) {
+        bgraStaging_.resize(width * height);
+    }
 
     // Convert NV12 to BGRA for preview presentation
     const uint8_t* yPlane = nv12Data.data();
@@ -135,17 +139,36 @@ void D3D11Preview::RenderNv12Frame(std::span<const uint8_t> nv12Data, int width,
         }
     }
 
-    if (videoTexture_) {
-        context_->UpdateSubresource(videoTexture_.Get(), 0, nullptr, bgraStaging_.data(), static_cast<UINT>(1280 * 4), 0);
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height; // top-down
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
 
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> backBuffer;
-        if (SUCCEEDED(swapChain_->GetBuffer(0, IID_PPV_ARGS(&backBuffer)))) {
-            D3D11_BOX srcBox{ 0, 0, 0, 1280, 720, 1 };
-            context_->CopySubresourceRegion(backBuffer.Get(), 0, 0, 0, 0, videoTexture_.Get(), 0, &srcBox);
-        }
+    HDC hdc = GetDC(hWnd_);
+    if (hdc) {
+        RECT rc{};
+        GetClientRect(hWnd_, &rc);
+        int clientW = rc.right - rc.left;
+        int clientH = rc.bottom - rc.top;
+
+        SetStretchBltMode(hdc, HALFTONE);
+        SetBrushOrgEx(hdc, 0, 0, nullptr);
+
+        StretchDIBits(
+            hdc,
+            0, 0, clientW, clientH,
+            0, 0, width, height,
+            bgraStaging_.data(),
+            &bmi,
+            DIB_RGB_COLORS,
+            SRCCOPY
+        );
+
+        ReleaseDC(hWnd_, hdc);
     }
-
-    swapChain_->Present(1, 0);
 }
 
 } // namespace km::ui

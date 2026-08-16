@@ -46,8 +46,8 @@ sessions.post("/", async (c) => {
   const receiverToken = generateRandomToken(32);
   const joinToken = generateRandomToken(32);
 
-  const ttlSeconds = parseInt(c.env.SESSION_TTL_SECONDS || "300", 10);
-  const timeoutSeconds = parseInt(c.env.SIGNALING_TIMEOUT_SECONDS || "60", 10);
+  const ttlSeconds = parseInt(c.env.SESSION_TTL_SECONDS || "600", 10);
+  const timeoutSeconds = parseInt(c.env.SIGNALING_TIMEOUT_SECONDS || "600", 10);
   const now = Date.now();
   const expiresAtMs = now + ttlSeconds * 1000;
   const expiresAt = new Date(expiresAtMs).toISOString();
@@ -164,7 +164,7 @@ sessions.post("/:sessionId/claim", async (c) => {
     );
   }
 
-  const timeoutSeconds = parseInt(c.env.SIGNALING_TIMEOUT_SECONDS || "60", 10);
+  const timeoutSeconds = parseInt(c.env.SIGNALING_TIMEOUT_SECONDS || "600", 10);
   const responsePayload: ClaimSessionResponse = {
     senderToken,
     expiresAt: new Date(res.record.expiresAtMs).toISOString(),

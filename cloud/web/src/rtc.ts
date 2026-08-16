@@ -1,23 +1,37 @@
 export async function waitForIceGatheringComplete(
   pc: RTCPeerConnection,
-  timeoutMs = 15000,
+  timeoutMs = 6000,
+  onCandidateLogged?: (cand: string) => void,
   signal?: AbortSignal
-): Promise<void> {
-  if (pc.iceGatheringState === "complete") return;
+): Promise<string[]> {
+  const candidates: string[] = [];
+  if (pc.iceGatheringState === "complete") return candidates;
 
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<string[]>((resolve, reject) => {
     let timer: number | null = null;
 
     const cleanup = () => {
       if (timer !== null) clearTimeout(timer);
       pc.removeEventListener("icegatheringstatechange", onChange);
+      pc.removeEventListener("icecandidate", onCandidate);
       signal?.removeEventListener("abort", onAbort);
     };
 
     const onChange = () => {
       if (pc.iceGatheringState === "complete") {
         cleanup();
-        resolve();
+        resolve(candidates);
+      }
+    };
+
+    const onCandidate = (event: RTCPeerConnectionIceEvent) => {
+      if (event.candidate) {
+        const cStr = event.candidate.candidate;
+        candidates.push(cStr);
+        onCandidateLogged?.(`Candidate [${event.candidate.type || "unknown"}] ${cStr}`);
+      } else {
+        cleanup();
+        resolve(candidates);
       }
     };
 
@@ -28,11 +42,11 @@ export async function waitForIceGatheringComplete(
 
     timer = window.setTimeout(() => {
       cleanup();
-      // Resolve anyway after timeout to proceed with gathered candidates
-      resolve();
+      resolve(candidates);
     }, timeoutMs);
 
     pc.addEventListener("icegatheringstatechange", onChange);
+    pc.addEventListener("icecandidate", onCandidate);
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
@@ -42,28 +56,126 @@ export class WebRtcSender {
   private localStream: MediaStream | null = null;
   private statsTimer: number | null = null;
 
-  async getMedia(videoDeviceId?: string, audioDeviceId?: string): Promise<MediaStream> {
+  async getMedia(
+    videoDeviceId?: string,
+    audioDeviceId?: string,
+    width = 1280,
+    height = 720,
+    frameRate = 30
+  ): Promise<MediaStream> {
     this.stopMedia();
 
-    const constraints: MediaStreamConstraints = {
-      video: {
-        deviceId: videoDeviceId ? { exact: videoDeviceId } : undefined,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 30, max: 30 },
-        facingMode: { ideal: "environment" }
-      },
-      audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true
+    const videoConstraint: MediaTrackConstraints = {
+      width: { ideal: width },
+      height: { ideal: height },
+      frameRate: { ideal: frameRate, max: frameRate }
     };
 
-    this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (videoDeviceId) {
+      videoConstraint.deviceId = { exact: videoDeviceId };
+    } else {
+      videoConstraint.facingMode = { ideal: "environment" };
+    }
+
+    try {
+      this.localStream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraint,
+        audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true
+      });
+    } catch {
+      this.localStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
+    }
+
     return this.localStream;
+  }
+
+  async switchMedia(
+    newVideoDeviceId?: string,
+    newAudioDeviceId?: string,
+    width = 1280,
+    height = 720,
+    frameRate = 30
+  ): Promise<MediaStream> {
+    const videoConstraint: MediaTrackConstraints = {
+      width: { ideal: width },
+      height: { ideal: height },
+      frameRate: { ideal: frameRate, max: frameRate }
+    };
+
+    if (newVideoDeviceId) {
+      videoConstraint.deviceId = { exact: newVideoDeviceId };
+    } else {
+      videoConstraint.facingMode = { ideal: "environment" };
+    }
+
+    let newStream: MediaStream;
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraint,
+        audio: newAudioDeviceId ? { deviceId: { exact: newAudioDeviceId } } : true
+      });
+    } catch {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
+    }
+
+    if (this.pc) {
+      const senders = this.pc.getSenders();
+      for (const track of newStream.getTracks()) {
+        const sender = senders.find((s) => s.track && s.track.kind === track.kind);
+        if (sender) {
+          await sender.replaceTrack(track);
+        }
+      }
+    }
+
+    this.stopMedia();
+    this.localStream = newStream;
+    return this.localStream;
+  }
+
+  async applyBitrateParameters(targetBitrateBps = 3_500_000, targetFps = 30): Promise<void> {
+    if (!this.pc) return;
+    const senders = this.pc.getSenders();
+    for (const sender of senders) {
+      if (sender.track && sender.track.kind === "video") {
+        try {
+          const params = sender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}];
+          }
+          for (const enc of params.encodings) {
+            enc.maxBitrate = targetBitrateBps;
+            enc.maxFramerate = targetFps;
+            enc.scaleResolutionDownBy = 1.0;
+            // @ts-expect-error networkPriority extension
+            enc.networkPriority = "high";
+            // @ts-expect-error priority extension
+            enc.priority = "high";
+          }
+          // @ts-expect-error degradationPreference extension
+          params.degradationPreference = "maintain-framerate";
+          await sender.setParameters(params);
+        } catch {
+          // Ignore if browser does not support setting parameters
+        }
+      }
+    }
   }
 
   async createPeerConnection(
     rtcConfig: RTCConfiguration,
     onStateChange: (state: RTCPeerConnectionState) => void,
-    onStatsUpdate?: (stats: Record<string, unknown>) => void
+    onStatsUpdate?: (stats: Record<string, unknown>) => void,
+    targetBitrateBps = 3_500_000,
+    targetFps = 30,
+    onIceStateChange?: (state: RTCIceConnectionState) => void,
+    onDiagnosticLog?: (msg: string) => void
   ): Promise<string> {
     if (!this.localStream) {
       throw new Error("No media stream available. Call getMedia() first.");
@@ -73,21 +185,54 @@ export class WebRtcSender {
 
     this.pc.onconnectionstatechange = () => {
       if (this.pc) {
+        onDiagnosticLog?.(`ConnectionState: ${this.pc.connectionState}`);
         onStateChange(this.pc.connectionState);
+        if (this.pc.connectionState === "connected") {
+          this.applyBitrateParameters(targetBitrateBps, targetFps);
+        }
       }
     };
 
+    this.pc.oniceconnectionstatechange = () => {
+      if (this.pc) {
+        onDiagnosticLog?.(`ICEConnectionState: ${this.pc.iceConnectionState}`);
+        if (onIceStateChange) {
+          onIceStateChange(this.pc.iceConnectionState);
+        }
+      }
+    };
+
+    this.pc.onicecandidateerror = (event) => {
+      // @ts-expect-error RTCIceCandidateErrorEvent properties
+      onDiagnosticLog?.(`ICE Candidate Error: ${event.errorCode} ${event.errorText} (${event.url})`);
+    };
+
     for (const track of this.localStream.getTracks()) {
-      this.pc.addTransceiver(track, {
+      const transceiver = this.pc.addTransceiver(track, {
         direction: "sendonly",
         streams: [this.localStream]
       });
+
+      if (track.kind === "video" && typeof transceiver.setCodecPreferences === "function" && typeof RTCRtpSender.getCapabilities === "function") {
+        const capabilities = RTCRtpSender.getCapabilities("video");
+        if (capabilities && capabilities.codecs) {
+          const h264Codecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() === "video/h264");
+          const otherCodecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() !== "video/h264");
+          try {
+            transceiver.setCodecPreferences([...h264Codecs, ...otherCodecs]);
+          } catch {
+            // Ignore if browser unsupported
+          }
+        }
+      }
     }
 
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
 
-    await waitForIceGatheringComplete(this.pc, 15000);
+    onDiagnosticLog?.("ICE候補の収集を開始...");
+    const gathered = await waitForIceGatheringComplete(this.pc, 6000, onDiagnosticLog);
+    onDiagnosticLog?.(`ICE収集完了: ${gathered.length} 個の候補を収集しました。`);
 
     const localSdp = this.pc.localDescription?.sdp;
     if (!localSdp) {
@@ -106,6 +251,9 @@ export class WebRtcSender {
               summary.videoWidth = report.frameWidth;
               summary.videoHeight = report.frameHeight;
             }
+            if (report.type === "candidate-pair" && report.state === "succeeded") {
+              summary.rtt = report.currentRoundTripTime;
+            }
           });
           onStatsUpdate(summary);
         }
@@ -115,11 +263,15 @@ export class WebRtcSender {
     return localSdp;
   }
 
-  async setAnswer(sdp: string): Promise<void> {
+  async setAnswer(sdp: string, onDiagnosticLog?: (msg: string) => void): Promise<void> {
     if (!this.pc) {
       throw new Error("PeerConnection not initialized");
     }
-    await this.pc.setRemoteDescription({ type: "answer", sdp });
+    onDiagnosticLog?.(`Answer SDPを適用中 (${sdp.length} 文字)...`);
+    // RFC 4145 / RFC 8842: Answerer must use active or passive, never actpass
+    const sanitizedSdp = sdp.replace(/a=setup:actpass/g, "a=setup:passive");
+    await this.pc.setRemoteDescription({ type: "answer", sdp: sanitizedSdp });
+    onDiagnosticLog?.("Answer SDPを適用完了。ICE接続検証中...");
   }
 
   stopMedia(): void {

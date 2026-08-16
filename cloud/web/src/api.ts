@@ -74,7 +74,7 @@ export class SignalingClient {
     const startTime = Date.now();
     let interval = pollPolicy.initialIntervalMs || 1000;
 
-    while (Date.now() - startTime < (pollPolicy.timeoutMs || 60000)) {
+    while (Date.now() - startTime < (pollPolicy.timeoutMs || 300000)) {
       if (signal?.aborted) {
         throw new DOMException("Polling aborted", "AbortError");
       }
@@ -104,7 +104,8 @@ export class SignalingClient {
       throw new Error(err.error?.message || `Answer polling HTTP ${res.status}`);
     }
 
-    throw new Error("Signaling timeout: Windows receiver did not answer within 60s.");
+    const timeoutSec = Math.round((pollPolicy.timeoutMs || 300000) / 1000);
+    throw new Error(`シグナリングタイムアウト: 受信側 (Windows) からの応答がありませんでした (${timeoutSec}秒)。Receiverアプリが起動中か確認してください。`);
   }
 
   async deleteSession(sessionId: string, token: string): Promise<void> {

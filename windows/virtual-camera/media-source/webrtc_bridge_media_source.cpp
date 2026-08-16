@@ -1,4 +1,5 @@
 #include "webrtc_bridge_media_source.h"
+#include "webrtc_bridge_activate.h"
 
 namespace km::vcam {
 
@@ -100,13 +101,24 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::QueryInterface(REFIID riid, void** ppv) 
     *ppv = nullptr;
 
     if (riid == IID_IUnknown) {
-        *ppv = static_cast<IUnknown*>(static_cast<IMFMediaSource*>(this));
+        *ppv = static_cast<IUnknown*>(static_cast<IMFMediaSourceEx*>(this));
     } else if (riid == IID_IMFMediaEventGenerator) {
         *ppv = static_cast<IMFMediaEventGenerator*>(this);
     } else if (riid == IID_IMFMediaSource) {
         *ppv = static_cast<IMFMediaSource*>(this);
+    } else if (riid == IID_IMFMediaSourceEx) {
+        *ppv = static_cast<IMFMediaSourceEx*>(this);
     } else if (riid == IID_IMFGetService) {
         *ppv = static_cast<IMFGetService*>(this);
+    } else if (riid == __uuidof(IKsControl)) {
+        *ppv = static_cast<IKsControl*>(this);
+    } else if (riid == IID_IMFSampleAllocatorControl) {
+        *ppv = static_cast<IMFSampleAllocatorControl*>(this);
+    } else if (riid == IID_IMFActivate || riid == IID_IMFAttributes) {
+        Microsoft::WRL::ComPtr<IMFActivate> activate;
+        HRESULT hr = km::vcam::WebRtcBridgeActivate::CreateInstance(&activate);
+        if (FAILED(hr)) return hr;
+        return activate->QueryInterface(riid, ppv);
     } else {
         return E_NOINTERFACE;
     }
@@ -259,6 +271,71 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::GetService(REFGUID guidService, REFIID r
     }
 
     return MF_E_UNSUPPORTED_SERVICE;
+}
+
+// IMFMediaSourceEx
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetSourceAttributes(IMFAttributes** ppAttributes) {
+    if (!ppAttributes) return E_POINTER;
+    *ppAttributes = nullptr;
+
+    std::lock_guard<std::mutex> lock(lock_);
+    if (isShutdown_) return MF_E_SHUTDOWN;
+
+    if (!sourceAttributes_) {
+        HRESULT hr = MFCreateAttributes(&sourceAttributes_, 3);
+        if (FAILED(hr)) return hr;
+    }
+
+    *ppAttributes = sourceAttributes_.Get();
+    (*ppAttributes)->AddRef();
+    return S_OK;
+}
+
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetStreamAttributes(DWORD dwStreamIdentifier, IMFAttributes** ppAttributes) {
+    if (!ppAttributes) return E_POINTER;
+    *ppAttributes = nullptr;
+
+    std::lock_guard<std::mutex> lock(lock_);
+    if (isShutdown_) return MF_E_SHUTDOWN;
+
+    if (dwStreamIdentifier != 0) return E_INVALIDARG;
+
+    if (stream_) {
+        return stream_->QueryInterface(IID_IMFAttributes, (void**)ppAttributes);
+    }
+
+    return MFCreateAttributes(ppAttributes, 0);
+}
+
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetD3DManager(IUnknown* pManager) {
+    return S_OK;
+}
+
+// IKsControl
+IFACEMETHODIMP WebRtcBridgeMediaSource::KsProperty(PKSPROPERTY Property, ULONG PropertyLength, LPVOID PropertyData, ULONG DataLength, ULONG* BytesReturned) {
+    if (BytesReturned) *BytesReturned = 0;
+    return HRESULT_FROM_WIN32(ERROR_SET_NOT_FOUND);
+}
+
+IFACEMETHODIMP WebRtcBridgeMediaSource::KsMethod(PKSMETHOD Method, ULONG MethodLength, LPVOID MethodData, ULONG DataLength, ULONG* BytesReturned) {
+    if (BytesReturned) *BytesReturned = 0;
+    return HRESULT_FROM_WIN32(ERROR_SET_NOT_FOUND);
+}
+
+IFACEMETHODIMP WebRtcBridgeMediaSource::KsEvent(PKSEVENT Event, ULONG EventLength, LPVOID EventData, ULONG DataLength, ULONG* BytesReturned) {
+    if (BytesReturned) *BytesReturned = 0;
+    return HRESULT_FROM_WIN32(ERROR_SET_NOT_FOUND);
+}
+
+// IMFSampleAllocatorControl
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetDefaultAllocator(DWORD dwOutputStreamID, IUnknown* pAllocator) {
+    return S_OK;
+}
+
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetAllocatorUsage(DWORD dwOutputStreamID, DWORD* pdwInputStreamID, MFSampleAllocatorUsage* peUsage) {
+    if (pdwInputStreamID) *pdwInputStreamID = 0;
+    if (peUsage) *peUsage = MFSampleAllocatorUsage_DoesNotAllocate;
+    return S_OK;
 }
 
 } // namespace km::vcam

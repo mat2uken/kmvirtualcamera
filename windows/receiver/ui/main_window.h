@@ -28,6 +28,7 @@ public:
     void SetOnAudioDeviceChanged(std::function<void(int index)> cb) { onAudioDeviceChanged_ = std::move(cb); }
     void SetOnToggleVirtualCamera(std::function<void()> cb) { onToggleVirtualCamera_ = std::move(cb); }
     void SetOnNewSession(std::function<void()> cb) { onNewSession_ = std::move(cb); }
+    void SetOnRotationChanged(std::function<void(int degrees)> cb) { onRotationChanged_ = std::move(cb); }
 
 private:
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -37,6 +38,10 @@ private:
     HWND hPreviewWnd_{nullptr};
     HWND hAudioCombo_{nullptr};
     HWND hAudioLabel_{nullptr};
+    HWND hRotationCombo_{nullptr};
+    HWND hRotationLabel_{nullptr};
+    HWND hRotLeftBtn_{nullptr};
+    HWND hRotRightBtn_{nullptr};
     HWND hVcamButton_{nullptr};
     HWND hNewSessionBtn_{nullptr};
     HWND hStatusLabel_{nullptr};
@@ -49,6 +54,7 @@ private:
     std::function<void(int index)> onAudioDeviceChanged_;
     std::function<void()> onToggleVirtualCamera_;
     std::function<void()> onNewSession_;
+    std::function<void(int degrees)> onRotationChanged_;
 };
 
 } // namespace km::ui

@@ -77,22 +77,12 @@ export class SessionDurableObject extends DurableObject {
       return { status: 403, code: "FORBIDDEN", message: "Invalid sender token." };
     }
 
-    if (record.offer) {
-      if (record.offer.sdp === sdp) {
-        return { status: 204 };
-      }
-      return { status: 409, code: "INVALID_STATE", message: "Conflicting offer has already been submitted." };
-    }
-
-    if (record.state !== "CLAIMED") {
-      return { status: 409, code: "INVALID_STATE", message: `Cannot submit offer in state ${record.state}.` };
-    }
-
     record.offer = {
       type: "offer",
       sdp,
       storedAtMs: Date.now()
     };
+    record.answer = undefined; // Reset answer for new offer
     record.state = "OFFER_READY";
     await this.ctx.storage.put("session", record);
 

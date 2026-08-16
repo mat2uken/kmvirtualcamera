@@ -17,7 +17,7 @@ describe("Cloudflare Signaling & Durable Object (CF-001 - CF-022)", () => {
     expect(data.poll.initialIntervalMs).toBe(1000);
     expect(data.poll.backoffAfterMs).toBe(15000);
     expect(data.poll.maxIntervalMs).toBe(2000);
-    expect(data.poll.timeoutMs).toBe(60000);
+    expect(data.poll.timeoutMs).toBe(600000);
     expect(data.rtcConfiguration.iceServers.length).toBeGreaterThan(0);
   });
 
@@ -26,7 +26,7 @@ describe("Cloudflare Signaling & Durable Object (CF-001 - CF-022)", () => {
     const data = (await res.json()) as any;
     const expires = new Date(data.expiresAt).getTime();
     expect(expires).toBeGreaterThan(Date.now());
-    expect(expires).toBeLessThanOrEqual(Date.now() + 301000);
+    expect(expires).toBeLessThanOrEqual(Date.now() + 601000);
   });
 
   it("CF-003: Poll does not extend expiry", async () => {
@@ -295,8 +295,8 @@ describe("Cloudflare Signaling & Durable Object (CF-001 - CF-022)", () => {
     );
     expect(retry.status).toBe(204);
 
-    // CF-013: Conflicting offer -> 409
-    const conflict = await app.request(
+    // CF-013: Updated offer on reconnect -> 204 (renegotiation enabled)
+    const updatedOffer = await app.request(
       `/v1/sessions/${createData.sessionId}/offer`,
       {
         method: "PUT",
@@ -305,7 +305,16 @@ describe("Cloudflare Signaling & Durable Object (CF-001 - CF-022)", () => {
       },
       env
     );
-    expect(conflict.status).toBe(409);
+    expect(updatedOffer.status).toBe(204);
+
+    const getNewOffer = await app.request(
+      `/v1/sessions/${createData.sessionId}/offer`,
+      { headers: { Authorization: `Bearer ${createData.receiverToken}` } },
+      env
+    );
+    expect(getNewOffer.status).toBe(200);
+    const newOfferData = (await getNewOffer.json()) as any;
+    expect(newOfferData.sdp).toBe("v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 99\r\n");
   });
 
   it("CF-014, CF-015: Expired session returns 410 and Alarm deletes storage", async () => {

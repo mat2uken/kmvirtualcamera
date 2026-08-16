@@ -21,6 +21,7 @@ build/
 *.tlog
 *.idb
 *.log
+*.bmp
 
 # Visual Studio / IDE
 .vs/

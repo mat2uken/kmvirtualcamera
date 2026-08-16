@@ -10,9 +10,13 @@
 #include "webrtc_bridge_media_stream.h"
 #include "pipe_frame_receiver.h"
 
+#include <ks.h>
+#include <ksproxy.h>
+#include <ksmedia.h>
+
 namespace km::vcam {
 
-class WebRtcBridgeMediaSource : public IMFMediaSource, public IMFGetService {
+class WebRtcBridgeMediaSource : public IMFMediaSourceEx, public IMFGetService, public IKsControl, public IMFSampleAllocatorControl {
 public:
     static HRESULT CreateInstance(IMFMediaSource** ppSource);
 
@@ -38,6 +42,20 @@ public:
     IFACEMETHODIMP Pause() override;
     IFACEMETHODIMP Shutdown() override;
 
+    // IMFMediaSourceEx
+    IFACEMETHODIMP GetSourceAttributes(IMFAttributes** ppAttributes) override;
+    IFACEMETHODIMP GetStreamAttributes(DWORD dwStreamIdentifier, IMFAttributes** ppAttributes) override;
+    IFACEMETHODIMP SetD3DManager(IUnknown* pManager) override;
+
+    // IKsControl
+    IFACEMETHODIMP KsProperty(PKSPROPERTY Property, ULONG PropertyLength, LPVOID PropertyData, ULONG DataLength, ULONG* BytesReturned) override;
+    IFACEMETHODIMP KsMethod(PKSMETHOD Method, ULONG MethodLength, LPVOID MethodData, ULONG DataLength, ULONG* BytesReturned) override;
+    IFACEMETHODIMP KsEvent(PKSEVENT Event, ULONG EventLength, LPVOID EventData, ULONG DataLength, ULONG* BytesReturned) override;
+
+    // IMFSampleAllocatorControl
+    IFACEMETHODIMP SetDefaultAllocator(DWORD dwOutputStreamID, IUnknown* pAllocator) override;
+    IFACEMETHODIMP GetAllocatorUsage(DWORD dwOutputStreamID, DWORD* pdwInputStreamID, MFSampleAllocatorUsage* peUsage) override;
+
     // IMFGetService
     IFACEMETHODIMP GetService(REFGUID guidService, REFIID riid, void** ppvObject) override;
 
@@ -51,6 +69,7 @@ private:
     bool isInitialized_{false};
     bool isShutdown_{false};
 
+    Microsoft::WRL::ComPtr<IMFAttributes> sourceAttributes_;
     Microsoft::WRL::ComPtr<IMFMediaEventQueue> eventQueue_;
     Microsoft::WRL::ComPtr<IMFPresentationDescriptor> presentationDesc_;
     Microsoft::WRL::ComPtr<WebRtcBridgeMediaStream> stream_;

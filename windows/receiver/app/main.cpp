@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <mfapi.h>
+#include <io.h>
 #include "app_controller.h"
 
 static std::wstring SanitizeUrlArg(const std::wstring& raw) {
@@ -30,6 +31,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(nCmdShow);
 
+    // Redirect stdout/stderr to receiver_debug.log with shared-read access (_SH_DENYNO)
+    FILE* fpLog = _wfsopen(L"receiver_debug.log", L"a", _SH_DENYNO);
+    if (fpLog) {
+        setvbuf(fpLog, nullptr, _IONBF, 0);
+        int fd = _fileno(fpLog);
+        _dup2(fd, _fileno(stdout));
+        _dup2(fd, _fileno(stderr));
+    }
+    std::cout << "\n=== KM Virtual Camera Receiver Started ===" << std::endl;
+
     // Initialize COM and Media Foundation
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     if (FAILED(hr)) return 1;
@@ -40,7 +51,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         return 1;
     }
 
-    std::wstring baseUrl = L"http://127.0.0.1:8787";
+    std::wstring baseUrl = L"https://webrtc-bridge-signaling.mat2uken.workers.dev";
     if (pCmdLine && wcslen(pCmdLine) > 0) {
         std::wstring sanitized = SanitizeUrlArg(pCmdLine);
         if (!sanitized.empty()) {

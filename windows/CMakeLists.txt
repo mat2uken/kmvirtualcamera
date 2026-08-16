@@ -66,6 +66,7 @@ endif()
 # -------------------------------------------------------------
 add_library(VirtualCameraMediaSource SHARED
     virtual-camera/media-source/dll_main.cpp
+    virtual-camera/media-source/webrtc_bridge_activate.cpp
     virtual-camera/media-source/webrtc_bridge_media_source.cpp
     virtual-camera/media-source/webrtc_bridge_media_stream.cpp
     virtual-camera/media-source/pipe_frame_receiver.cpp
@@ -93,6 +94,8 @@ add_executable(Receiver WIN32
     receiver/app/app_controller.cpp
     receiver/signaling/win_http_client.cpp
     receiver/rtc/peer_connection_manager.cpp
+    receiver/codec/h264_decoder.cpp
+    receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
     receiver/media/pipe_publisher.cpp
     receiver/audio/audio_device_enumerator.cpp
@@ -194,11 +197,48 @@ target_include_directories(test_qr_generator PRIVATE
 )
 add_test(NAME QrGeneratorTest COMMAND test_qr_generator)
 
+add_executable(test_vcam_registration
+    tests/test_vcam_registration.cpp
+)
+target_link_libraries(test_vcam_registration PRIVATE
+    mfplat
+    mfuuid
+    mf
+    ole32
+)
+add_test(NAME VcamRegistrationTest COMMAND test_vcam_registration)
+
+add_executable(test_h264_decoder
+    tests/test_h264_decoder.cpp
+    receiver/codec/h264_decoder.cpp
+)
+target_include_directories(test_h264_decoder PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver/codec
+)
+target_link_libraries(test_h264_decoder PRIVATE
+    mfplat
+    mfuuid
+    mf
+    ole32
+)
+add_test(NAME H264DecoderTest COMMAND test_h264_decoder)
+
+add_executable(test_h264_depacketizer
+    tests/test_h264_depacketizer.cpp
+    receiver/codec/h264_rtp_depacketizer.cpp
+)
+target_include_directories(test_h264_depacketizer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver/codec
+)
+add_test(NAME H264DepacketizerTest COMMAND test_h264_depacketizer)
+
 add_executable(test_receiver_startup
     tests/test_receiver_startup.cpp
     receiver/app/app_controller.cpp
     receiver/signaling/win_http_client.cpp
     receiver/rtc/peer_connection_manager.cpp
+    receiver/codec/h264_decoder.cpp
+    receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
     receiver/media/pipe_publisher.cpp
     receiver/audio/audio_device_enumerator.cpp
@@ -234,6 +274,29 @@ target_link_libraries(test_receiver_startup PRIVATE
     ole32
     gdi32
     user32
-    advapi32
+    ws2_32
+)
+
+# Test Target 6: test_webrtc_dtls
+add_executable(test_webrtc_dtls
+    tests/test_webrtc_dtls.cpp
+    receiver/rtc/peer_connection_manager.cpp
+    receiver/codec/h264_rtp_depacketizer.cpp
+)
+target_include_directories(test_webrtc_dtls PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+    ${mbedtls_SOURCE_DIR}/include
+)
+target_link_directories(test_webrtc_dtls PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/_deps/mbedtls-build/library/$<CONFIG>"
+    "${CMAKE_CURRENT_BINARY_DIR}/_deps/mbedtls-build/library/Release"
+    "${CMAKE_CURRENT_BINARY_DIR}/_deps/mbedtls-build/library"
+)
+target_link_libraries(test_webrtc_dtls PRIVATE
+    datachannel-static
+    mbedtls
+    mbedcrypto
+    mbedx509
     ws2_32
 )

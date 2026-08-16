@@ -4,6 +4,7 @@
 #include <new>
 #include "webrtc_bridge_guids.h"
 #include "webrtc_bridge_media_source.h"
+#include "webrtc_bridge_activate.h"
 
 static std::atomic<ULONG> g_serverLocks{0};
 static HINSTANCE g_hInstance = nullptr;
@@ -43,11 +44,25 @@ public:
         *ppv = nullptr;
         if (pUnkOuter) return CLASS_E_NOAGGREGATION;
 
-        Microsoft::WRL::ComPtr<IMFMediaSource> source;
-        HRESULT hr = km::vcam::WebRtcBridgeMediaSource::CreateInstance(&source);
+        // Create Activate object by default (implements IUnknown, IMFActivate, IMFAttributes)
+        Microsoft::WRL::ComPtr<IMFActivate> activate;
+        HRESULT hr = km::vcam::WebRtcBridgeActivate::CreateInstance(&activate);
         if (FAILED(hr)) return hr;
 
-        return source->QueryInterface(riid, ppv);
+        HRESULT hrQI = activate->QueryInterface(riid, ppv);
+        if (SUCCEEDED(hrQI)) {
+            return hrQI;
+        }
+
+        // If the caller requested IMFMediaSource or IMFMediaEventGenerator directly
+        if (riid == IID_IMFMediaSource || riid == IID_IMFMediaEventGenerator || riid == IID_IMFGetService) {
+            Microsoft::WRL::ComPtr<IMFMediaSource> source;
+            hr = km::vcam::WebRtcBridgeMediaSource::CreateInstance(&source);
+            if (FAILED(hr)) return hr;
+            return source->QueryInterface(riid, ppv);
+        }
+
+        return hrQI;
     }
 
     IFACEMETHODIMP LockServer(BOOL fLock) override {

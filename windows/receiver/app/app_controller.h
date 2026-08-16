@@ -7,6 +7,7 @@
 #include "../ui/main_window.h"
 #include "../signaling/win_http_client.h"
 #include "../rtc/peer_connection_manager.h"
+#include "../codec/h264_decoder.h"
 #include "../media/nv12_converter.h"
 #include "../media/pipe_publisher.h"
 #include "../audio/audio_device_enumerator.h"
@@ -33,6 +34,7 @@ private:
     std::unique_ptr<signaling::WinHttpClient> httpClient_;
     std::unique_ptr<rtc_net::PeerConnectionManager> rtcManager_;
 
+    codec::H264Decoder h264Decoder_;
     media::Nv12Converter nv12Converter_;
     media::PipePublisher pipePublisher_;
     audio::AudioDeviceEnumerator audioEnumerator_;
@@ -46,6 +48,9 @@ private:
     std::thread signalingThread_;
 
     std::vector<uint8_t> nv12Buffer_;
+    std::vector<uint8_t> decodedFrameBuffer_;
+    std::atomic<uint64_t> frameCount_{0};
+    std::atomic<int> rotationDegrees_{0};
     std::mutex videoProcessMutex_;
 };
 

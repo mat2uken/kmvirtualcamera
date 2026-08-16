@@ -8,6 +8,8 @@
 #include <atomic>
 #include "../signaling/signaling_models.h"
 
+#include "../codec/h264_rtp_depacketizer.h"
+
 // Forward declarations if libdatachannel is compiled conditionally or dynamically
 namespace rtc {
     class PeerConnection;
@@ -49,8 +51,10 @@ public:
 private:
     std::mutex rtcMutex_;
     std::shared_ptr<rtc::PeerConnection> pc_;
+    std::vector<std::shared_ptr<rtc::Track>> allTracks_;
     std::shared_ptr<rtc::Track> videoTrack_;
     std::shared_ptr<rtc::Track> audioTrack_;
+    codec::H264RtpDepacketizer h264Depacketizer_;
 
     StateChangeCallback stateCallback_;
     VideoFrameCallback videoCallback_;

@@ -5,6 +5,9 @@ namespace km::ui {
 constexpr int ID_AUDIO_COMBO = 1001;
 constexpr int ID_VCAM_BTN = 1002;
 constexpr int ID_NEW_SESSION_BTN = 1003;
+constexpr int ID_ROTATION_COMBO = 1004;
+constexpr int ID_ROT_LEFT_BTN = 1005;
+constexpr int ID_ROT_RIGHT_BTN = 1006;
 
 MainWindow::MainWindow() = default;
 
@@ -106,16 +109,51 @@ bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
     hAudioCombo_ = CreateWindowExW(
         0, L"COMBOBOX", L"",
         WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
-        25, 408, 270, 150,
+        25, 406, 270, 150,
         hWnd_, (HMENU)(INT_PTR)ID_AUDIO_COMBO, hInstance, nullptr
     );
     if (hFont_) SendMessageW(hAudioCombo_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
+    // Rotation Label, Dropdown & Quick Buttons
+    hRotationLabel_ = CreateWindowExW(0, L"STATIC", L"映像回転 (Receiver Rotation):", WS_CHILD | WS_VISIBLE, 25, 438, 270, 18, hWnd_, nullptr, hInstance, nullptr);
+    if (hFont_) SendMessageW(hRotationLabel_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
+    hRotationCombo_ = CreateWindowExW(
+        0, L"COMBOBOX", L"",
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        25, 458, 140, 150,
+        hWnd_, (HMENU)(INT_PTR)ID_ROTATION_COMBO, hInstance, nullptr
+    );
+    if (hFont_) {
+        SendMessageW(hRotationCombo_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+    }
+    SendMessageW(hRotationCombo_, CB_ADDSTRING, 0, (LPARAM)L"0° (通常)");
+    SendMessageW(hRotationCombo_, CB_ADDSTRING, 0, (LPARAM)L"90° (時計回り)");
+    SendMessageW(hRotationCombo_, CB_ADDSTRING, 0, (LPARAM)L"180° (上下反転)");
+    SendMessageW(hRotationCombo_, CB_ADDSTRING, 0, (LPARAM)L"270° (反時計回り)");
+    SendMessageW(hRotationCombo_, CB_SETCURSEL, 0, 0);
+
+    hRotLeftBtn_ = CreateWindowExW(
+        0, L"BUTTON", L"↺ 左90°",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        170, 458, 60, 26,
+        hWnd_, (HMENU)(INT_PTR)ID_ROT_LEFT_BTN, hInstance, nullptr
+    );
+    if (hFont_) SendMessageW(hRotLeftBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
+    hRotRightBtn_ = CreateWindowExW(
+        0, L"BUTTON", L"↻ 右90°",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        235, 458, 60, 26,
+        hWnd_, (HMENU)(INT_PTR)ID_ROT_RIGHT_BTN, hInstance, nullptr
+    );
+    if (hFont_) SendMessageW(hRotRightBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
 
     // Virtual Camera toggle button
     hVcamButton_ = CreateWindowExW(
         0, L"BUTTON", L"仮想カメラ開始",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        25, 455, 130, 36,
+        25, 502, 130, 36,
         hWnd_, (HMENU)(INT_PTR)ID_VCAM_BTN, hInstance, nullptr
     );
     if (hFont_) SendMessageW(hVcamButton_, WM_SETFONT, (WPARAM)hFont_, TRUE);
@@ -124,7 +162,7 @@ bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
     hNewSessionBtn_ = CreateWindowExW(
         0, L"BUTTON", L"新しいセッション",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        165, 455, 130, 36,
+        165, 502, 130, 36,
         hWnd_, (HMENU)(INT_PTR)ID_NEW_SESSION_BTN, hInstance, nullptr
     );
     if (hFont_) SendMessageW(hNewSessionBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
@@ -228,6 +266,27 @@ LRESULT MainWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 int curSel = static_cast<int>(SendMessageW(hAudioCombo_, CB_GETCURSEL, 0, 0));
                 if (onAudioDeviceChanged_) {
                     onAudioDeviceChanged_(curSel);
+                }
+            } else if (wmId == ID_ROTATION_COMBO && wmEvent == CBN_SELCHANGE) {
+                int curSel = static_cast<int>(SendMessageW(hRotationCombo_, CB_GETCURSEL, 0, 0));
+                if (onRotationChanged_ && curSel >= 0) {
+                    onRotationChanged_(curSel * 90);
+                }
+            } else if (wmId == ID_ROT_LEFT_BTN && wmEvent == BN_CLICKED) {
+                int curSel = static_cast<int>(SendMessageW(hRotationCombo_, CB_GETCURSEL, 0, 0));
+                if (curSel < 0) curSel = 0;
+                curSel = (curSel + 3) % 4; // 270° counter-clockwise
+                SendMessageW(hRotationCombo_, CB_SETCURSEL, curSel, 0);
+                if (onRotationChanged_) {
+                    onRotationChanged_(curSel * 90);
+                }
+            } else if (wmId == ID_ROT_RIGHT_BTN && wmEvent == BN_CLICKED) {
+                int curSel = static_cast<int>(SendMessageW(hRotationCombo_, CB_GETCURSEL, 0, 0));
+                if (curSel < 0) curSel = 0;
+                curSel = (curSel + 1) % 4; // 90° clockwise
+                SendMessageW(hRotationCombo_, CB_SETCURSEL, curSel, 0);
+                if (onRotationChanged_) {
+                    onRotationChanged_(curSel * 90);
                 }
             } else if (wmId == ID_VCAM_BTN && wmEvent == BN_CLICKED) {
                 if (onToggleVirtualCamera_) {

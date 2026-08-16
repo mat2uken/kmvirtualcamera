@@ -137,4 +137,139 @@ void Nv12Converter::ConvertBgraToNv12(
     }
 }
 
+void Nv12Converter::ConvertNv12ToNv12Letterbox(
+    const uint8_t* srcNv12, int srcPitch,
+    int srcWidth, int srcHeight,
+    uint8_t* dstNv12,
+    int dstWidth, int dstHeight,
+    int rotationDegrees
+) {
+    if (!srcNv12 || !dstNv12 || srcWidth <= 0 || srcHeight <= 0) return;
+    if (srcPitch <= 0) srcPitch = srcWidth;
+
+    // Normalize rotation: 0, 90, 180, 270
+    int rot = (rotationDegrees % 360 + 360) % 360;
+    rot = (rot / 90) * 90;
+
+    // Fill black with neutral chrominance (Y=0x10, UV=0x80)
+    protocol::FillBlackNv12(std::span<uint8_t>(dstNv12, protocol::kPayloadBytes));
+
+    // Fast path: Exact match in dimensions, pitch, and no rotation
+    if (rot == 0 && srcWidth == dstWidth && srcHeight == dstHeight && srcPitch == dstWidth) {
+        memcpy(dstNv12, srcNv12, protocol::kPayloadBytes);
+        return;
+    }
+
+    // Determine effective source dimensions after rotation
+    int sampleW = (srcWidth > 16) ? (srcWidth & ~1) : srcWidth;
+    int sampleH = (srcHeight > 16) ? (srcHeight & ~1) : srcHeight;
+    int sampleEffW = (rot == 90 || rot == 270) ? sampleH : sampleW;
+    int sampleEffH = (rot == 90 || rot == 270) ? sampleW : sampleH;
+
+    float srcAspect = static_cast<float>(sampleEffW) / static_cast<float>(sampleEffH);
+    float dstAspect = static_cast<float>(dstWidth) / static_cast<float>(dstHeight);
+
+    int fitW = dstWidth;
+    int fitH = dstHeight;
+    if (srcAspect > dstAspect) {
+        fitH = static_cast<int>(dstWidth / srcAspect);
+    } else {
+        fitW = static_cast<int>(dstHeight * srcAspect);
+    }
+
+    fitW = (fitW / 2) * 2;
+    fitH = (fitH / 2) * 2;
+    if (fitW <= 0 || fitH <= 0) return;
+
+    int offsetX = ((dstWidth - fitW) / 4) * 2;
+    int offsetY = ((dstHeight - fitH) / 4) * 2;
+
+    const uint8_t* srcYPlane = srcNv12;
+    const uint8_t* srcUvPlane = srcNv12 + (srcPitch * srcHeight);
+
+    uint8_t* dstYPlane = dstNv12;
+    uint8_t* dstUvPlane = dstNv12 + (dstWidth * dstHeight);
+
+    // 1. Copy Y Plane with rotation
+    for (int y = 0; y < fitH; ++y) {
+        int effY = (y * sampleEffH) / fitH;
+        uint8_t* dstRow = dstYPlane + ((offsetY + y) * dstWidth) + offsetX;
+
+        for (int x = 0; x < fitW; ++x) {
+            int effX = (x * sampleEffW) / fitW;
+            int origX = 0, origY = 0;
+
+            switch (rot) {
+                case 90:
+                    origX = effY;
+                    origY = (sampleH - 1) - effX;
+                    break;
+                case 180:
+                    origX = (sampleW - 1) - effX;
+                    origY = (sampleH - 1) - effY;
+                    break;
+                case 270:
+                    origX = (sampleW - 1) - effY;
+                    origY = effX;
+                    break;
+                default: // 0
+                    origX = effX;
+                    origY = effY;
+                    break;
+            }
+
+            origX = std::clamp(origX, 0, sampleW - 1);
+            origY = std::clamp(origY, 0, sampleH - 1);
+            dstRow[x] = srcYPlane[origY * srcPitch + origX];
+        }
+    }
+
+    // 2. Copy UV Plane with rotation (2 bytes per chrominance sample)
+    int srcHalfW = sampleW / 2;
+    int srcHalfH = sampleH / 2;
+    int fitHalfW = fitW / 2;
+    int fitHalfH = fitH / 2;
+    int offsetHalfX = offsetX / 2;
+    int offsetHalfY = offsetY / 2;
+
+    int sampleHalfEffW = (rot == 90 || rot == 270) ? srcHalfH : srcHalfW;
+    int sampleHalfEffH = (rot == 90 || rot == 270) ? srcHalfW : srcHalfH;
+
+    for (int y = 0; y < fitHalfH; ++y) {
+        int effHalfY = (y * sampleHalfEffH) / fitHalfH;
+        uint8_t* dstRow = dstUvPlane + ((offsetHalfY + y) * dstWidth) + (offsetHalfX * 2);
+
+        for (int x = 0; x < fitHalfW; ++x) {
+            int effHalfX = (x * sampleHalfEffW) / fitHalfW;
+            int origHalfX = 0, origHalfY = 0;
+
+            switch (rot) {
+                case 90:
+                    origHalfX = effHalfY;
+                    origHalfY = (srcHalfH - 1) - effHalfX;
+                    break;
+                case 180:
+                    origHalfX = (srcHalfW - 1) - effHalfX;
+                    origHalfY = (srcHalfH - 1) - effHalfY;
+                    break;
+                case 270:
+                    origHalfX = (srcHalfW - 1) - effHalfY;
+                    origHalfY = effHalfX;
+                    break;
+                default: // 0
+                    origHalfX = effHalfX;
+                    origHalfY = effHalfY;
+                    break;
+            }
+
+            origHalfX = std::clamp(origHalfX, 0, srcHalfW - 1);
+            origHalfY = std::clamp(origHalfY, 0, srcHalfH - 1);
+
+            const uint8_t* srcSample = srcUvPlane + (origHalfY * srcPitch) + (origHalfX * 2);
+            dstRow[x * 2] = srcSample[0];     // U
+            dstRow[x * 2 + 1] = srcSample[1]; // V
+        }
+    }
+}
+
 } // namespace km::media

@@ -28,6 +28,15 @@ public:
         uint8_t* dstNv12,
         int dstWidth = 1280, int dstHeight = 720
     );
+
+    // Converts any NV12 source (portrait 720x1280, landscape 1920x1080, custom pitch) to 1280x720 NV12 with letterbox & optional rotation (0, 90, 180, 270)
+    void ConvertNv12ToNv12Letterbox(
+        const uint8_t* srcNv12, int srcPitch,
+        int srcWidth, int srcHeight,
+        uint8_t* dstNv12,
+        int dstWidth = 1280, int dstHeight = 720,
+        int rotationDegrees = 0
+    );
 };
 
 } // namespace km::media
