@@ -64,10 +64,15 @@ if (-not $hasVbCable) {
 # 4. Check Cloudflare Wrangler
 Write-Host "`n[4/4] Checking Cloudflare Wrangler CLI..." -ForegroundColor Yellow
 try {
-    $wranglerVer = npx --no-install wrangler --version 2>$null
-    Write-Host "  [OK] Wrangler CLI available (Version: $wranglerVer)" -ForegroundColor Green
+    $wranglerVer = (& wrangler --version 2>$null) | Out-String
+    $wranglerVer = $wranglerVer.Trim()
+    if ($wranglerVer) {
+        Write-Host "  [OK] Wrangler CLI available (Version: $wranglerVer)" -ForegroundColor Green
+    } else {
+        Write-Host "  [INFO] Wrangler CLI not found in PATH." -ForegroundColor Gray
+    }
 } catch {
-    Write-Host "  [INFO] Wrangler CLI not in global path (available in cloud/ directory via npm)." -ForegroundColor Gray
+    Write-Host "  [INFO] Wrangler CLI not in global path." -ForegroundColor Gray
 }
 
 # Option: Launch Camera App
