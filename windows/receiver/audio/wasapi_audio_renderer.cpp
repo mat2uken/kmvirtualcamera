@@ -9,7 +9,7 @@ WasapiAudioRenderer::~WasapiAudioRenderer() {
 }
 
 bool WasapiAudioRenderer::Initialize(const std::wstring& endpointId) {
-    std::lock_guard<std::mutex> lock(renderMutex_);
+    std::lock_guard<std::recursive_mutex> lock(renderMutex_);
     Stop();
 
     Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator;
@@ -68,7 +68,7 @@ bool WasapiAudioRenderer::Initialize(const std::wstring& endpointId) {
 }
 
 void WasapiAudioRenderer::Start() {
-    std::lock_guard<std::mutex> lock(renderMutex_);
+    std::lock_guard<std::recursive_mutex> lock(renderMutex_);
     if (audioClient_ && !isRunning_) {
         audioClient_->Start();
         isRunning_ = true;
@@ -76,7 +76,7 @@ void WasapiAudioRenderer::Start() {
 }
 
 void WasapiAudioRenderer::Stop() {
-    std::lock_guard<std::mutex> lock(renderMutex_);
+    std::lock_guard<std::recursive_mutex> lock(renderMutex_);
     if (audioClient_ && isRunning_) {
         audioClient_->Stop();
         isRunning_ = false;
@@ -88,7 +88,7 @@ void WasapiAudioRenderer::Stop() {
 void WasapiAudioRenderer::RenderPcm16(std::span<const int16_t> pcmSamples, int channels) {
     if (!isRunning_ || !renderClient_ || !audioClient_ || pcmSamples.empty() || channels <= 0) return;
 
-    std::lock_guard<std::mutex> lock(renderMutex_);
+    std::lock_guard<std::recursive_mutex> lock(renderMutex_);
     if (!renderClient_) return;
 
     UINT32 padding = 0;

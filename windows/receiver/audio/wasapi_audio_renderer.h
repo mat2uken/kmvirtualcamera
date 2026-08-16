@@ -29,7 +29,7 @@ private:
     Microsoft::WRL::ComPtr<IAudioRenderClient> renderClient_;
     UINT32 bufferFrameCount_{0};
     WAVEFORMATEX waveFormat_{};
-    std::mutex renderMutex_;
+    std::recursive_mutex renderMutex_;
 };
 
 } // namespace km::audio

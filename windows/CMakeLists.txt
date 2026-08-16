@@ -184,3 +184,47 @@ target_include_directories(test_win_http_live PRIVATE
 target_link_libraries(test_win_http_live PRIVATE
     winhttp
 )
+
+add_executable(test_receiver_startup
+    tests/test_receiver_startup.cpp
+    receiver/app/app_controller.cpp
+    receiver/signaling/win_http_client.cpp
+    receiver/rtc/peer_connection_manager.cpp
+    receiver/media/nv12_converter.cpp
+    receiver/media/pipe_publisher.cpp
+    receiver/audio/audio_device_enumerator.cpp
+    receiver/audio/wasapi_audio_renderer.cpp
+    receiver/vcam/virtual_camera_registrar.cpp
+    receiver/ui/main_window.cpp
+    receiver/ui/d3d11_preview.cpp
+    receiver/ui/qr_view.cpp
+    third_party/qr/qrcodegen.cpp
+)
+target_include_directories(test_receiver_startup PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/qr
+    ${mbedtls_SOURCE_DIR}/include
+)
+target_link_directories(test_receiver_startup PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/_deps/mbedtls-build/library/$<CONFIG>"
+    "${CMAKE_CURRENT_BINARY_DIR}/_deps/mbedtls-build/library/Release"
+    "${CMAKE_CURRENT_BINARY_DIR}/_deps/mbedtls-build/library"
+)
+target_link_libraries(test_receiver_startup PRIVATE
+    datachannel-static
+    mbedtls
+    mbedcrypto
+    mbedx509
+    d3d11
+    dxgi
+    winhttp
+    mfplat
+    mfuuid
+    mf
+    ole32
+    gdi32
+    user32
+    advapi32
+    ws2_32
+)

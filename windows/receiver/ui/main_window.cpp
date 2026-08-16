@@ -16,6 +16,10 @@ MainWindow::~MainWindow() {
 }
 
 bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
+    if (!hInstance) {
+        hInstance = GetModuleHandleW(nullptr);
+    }
+
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.style = CS_HREDRAW | CS_VREDRAW;
@@ -37,33 +41,54 @@ bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
     wcChild.lpszClassName = L"KMVirtualCameraPreviewClass";
     RegisterClassExW(&wcChild);
 
+    // Compute explicit centered window rect
+    RECT rc = { 0, 0, width, height };
+    AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
+    int realW = rc.right - rc.left;
+    int realH = rc.bottom - rc.top;
+
+    int screenW = GetSystemMetrics(SM_CXSCREEN);
+    int screenH = GetSystemMetrics(SM_CYSCREEN);
+    int posX = (screenW - realW) / 2;
+    int posY = (screenH - realH) / 2;
+    if (posX < 50) posX = 50;
+    if (posY < 50) posY = 50;
+
     hWnd_ = CreateWindowExW(
-        0,
+        WS_EX_APPWINDOW,
         wc.lpszClassName,
         L"KM Virtual Camera - Windows Receiver",
-        WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, width, height,
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        posX, posY, realW, realH,
         nullptr, nullptr, hInstance, this
     );
 
     if (!hWnd_) return false;
 
     // Create Left Panel UI controls
-    // QR Code Area: (20, 20, 320, 320)
-    // Status Label: (20, 350, 320, 40)
+    // QR Code Area: (20, 15, 300, 290)
+    // Join URL Edit control: (20, 315, 300, 24)
+    hUrlEdit_ = CreateWindowExW(
+        WS_EX_CLIENTEDGE, L"EDIT", L"",
+        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY,
+        20, 315, 300, 24,
+        hWnd_, nullptr, hInstance, nullptr
+    );
+
+    // Status Label: (20, 345, 300, 30)
     hStatusLabel_ = CreateWindowExW(
         0, L"STATIC", L"初期化中...",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        20, 350, 320, 30,
+        20, 345, 300, 30,
         hWnd_, nullptr, hInstance, nullptr
     );
 
     // Audio Output Label & Dropdown
-    CreateWindowExW(0, L"STATIC", L"音声出力先 (VB-CABLE CABLE Input):", WS_CHILD | WS_VISIBLE, 20, 390, 320, 20, hWnd_, nullptr, hInstance, nullptr);
+    CreateWindowExW(0, L"STATIC", L"音声出力先 (VB-CABLE CABLE Input):", WS_CHILD | WS_VISIBLE, 20, 385, 300, 20, hWnd_, nullptr, hInstance, nullptr);
     hAudioCombo_ = CreateWindowExW(
         0, L"COMBOBOX", L"",
         WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
-        20, 415, 320, 150,
+        20, 410, 300, 150,
         hWnd_, (HMENU)(INT_PTR)ID_AUDIO_COMBO, hInstance, nullptr
     );
 
@@ -71,27 +96,27 @@ bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
     hVcamButton_ = CreateWindowExW(
         0, L"BUTTON", L"仮想カメラ開始",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        20, 460, 150, 36,
+        20, 455, 145, 36,
         hWnd_, (HMENU)(INT_PTR)ID_VCAM_BTN, hInstance, nullptr
     );
 
     // New Session button
     hNewSessionBtn_ = CreateWindowExW(
-        0, L"BUTTON", L"新しいセッション (QR再作成)",
+        0, L"BUTTON", L"新しいセッション",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        180, 460, 160, 36,
+        175, 455, 145, 36,
         hWnd_, (HMENU)(INT_PTR)ID_NEW_SESSION_BTN, hInstance, nullptr
     );
 
-    // Create Right Panel: D3D11 Video Preview window (360, 20, 700, 520)
+    // Create Right Panel: D3D11 Video Preview window (340, 15, 720, 540)
     hPreviewWnd_ = CreateWindowExW(
         0, wcChild.lpszClassName, L"",
         WS_CHILD | WS_VISIBLE,
-        360, 20, 700, 520,
+        340, 15, 720, 540,
         hWnd_, nullptr, hInstance, nullptr
     );
 
-    d3dPreview_.Initialize(hPreviewWnd_, 700, 520);
+    d3dPreview_.Initialize(hPreviewWnd_, 720, 540);
     return true;
 }
 
@@ -99,12 +124,18 @@ void MainWindow::Show(int nCmdShow) {
     if (hWnd_) {
         ShowWindow(hWnd_, nCmdShow);
         UpdateWindow(hWnd_);
+        SetForegroundWindow(hWnd_);
     }
 }
 
 void MainWindow::SetJoinUrl(const std::string& joinUrl) {
     qrView_.SetText(joinUrl);
-    InvalidateRect(hWnd_, nullptr, FALSE);
+    if (hUrlEdit_) {
+        std::wstring wUrl(joinUrl.begin(), joinUrl.end());
+        SetWindowTextW(hUrlEdit_, wUrl.c_str());
+    }
+    InvalidateRect(hWnd_, nullptr, TRUE);
+    UpdateWindow(hWnd_);
 }
 
 void MainWindow::SetStatusText(const std::wstring& status) {
