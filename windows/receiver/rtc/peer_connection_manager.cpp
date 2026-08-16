@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <sstream>
 
 namespace km::rtc_net {
 
@@ -171,7 +172,22 @@ bool PeerConnectionManager::ProcessOfferAndGenerateAnswer(const std::string& off
 
     try {
         isGatheringComplete_ = false;
-        pc_->setRemoteDescription(rtc::Description(offerSdp, rtc::Description::Type::Offer, rtc::Description::Role::Active));
+
+        // Sanitize Offer SDP: strip transport-cc header extensions so browser and receiver
+        // negotiate pure REMB and never experience TWCC feedback timeout after 10-15 seconds
+        std::string sanitizedOffer;
+        std::istringstream stream(offerSdp);
+        std::string line;
+        while (std::getline(stream, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.find("transport-wide-cc-extensions") != std::string::npos ||
+                line.find("transport-cc") != std::string::npos) {
+                continue;
+            }
+            sanitizedOffer += line + "\r\n";
+        }
+
+        pc_->setRemoteDescription(rtc::Description(sanitizedOffer, rtc::Description::Type::Offer, rtc::Description::Role::Active));
         if (pc_->gatheringState() == rtc::PeerConnection::GatheringState::Complete) {
             isGatheringComplete_ = true;
         }

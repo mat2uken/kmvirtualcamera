@@ -21,7 +21,7 @@ struct PreallocatedH264Slot {
 // Lock-Free Single-Producer Single-Consumer (SPSC) queue with pre-allocated slot buffers
 class LockFreeH264Queue {
 public:
-    static constexpr size_t kCapacity = 32;
+    static constexpr size_t kCapacity = 64;
 
     LockFreeH264Queue() : head_(0), tail_(0) {
         slots_.resize(kCapacity);

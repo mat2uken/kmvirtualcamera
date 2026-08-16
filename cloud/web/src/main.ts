@@ -44,7 +44,7 @@ function App() {
   // Quality & Encoding settings
   const selectedResolution = van.state<string>("1280x720");
   const selectedFps = van.state<number>(30);
-  const selectedBitrate = van.state<number>(4000000); // 4.0 Mbps default for crisp video
+  const selectedBitrate = van.state<number>(2500000); // 2.5 Mbps default (stable 30fps)
 
   const parsed = parseFragment();
   const sessionId = van.state<string>(parsed?.sessionId || "");

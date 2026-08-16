@@ -98,18 +98,25 @@ void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* rtpData, size_t size) 
     uint16_t seq = (static_cast<uint16_t>(rtpData[2]) << 8) | static_cast<uint16_t>(rtpData[3]);
     if (hasLastSeq_) {
         uint16_t diff = seq - lastSequenceNumber_;
-        if (diff > 1 && diff < 32768) {
-            // Packet loss detected in transit over network!
-            frameHasLoss_ = true;
-            isFuActive_ = false;
-            fuBuffer_.clear();
-            if (keyframeRequestCallback_) {
-                keyframeRequestCallback_();
+        if (diff > 0 && diff < 32768) {
+            if (diff > 1) {
+                // Packet loss detected in transit over network!
+                frameHasLoss_ = true;
+                isFuActive_ = false;
+                fuBuffer_.clear();
+                if (keyframeRequestCallback_) {
+                    keyframeRequestCallback_();
+                }
             }
+            lastSequenceNumber_ = seq;
+        } else {
+            // Duplicate or late out-of-order packet (diff == 0 or diff >= 32768)
+            // Do NOT regress lastSequenceNumber_ backwards!
         }
+    } else {
+        lastSequenceNumber_ = seq;
+        hasLastSeq_ = true;
     }
-    lastSequenceNumber_ = seq;
-    hasLastSeq_ = true;
 
     uint32_t timestamp = (static_cast<uint32_t>(rtpData[4]) << 24) |
                          (static_cast<uint32_t>(rtpData[5]) << 16) |

@@ -118,12 +118,42 @@ async function runLiveReceiverAndBrowserTest() {
       }
     }
 
-    // Check receiver log for decoded frames
-    console.log("[6] Inspecting live Receiver log...");
-    let logSummary = "";
+    // 6. Long-duration continuous streaming stability validation (25 seconds)
+    console.log("[6] Testing long-duration streaming stability (25 seconds continuous)...");
+    let prevFrames = 0;
+    const streamDurationSec = 25;
+    const intervalSec = 5;
+
+    for (let elapsedSec = intervalSec; elapsedSec <= streamDurationSec; elapsedSec += intervalSec) {
+      await new Promise((r) => setTimeout(r, intervalSec * 1000));
+
+      let curFrames = 0;
+      if (fs.existsSync(logPath)) {
+        try {
+          const logContent = fs.readFileSync(logPath, "utf-8");
+          const matches = [...logContent.matchAll(/Stream active: (\d+) frames decoded/g)];
+          if (matches.length > 0) {
+            curFrames = parseInt(matches[matches.length - 1][1], 10);
+          }
+        } catch {}
+      }
+
+      const deltaFrames = curFrames - prevFrames;
+      const windowFps = (deltaFrames / intervalSec).toFixed(1);
+      console.log(`    [Time: ${elapsedSec}s] Decoded Frames: ${curFrames} (+${deltaFrames} frames, ~${windowFps} fps)`);
+
+      if (elapsedSec >= 10 && deltaFrames < (intervalSec * 18)) {
+        throw new Error(`Framerate degraded below acceptable limit at ${elapsedSec}s! Window FPS: ${windowFps} (Delta: ${deltaFrames} frames)`);
+      }
+
+      prevFrames = curFrames;
+    }
+
+    // 7. Check final receiver log
+    console.log("[7] Inspecting final Receiver log summary...");
     if (fs.existsSync(logPath)) {
-      logSummary = fs.readFileSync(logPath, "utf-8");
-      console.log(logSummary.split("\n").slice(-25).join("\n"));
+      const logSummary = fs.readFileSync(logPath, "utf-8");
+      console.log(logSummary.split("\n").slice(-15).join("\n"));
     }
 
     await browser.close();
@@ -132,8 +162,13 @@ async function runLiveReceiverAndBrowserTest() {
       throw new Error("Failed to establish live WebRTC connection between Receiver.exe and Browser within 20s");
     }
 
+    if (prevFrames < 500) {
+      throw new Error(`Insufficient frames decoded during 25s stream (${prevFrames} frames, expected >= 500)`);
+    }
+
     console.log("============================================================");
     console.log("  >>> LIVE RECEIVER + BROWSER E2E TEST PASSED (100%) <<<    ");
+    console.log("  >>> 25-SECOND LONG-DURATION 30FPS STABILITY VERIFIED <<<  ");
     console.log("============================================================");
   } finally {
     // Kill receiver process

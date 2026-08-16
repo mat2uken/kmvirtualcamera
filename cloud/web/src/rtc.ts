@@ -51,13 +51,20 @@ export async function waitForIceGatheringComplete(
   });
 }
 
-function enhanceSdpForLowLatency(sdp: string, bitrateBps = 4_000_000): string {
+function enhanceSdpForLowLatency(sdp: string, bitrateBps = 2_500_000): string {
   const lines = sdp.split("\r\n");
   const result: string[] = [];
   let inVideo = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    // Strip Transport-Wide CC extensions so browser uses Receiver Estimated Maximum Bitrate (REMB)
+    // without timing out on missing TWCC RTCP feedback
+    if (line.includes("transport-wide-cc-extensions") || line.includes("transport-cc")) {
+      continue;
+    }
+
     if (line.startsWith("m=video")) {
       inVideo = true;
       result.push(line);
@@ -72,7 +79,6 @@ function enhanceSdpForLowLatency(sdp: string, bitrateBps = 4_000_000): string {
       const pt = line.split(" ")[0].substring(9);
       result.push(line);
       result.push(`a=rtcp-fb:${pt} goog-remb`);
-      result.push(`a=rtcp-fb:${pt} transport-cc`);
       result.push(`a=rtcp-fb:${pt} ccm fir`);
       result.push(`a=rtcp-fb:${pt} nack`);
       result.push(`a=rtcp-fb:${pt} nack pli`);
@@ -172,7 +178,7 @@ export class WebRtcSender {
     return this.localStream;
   }
 
-  async applyBitrateParameters(targetBitrateBps = 4_000_000, targetFps = 30): Promise<void> {
+  async applyBitrateParameters(targetBitrateBps = 2_500_000, targetFps = 30): Promise<void> {
     if (!this.pc) return;
     const senders = this.pc.getSenders();
     for (const sender of senders) {
@@ -205,7 +211,7 @@ export class WebRtcSender {
     rtcConfig: RTCConfiguration,
     onStateChange: (state: RTCPeerConnectionState) => void,
     onStatsUpdate?: (stats: Record<string, unknown>) => void,
-    targetBitrateBps = 4_000_000,
+    targetBitrateBps = 2_500_000,
     targetFps = 30,
     onIceStateChange?: (state: RTCIceConnectionState) => void,
     onDiagnosticLog?: (msg: string) => void
