@@ -15,19 +15,55 @@ H264RtpDepacketizer::H264RtpDepacketizer(FrameCallback callback, KeyframeRequest
 void H264RtpDepacketizer::Reset() {
     accessUnitBuffer_.clear();
     fuBuffer_.clear();
+    cachedSps_.clear();
+    cachedPps_.clear();
     hasPendingTimestamp_ = false;
     hasLastSeq_ = false;
     isFuActive_ = false;
     frameHasLoss_ = false;
+    isKeyframe_ = false;
+    waitingForKeyframe_ = true;
 }
 
 void H264RtpDepacketizer::EmitAccessUnit() {
     if (!accessUnitBuffer_.empty()) {
-        if (!frameHasLoss_ && callback_) {
-            callback_(accessUnitBuffer_.data(), accessUnitBuffer_.size(), currentTimestamp_);
+        if (frameHasLoss_) {
+            waitingForKeyframe_ = true;
+            if (keyframeRequestCallback_) {
+                keyframeRequestCallback_();
+            }
+        } else if (waitingForKeyframe_) {
+            if (isKeyframe_) {
+                // If SPS / PPS were cached but not in the IDR packet, prepend them
+                std::vector<uint8_t> fullFrame;
+                if (!cachedSps_.empty() && !cachedPps_.empty()) {
+                    // Check if SPS is already at start of accessUnitBuffer_
+                    bool hasSps = (accessUnitBuffer_.size() > 4 && (accessUnitBuffer_[4] & 0x1F) == 7);
+                    if (!hasSps) {
+                        fullFrame.insert(fullFrame.end(), kStartSequence, kStartSequence + 4);
+                        fullFrame.insert(fullFrame.end(), cachedSps_.begin(), cachedSps_.end());
+                        fullFrame.insert(fullFrame.end(), kStartSequence, kStartSequence + 4);
+                        fullFrame.insert(fullFrame.end(), cachedPps_.begin(), cachedPps_.end());
+                    }
+                }
+                fullFrame.insert(fullFrame.end(), accessUnitBuffer_.begin(), accessUnitBuffer_.end());
+
+                waitingForKeyframe_ = false;
+                if (callback_) {
+                    callback_(fullFrame.data(), fullFrame.size(), currentTimestamp_);
+                }
+            } else {
+                // Discard non-keyframe P-frames while waiting for IDR refresh to prevent block noise!
+            }
+        } else {
+            // Normal clean stream frame
+            if (callback_) {
+                callback_(accessUnitBuffer_.data(), accessUnitBuffer_.size(), currentTimestamp_);
+            }
         }
         accessUnitBuffer_.clear();
     }
+    isKeyframe_ = false;
     frameHasLoss_ = false;
 }
 
@@ -119,6 +155,14 @@ void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* rtpData, size_t size) 
         isFuActive_ = false;
         fuBuffer_.clear();
 
+        if (nalType == 7) {
+            cachedSps_.assign(payload, payload + payloadSize);
+        } else if (nalType == 8) {
+            cachedPps_.assign(payload, payload + payloadSize);
+        } else if (nalType == 5) {
+            isKeyframe_ = true;
+        }
+
         accessUnitBuffer_.insert(accessUnitBuffer_.end(), kStartSequence, kStartSequence + 4);
         accessUnitBuffer_.insert(accessUnitBuffer_.end(), payload, payload + payloadSize);
     } else if (nalType == 24) {
@@ -136,6 +180,15 @@ void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* rtpData, size_t size) 
                 break; // Corrupted STAP-A length
             }
 
+            uint8_t innerNalType = payload[currOffset] & 0x1F;
+            if (innerNalType == 7) {
+                cachedSps_.assign(payload + currOffset, payload + currOffset + naluSize);
+            } else if (innerNalType == 8) {
+                cachedPps_.assign(payload + currOffset, payload + currOffset + naluSize);
+            } else if (innerNalType == 5) {
+                isKeyframe_ = true;
+            }
+
             accessUnitBuffer_.insert(accessUnitBuffer_.end(), kStartSequence, kStartSequence + 4);
             accessUnitBuffer_.insert(accessUnitBuffer_.end(), payload + currOffset, payload + currOffset + naluSize);
 
@@ -150,6 +203,10 @@ void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* rtpData, size_t size) 
             bool isEnd = (fuHeader & 0x40) != 0;
             uint8_t originalNalType = fuHeader & 0x1F;
             uint8_t reconstructedNalHeader = (fuIndicator & 0xE0) | originalNalType;
+
+            if (originalNalType == 5) {
+                isKeyframe_ = true;
+            }
 
             if (isStart) {
                 isFuActive_ = true;
@@ -167,8 +224,6 @@ void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* rtpData, size_t size) 
                 isFuActive_ = false;
             }
         }
-    } else {
-        // Other types (0, 25-27, 29-31) - Safely ignore without throwing exceptions!
     }
 
     // If marker bit is set, the complete video frame access unit is ready

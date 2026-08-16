@@ -250,6 +250,16 @@ export class WebRtcSender {
         const capabilities = RTCRtpSender.getCapabilities("video");
         if (capabilities && capabilities.codecs) {
           const h264Codecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() === "video/h264");
+          // Prioritize Baseline / Constrained Baseline profile for zero-latency, B-frame-free VideoToolbox encoding
+          h264Codecs.sort((a, b) => {
+            const aFmt = (a.sdpFmtpLine || "").toLowerCase();
+            const bFmt = (b.sdpFmtpLine || "").toLowerCase();
+            const aIsBaseline = aFmt.includes("42e0") || aFmt.includes("4200");
+            const bIsBaseline = bFmt.includes("42e0") || bFmt.includes("4200");
+            if (aIsBaseline && !bIsBaseline) return -1;
+            if (!aIsBaseline && bIsBaseline) return 1;
+            return 0;
+          });
           const otherCodecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() !== "video/h264");
           try {
             transceiver.setCodecPreferences([...h264Codecs, ...otherCodecs]);

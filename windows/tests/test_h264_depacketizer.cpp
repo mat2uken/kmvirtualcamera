@@ -71,6 +71,40 @@ int main() {
     };
     depacketizer.ProcessRtpPacket(unknownNalRtp, sizeof(unknownNalRtp));
 
+    // Test 5: Packet loss recovery & P-frame gating to prevent block noise
+    receivedFrames.clear();
+    bool keyframeRequested = false;
+    depacketizer.SetKeyframeRequestCallback([&]() {
+        keyframeRequested = true;
+    });
+
+    // Simulate packet loss by jumping sequence number from 7 to 15
+    uint8_t lostPFrameRtp[] = {
+        0x80, 0xE0, 0x00, 0x0F, 0x00, 0x00, 0x13, 0x88, 0x12, 0x34, 0x56, 0x78, // M=1, ts=5000, seq=15
+        0x41, 0x10, 0x20 // NAL Type 1 (P-frame slice)
+    };
+    depacketizer.ProcessRtpPacket(lostPFrameRtp, sizeof(lostPFrameRtp));
+    assert(keyframeRequested); // PLI was triggered
+    assert(receivedFrames.empty()); // Corrupted P-frame was dropped
+
+    // Subsequent P-frame arrives (seq=16) without loss -> should still be dropped while waiting for IDR
+    uint8_t nextPFrameRtp[] = {
+        0x80, 0xE0, 0x00, 0x10, 0x00, 0x00, 0x17, 0x70, 0x12, 0x34, 0x56, 0x78, // M=1, ts=6000, seq=16
+        0x41, 0x30, 0x40 // NAL Type 1 (P-frame slice)
+    };
+    depacketizer.ProcessRtpPacket(nextPFrameRtp, sizeof(nextPFrameRtp));
+    assert(receivedFrames.empty()); // Still dropped to prevent block noise!
+
+    // Fresh IDR arrives (seq=17) -> should be decoded and have cached SPS/PPS prepended!
+    uint8_t refreshIdrRtp[] = {
+        0x80, 0xE0, 0x00, 0x11, 0x00, 0x00, 0x1B, 0x58, 0x12, 0x34, 0x56, 0x78, // M=1, ts=7000, seq=17
+        0x65, 0x50, 0x60 // NAL Type 5 (IDR keyframe)
+    };
+    depacketizer.ProcessRtpPacket(refreshIdrRtp, sizeof(refreshIdrRtp));
+    assert(receivedFrames.size() == 1);
+    // Should contain prepended SPS (size=4), PPS (size=3), and IDR (size=3)
+    assert(receivedFrames[0].size() == (4 + 4) + (4 + 3) + (4 + 3));
+
     std::cout << "[PASS] TestH264RtpDepacketizer passed completely (100% RFC 6184 compliance verified)." << std::endl;
     return 0;
 }
