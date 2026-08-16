@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "webrtc-bridge-signaling",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-16",
+  "assets": {
+    "directory": "./dist/public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SESSIONS",
+        "class_name": "SessionDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SessionDurableObject"]
+    }
+  ],
+  "vars": {
+    "PUBLIC_BASE_URL": "http://127.0.0.1:8787",
+    "SESSION_TTL_SECONDS": "300",
+    "SIGNALING_TIMEOUT_SECONDS": "60",
+    "ENABLE_TURN": "false"
+  }
+}

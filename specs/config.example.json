@@ -1,0 +1,44 @@
+{
+  "$schema": "./config.schema.json",
+  "signaling": {
+    "baseUrl": "https://webrtc-bridge-signaling.example.workers.dev",
+    "requestTimeoutMs": 10000,
+    "sessionCreateTimeoutMs": 15000,
+    "pollInitialIntervalMs": 1000,
+    "pollBackoffAfterMs": 15000,
+    "pollMaxIntervalMs": 2000,
+    "signalingTimeoutMs": 60000
+  },
+  "webrtc": {
+    "preferVideoCodec": "default",
+    "iceTransportPolicy": "all",
+    "statsIntervalMs": 2000
+  },
+  "video": {
+    "outputWidth": 1280,
+    "outputHeight": 720,
+    "outputFps": 30,
+    "letterbox": true,
+    "staleFrameToBlackMs": 2000
+  },
+  "audio": {
+    "preferredOutputDeviceId": "",
+    "preferredOutputNameContains": "CABLE Input",
+    "allowFallbackToDefaultDevice": true
+  },
+  "virtualCamera": {
+    "friendlyName": "WebRTC Bridge",
+    "autoStart": true,
+    "pipeName": "\\\\.\\pipe\\WebRtcBridge.VirtualCamera.v1"
+  },
+  "logging": {
+    "level": "info",
+    "directory": "%LOCALAPPDATA%\\WebRtcBridge\\logs",
+    "maxFileBytes": 5242880,
+    "maxFiles": 5
+  },
+  "developer": {
+    "showDiagnosticsPanel": true,
+    "allowSensitiveSdpExport": false
+  }
+}

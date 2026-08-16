@@ -1,0 +1,37 @@
+stateDiagram-v2
+    [*] --> ABSENT
+
+    ABSENT --> CREATED: POST /v1/sessions
+    CREATED --> CLAIMED: POST /claim\nJoin Token valid
+    CLAIMED --> OFFER_READY: PUT /offer\nSender Token valid
+    OFFER_READY --> ANSWER_READY: PUT /answer\nReceiver Token valid
+
+    CREATED --> CLOSED: DELETE
+    CLAIMED --> CLOSED: DELETE
+    OFFER_READY --> CLOSED: DELETE
+    ANSWER_READY --> CLOSED: DELETE
+
+    CREATED --> EXPIRED: Alarm at expiresAt
+    CLAIMED --> EXPIRED: Alarm at expiresAt
+    OFFER_READY --> EXPIRED: Alarm at expiresAt
+    ANSWER_READY --> EXPIRED: Alarm at expiresAt
+
+    CLOSED --> [*]
+    EXPIRED --> [*]
+
+    note right of CREATED
+      Receiver polls Offer.
+      Polling does not extend TTL.
+    end note
+
+    note right of OFFER_READY
+      Receiver sets remote offer,
+      creates/gathers Answer,
+      then PUTs Answer.
+    end note
+
+    note right of ANSWER_READY
+      Sender polls Answer and
+      sets remote description.
+      Signaling can then be deleted.
+    end note

@@ -1,0 +1,81 @@
+sequenceDiagram
+    autonumber
+    participant R as Windows Receiver
+    participant W as Cloudflare Worker
+    participant D as Session Durable Object
+    participant B as Browser Sender
+
+    R->>W: POST /v1/sessions
+    W->>W: Generate session/receiver/join tokens
+    opt TURN enabled
+        W->>W: Generate short-lived TURN credentials
+    end
+    W->>D: Initialize session + fixed expiresAt
+    D->>D: setAlarm(expiresAt)
+    D-->>W: Created
+    W-->>R: 201 sessionId, receiverToken, joinUrl, RTC config
+
+    R->>R: Render joinUrl as QR
+    B->>B: Scan QR, open /send/#...
+    B->>B: Parse fragment and remove from address bar
+    B->>B: User presses Start
+    B->>B: getUserMedia(camera, microphone)
+
+    B->>W: POST /sessions/{id}/claim + Join Token
+    W->>D: Claim(session, nonce)
+    D-->>W: Sender Token + RTC config
+    W-->>B: 200 Sender Token
+
+    par Receiver waits for Offer
+        loop 1s then 2s polling
+            R->>W: GET /sessions/{id}/offer + Receiver Token
+            W->>D: Read Offer
+            alt Offer not ready
+                D-->>W: no content
+                W-->>R: 204 Retry-After
+            else Offer ready
+                D-->>W: Offer
+                W-->>R: 200 Offer
+            end
+        end
+    and Browser creates Offer
+        B->>B: RTCPeerConnection + sendonly tracks
+        B->>B: createOffer / setLocalDescription
+        B->>B: Wait ICE gathering complete
+        B->>W: PUT /sessions/{id}/offer + Sender Token
+        W->>D: Store Offer
+        D-->>W: OFFER_READY
+        W-->>B: 204
+    end
+
+    R->>R: setRemoteDescription(Offer)
+    R->>R: createAnswer / setLocalDescription
+    R->>R: Wait ICE gathering complete
+    R->>W: PUT /sessions/{id}/answer + Receiver Token
+    W->>D: Store Answer
+    D-->>W: ANSWER_READY
+    W-->>R: 204
+
+    loop 1s then 2s polling
+        B->>W: GET /sessions/{id}/answer + Sender Token
+        W->>D: Read Answer
+        alt Answer not ready
+            D-->>W: no content
+            W-->>B: 204 Retry-After
+        else Answer ready
+            D-->>W: Answer
+            W-->>B: 200 Answer
+        end
+    end
+
+    B->>B: setRemoteDescription(Answer)
+    B-->>R: ICE + DTLS-SRTP + RTP/RTCP media
+    R->>R: Preview video
+    R->>R: Playout audio to VB-CABLE
+    R->>R: Publish NV12 frames to Virtual Camera pipe
+
+    opt Connected cleanup
+        R->>W: DELETE /sessions/{id}
+        W->>D: Close and delete state
+        W-->>R: 204
+    end

@@ -1,0 +1,149 @@
+{
+  "package": "webrtc-win11-virtual-camera-poc-docs",
+  "version": "2026-08-16",
+  "generatedAt": "2026-08-16T02:35:11.330225+00:00",
+  "language": "ja",
+  "purpose": "Implementation specification and coding-agent prompts for a browser-to-Windows WebRTC virtual camera PoC.",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 5511,
+      "sha256": "87849fd1d1984edf987adff2aa134cdd0dd2170ed846c367c93059e5e2ff3934"
+    },
+    {
+      "path": "checklists/ACCEPTANCE_CHECKLIST.md",
+      "bytes": 3319,
+      "sha256": "29a5ff383fb758ca8b0e35efd0a8a959b98358f9896bc5950f833e4501743db5"
+    },
+    {
+      "path": "checklists/CLOUDFLARE_DEPLOYMENT_CHECKLIST.md",
+      "bytes": 1820,
+      "sha256": "4267231d857063ea03e99da32637cec149fe696fa8964cd6c7896f9809e44e65"
+    },
+    {
+      "path": "checklists/WINDOWS_DEV_ENV_CHECKLIST.md",
+      "bytes": 1921,
+      "sha256": "34d032bb6e3d8be31b82bab45407992fe032f9665a74b315e383f7d8ec9925c7"
+    },
+    {
+      "path": "docs/00_project_brief.md",
+      "bytes": 5653,
+      "sha256": "3642c0192c91d0153c5ae4e5934950a4a56772858a5b7d6ef0182b9a8d6bf0b5"
+    },
+    {
+      "path": "docs/01_requirements_and_scope.md",
+      "bytes": 7891,
+      "sha256": "ff27556080541c450b9d73cd7ef282f5300dfa3a671607ef85f1f5b0f4478068"
+    },
+    {
+      "path": "docs/02_architecture.md",
+      "bytes": 9538,
+      "sha256": "e5f976853f60df38e66f684e98055abe7c29fb6abd0668fbfdd913ab53a661c4"
+    },
+    {
+      "path": "docs/03_session_and_signaling_protocol.md",
+      "bytes": 8568,
+      "sha256": "38b310f7dc4ef8c29a6375e692b30a030ea1e2b83a2cc6bb3a3d9edad4adf247"
+    },
+    {
+      "path": "docs/04_cloudflare_worker_design.md",
+      "bytes": 10077,
+      "sha256": "12f91aecd11a00d3a7ab9ca17b86ba2ce335872f6aed885ebe30777d4861035c"
+    },
+    {
+      "path": "docs/05_browser_sender_design.md",
+      "bytes": 7194,
+      "sha256": "1bcd4afbdc41d559694ee36101a0fa71c72dba563c3dc51bd4f5576ff1abf5fd"
+    },
+    {
+      "path": "docs/06_windows_receiver_design.md",
+      "bytes": 10613,
+      "sha256": "192cb6a0fbd4de9e75ee8d670c3ca219d39ab9789d943d3ea9805dc9c881d080"
+    },
+    {
+      "path": "docs/07_virtual_camera_design.md",
+      "bytes": 8099,
+      "sha256": "66158aec39e8cc3e3658f04292fdd64ff9986621dd289b23349f8d7841cec2c0"
+    },
+    {
+      "path": "docs/08_vb_cable_audio_design.md",
+      "bytes": 4714,
+      "sha256": "010a8f3a756be549c56777a522265ad8b672d53b6ffa9fac865e60334b840635"
+    },
+    {
+      "path": "docs/09_security_and_privacy.md",
+      "bytes": 7176,
+      "sha256": "dcbdf8b883660d0950c0182d16ea0e795369fff014107514486129608bfe8ebc"
+    },
+    {
+      "path": "docs/10_test_and_acceptance.md",
+      "bytes": 6996,
+      "sha256": "f551025138f001d5c8f33af09ecff595884fede41fb043c4df948337c4460dcb"
+    },
+    {
+      "path": "docs/11_delivery_plan.md",
+      "bytes": 4690,
+      "sha256": "589eccb9c58fc1198ec7421caf90d150e1e923b6493f4c24069e153b68ea9c8c"
+    },
+    {
+      "path": "docs/12_risks_and_decisions.md",
+      "bytes": 5893,
+      "sha256": "0ab438174a175eb21fc4d0854db6de482f0d1ac6fbfb4a48831c9e940c38caad"
+    },
+    {
+      "path": "docs/13_reference_sources.md",
+      "bytes": 5210,
+      "sha256": "d5d7fa86ba5f94d9d8b27d25e4e47f8a2025d88d1913f5dc6daf42ffc82d45c7"
+    },
+    {
+      "path": "prompts/CODEX_IMPLEMENTATION_PROMPT.md",
+      "bytes": 17059,
+      "sha256": "58bccc88e2d8155cc952973e514be332c9643b3edb148d3acae172f8149b596b"
+    },
+    {
+      "path": "prompts/CODEX_VERIFICATION_PROMPT.md",
+      "bytes": 4221,
+      "sha256": "7c8a7e180860623fa4380c433945c0edf78d7318676efee806226f620e84be6c"
+    },
+    {
+      "path": "specs/cloudflare.env.example",
+      "bytes": 445,
+      "sha256": "206b93cfa52f3b3e8790e7323e341f37110bf226683e0c9717fb9bebefd2ce3f"
+    },
+    {
+      "path": "specs/config.example.json",
+      "bytes": 1117,
+      "sha256": "625bba2a6eefc3e49a699158a5d4df05e592c6a9281a7c99b1abd38f851e270f"
+    },
+    {
+      "path": "specs/connection_sequence.mmd",
+      "bytes": 2442,
+      "sha256": "151ea5349fd3c439d729d7cbd519679f7f59f9bfcf5415be4cad682f2464d626"
+    },
+    {
+      "path": "specs/frame_pipe_protocol.md",
+      "bytes": 5182,
+      "sha256": "de187ed22495675eb28c58c8584cb0d3655f471e8ac4fec2eebf0130ae3f3ec5"
+    },
+    {
+      "path": "specs/openapi.yaml",
+      "bytes": 18141,
+      "sha256": "cfb53866be95f9d6deaf480dd64d98f28281440bcecb26c393e7b05cd4280aed"
+    },
+    {
+      "path": "specs/repository_layout.md",
+      "bytes": 3415,
+      "sha256": "3afec2d357f6ce8715ad87b002cbb772f5ba81c8b378b54b3e8ddc04da922300"
+    },
+    {
+      "path": "specs/session_state_machine.mmd",
+      "bytes": 999,
+      "sha256": "3d465c78fbca0909a1e712a5a6194a59e019fbe93636767755a7e9a877d4e01d"
+    },
+    {
+      "path": "specs/shared_memory_future_design.md",
+      "bytes": 2882,
+      "sha256": "27e7726653630d2f702803c2b359993cf83fdb6f9eef715bd1501eac6d0bf35b"
+    }
+  ]
+}

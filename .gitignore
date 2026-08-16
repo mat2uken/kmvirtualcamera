@@ -1,0 +1,36 @@
+# Node / Cloudflare
+node_modules/
+dist/
+cloud/dist/
+.wrangler/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Windows C++ Build Outputs
+windows/build/
+build/
+*.obj
+*.lib
+*.exp
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.tlog
+*.idb
+*.log
+
+# Visual Studio / IDE
+.vs/
+*.user
+*.suo
+*.VC.db
+*.opendb
+.vscode/
+.idea/
+
+# OS Files
+Thumbs.db
+Desktop.ini
+.DS_Store

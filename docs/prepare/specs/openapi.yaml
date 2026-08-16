@@ -1,0 +1,640 @@
+openapi: 3.1.0
+info:
+  title: WebRTC Bridge Signaling API
+  version: 1.0.0
+  description: |
+    Short-lived HTTPS polling signaling API for one browser Sender and one
+    Windows Receiver. Media does not traverse this API. Initial version uses
+    non-Trickle ICE and exchanges candidate-complete SDP offer/answer objects.
+servers:
+  - url: https://webrtc-bridge-signaling.example.workers.dev
+tags:
+  - name: Health
+  - name: Sessions
+paths:
+  /v1/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Service health
+      responses:
+        "200":
+          description: Service is available.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, version]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+                  version:
+                    type: string
+                  time:
+                    type: string
+                    format: date-time
+
+  /v1/sessions:
+    post:
+      tags: [Sessions]
+      operationId: createSession
+      summary: Create a short-lived signaling session
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Session created.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          description: Required external dependency, such as TURN credential generation, failed.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sessions/{sessionId}/claim:
+    post:
+      tags: [Sessions]
+      operationId: claimSession
+      summary: Claim a session once as the browser Sender
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      security:
+        - joinToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimSessionRequest"
+      responses:
+        "200":
+          description: Session claimed.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/Gone"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /v1/sessions/{sessionId}/offer:
+    put:
+      tags: [Sessions]
+      operationId: putOffer
+      summary: Store the browser Sender's candidate-complete SDP offer
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      security:
+        - senderToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OfferDescription"
+      responses:
+        "204":
+          description: Offer stored.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/Gone"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      tags: [Sessions]
+      operationId: getOffer
+      summary: Poll for the Sender's SDP offer
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      security:
+        - receiverToken: []
+      responses:
+        "200":
+          description: Offer is available.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfferDescription"
+        "204":
+          description: Offer is not ready.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "410":
+          $ref: "#/components/responses/Gone"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /v1/sessions/{sessionId}/answer:
+    put:
+      tags: [Sessions]
+      operationId: putAnswer
+      summary: Store the Windows Receiver's candidate-complete SDP answer
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      security:
+        - receiverToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerDescription"
+      responses:
+        "204":
+          description: Answer stored.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/Gone"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      tags: [Sessions]
+      operationId: getAnswer
+      summary: Poll for the Receiver's SDP answer
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      security:
+        - senderToken: []
+      responses:
+        "200":
+          description: Answer is available.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnswerDescription"
+        "204":
+          description: Answer is not ready.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "410":
+          $ref: "#/components/responses/Gone"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /v1/sessions/{sessionId}:
+    delete:
+      tags: [Sessions]
+      operationId: deleteSession
+      summary: Close and delete a signaling session
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      description: |
+        Either the Receiver Token or the Sender Token may authorize this request.
+        The operation is best effort; TTL deletion remains the final cleanup.
+      security:
+        - receiverToken: []
+        - senderToken: []
+      responses:
+        "204":
+          description: Session closed or already absent.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "410":
+          $ref: "#/components/responses/Gone"
+
+components:
+  securitySchemes:
+    joinToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-join-token
+    receiverToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-receiver-token
+    senderToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-sender-token
+
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9_-]{20,32}$"
+      description: Base64url session identifier without padding.
+
+  headers:
+    RequestId:
+      description: Correlation identifier safe to include in diagnostics.
+      schema:
+        type: string
+        maxLength: 128
+    NoStore:
+      description: Prevents signaling material from being cached.
+      schema:
+        type: string
+        const: "no-store, max-age=0"
+    RetryAfter:
+      description: Suggested polling delay in seconds.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 5
+
+  responses:
+    BadRequest:
+      description: Invalid request.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or malformed authorization.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Token is invalid or has the wrong role.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: The requested state transition conflicts with current state.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Gone:
+      description: The signaling session has expired or is closed.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: Request body or SDP exceeds configured limits.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnsupportedMediaType:
+      description: Content-Type must be application/json for requests with a body.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: Request rate exceeded.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ClientInfo:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        version:
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    CreateSessionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        client:
+          $ref: "#/components/schemas/ClientInfo"
+
+    PollConfiguration:
+      type: object
+      additionalProperties: false
+      required:
+        - initialIntervalMs
+        - backoffAfterMs
+        - maxIntervalMs
+        - timeoutMs
+      properties:
+        initialIntervalMs:
+          type: integer
+          minimum: 250
+          maximum: 5000
+        backoffAfterMs:
+          type: integer
+          minimum: 1000
+          maximum: 60000
+        maxIntervalMs:
+          type: integer
+          minimum: 250
+          maximum: 10000
+        timeoutMs:
+          type: integer
+          minimum: 5000
+          maximum: 300000
+
+    IceServer:
+      type: object
+      additionalProperties: false
+      required: [urls]
+      properties:
+        urls:
+          oneOf:
+            - type: string
+            - type: array
+              minItems: 1
+              maxItems: 16
+              items:
+                type: string
+        username:
+          type: string
+          maxLength: 1024
+        credential:
+          type: string
+          maxLength: 2048
+        credentialType:
+          type: string
+          enum: [password]
+          default: password
+
+    RtcConfiguration:
+      type: object
+      additionalProperties: false
+      required: [iceServers, iceTransportPolicy]
+      properties:
+        iceServers:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/IceServer"
+        iceTransportPolicy:
+          type: string
+          enum: [all, relay]
+
+    CreateSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionId
+        - receiverToken
+        - joinUrl
+        - expiresAt
+        - poll
+        - rtcConfiguration
+      properties:
+        sessionId:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{20,32}$"
+        receiverToken:
+          type: string
+          minLength: 32
+          maxLength: 256
+        joinUrl:
+          type: string
+          format: uri
+          description: Contains the Join Token only in the URL fragment.
+        expiresAt:
+          type: string
+          format: date-time
+        poll:
+          $ref: "#/components/schemas/PollConfiguration"
+        rtcConfiguration:
+          $ref: "#/components/schemas/RtcConfiguration"
+
+    ClaimSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [claimNonce]
+      properties:
+        claimNonce:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{20,128}$"
+        client:
+          $ref: "#/components/schemas/ClientInfo"
+
+    ClaimSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - senderToken
+        - expiresAt
+        - poll
+        - rtcConfiguration
+      properties:
+        senderToken:
+          type: string
+          minLength: 32
+          maxLength: 256
+        expiresAt:
+          type: string
+          format: date-time
+        poll:
+          $ref: "#/components/schemas/PollConfiguration"
+        rtcConfiguration:
+          $ref: "#/components/schemas/RtcConfiguration"
+
+    OfferDescription:
+      type: object
+      additionalProperties: false
+      required: [type, sdp]
+      properties:
+        type:
+          type: string
+          const: offer
+        sdp:
+          type: string
+          minLength: 4
+          maxLength: 131072
+
+    AnswerDescription:
+      type: object
+      additionalProperties: false
+      required: [type, sdp]
+      properties:
+        type:
+          type: string
+          const: answer
+        sdp:
+          type: string
+          minLength: 4
+          maxLength: 131072
+
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable, requestId]
+      properties:
+        code:
+          type: string
+          pattern: "^[A-Z0-9_]{3,64}$"
+        message:
+          type: string
+          maxLength: 512
+        retryable:
+          type: boolean
+        requestId:
+          type: string
+          maxLength: 128
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
