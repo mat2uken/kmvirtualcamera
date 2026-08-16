@@ -67,11 +67,6 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     if (fdwReason == DLL_PROCESS_ATTACH) {
         g_hInstance = hinstDLL;
         DisableThreadLibraryCalls(hinstDLL);
-        MFStartup(MF_VERSION);
-    } else if (fdwReason == DLL_PROCESS_DETACH) {
-        if (!lpvReserved) {
-            MFShutdown();
-        }
     }
     return TRUE;
 }

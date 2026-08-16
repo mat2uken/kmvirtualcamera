@@ -37,13 +37,18 @@ if (Test-Path $vcamDll) {
 
 # 2. Check COM DLL Registry Registration
 Write-Host "`n[2/4] Checking COM DLL Registration (CLSID $clsid)..." -ForegroundColor Yellow
-$regPath = "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid\InprocServer32"
-if (Test-Path $regPath) {
-    $dllRegistered = (Get-ItemProperty -Path $regPath).'(default)'
-    Write-Host "  [OK] COM DLL is registered in Registry -> $dllRegistered" -ForegroundColor Green
+$hkcuPath = "HKCU:\Software\Classes\CLSID\$clsid\InprocServer32"
+$hkcrPath = "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid\InprocServer32"
+
+if (Test-Path $hkcuPath) {
+    $dllRegistered = (Get-ItemProperty -Path $hkcuPath).'(default)'
+    Write-Host "  [OK] COM DLL is registered in Registry (HKCU) -> $dllRegistered" -ForegroundColor Green
+} elseif (Test-Path $hkcrPath) {
+    $dllRegistered = (Get-ItemProperty -Path $hkcrPath).'(default)'
+    Write-Host "  [OK] COM DLL is registered in Registry (HKCR) -> $dllRegistered" -ForegroundColor Green
 } else {
     Write-Host "  [NOT REGISTERED] DLL is not yet registered in Registry." -ForegroundColor Yellow
-    Write-Host "  --> Run 'pwsh -File scripts/register_vcam.ps1' as Administrator." -ForegroundColor Gray
+    Write-Host "  --> Run 'pwsh -File scripts/register_vcam.ps1'" -ForegroundColor Gray
 }
 
 # 3. Check Audio Playback Devices (VB-CABLE)
