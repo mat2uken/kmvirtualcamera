@@ -128,6 +128,12 @@ export class WebRtcSender {
       });
     }
 
+    for (const track of this.localStream.getVideoTracks()) {
+      if ("contentHint" in track) {
+        track.contentHint = "motion";
+      }
+    }
+
     return this.localStream;
   }
 
@@ -161,6 +167,12 @@ export class WebRtcSender {
         video: true,
         audio: true
       });
+    }
+
+    for (const track of newStream.getVideoTracks()) {
+      if ("contentHint" in track) {
+        track.contentHint = "motion";
+      }
     }
 
     if (this.pc) {

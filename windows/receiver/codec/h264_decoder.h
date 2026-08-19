@@ -51,6 +51,13 @@ private:
     int64_t sampleIndex_{0};
 
     Microsoft::WRL::ComPtr<IMFTransform> decoderMft_;
+    Microsoft::WRL::ComPtr<IMFSample> inSample_;
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> inBuffer_;
+    DWORD inBufferCapacity_{0};
+
+    Microsoft::WRL::ComPtr<IMFSample> outSample_;
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> outBuffer_;
+    DWORD outBufferCapacity_{0};
 };
 
 } // namespace km::codec

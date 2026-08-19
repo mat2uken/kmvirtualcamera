@@ -188,79 +188,50 @@ HRESULT WebRtcBridgeMediaSource::CreateStreamDescriptor(IMFStreamDescriptor** pp
     if (!ppDescriptor) return E_POINTER;
     *ppDescriptor = nullptr;
 
-    // Format 0: NV12 (Native Hardware WebRTC format)
-    Microsoft::WRL::ComPtr<IMFMediaType> nv12Type;
-    HRESULT hr = MFCreateMediaType(&nv12Type);
-    if (FAILED(hr)) return hr;
+    auto createMediaType = [](GUID subType, UINT32 w, UINT32 h, UINT32 fps) -> Microsoft::WRL::ComPtr<IMFMediaType> {
+        Microsoft::WRL::ComPtr<IMFMediaType> mt;
+        if (FAILED(MFCreateMediaType(&mt))) return nullptr;
+        mt->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        mt->SetGUID(MF_MT_SUBTYPE, subType);
+        MFSetAttributeSize(mt.Get(), MF_MT_FRAME_SIZE, w, h);
+        MFSetAttributeRatio(mt.Get(), MF_MT_FRAME_RATE, fps, 1);
+        MFSetAttributeRatio(mt.Get(), MF_MT_FRAME_RATE_RANGE_MIN, 15, 1);
+        MFSetAttributeRatio(mt.Get(), MF_MT_FRAME_RATE_RANGE_MAX, fps, 1);
+        MFSetAttributeRatio(mt.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+        mt->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+        mt->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+        mt->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES, TRUE);
+        DWORD sampleBytes = (subType == MFVideoFormat_RGB32) ? (w * h * 4) : (w * h * 3 / 2);
+        mt->SetUINT32(MF_MT_SAMPLE_SIZE, sampleBytes);
+        DWORD stride = (subType == MFVideoFormat_RGB32) ? (w * 4) : w;
+        mt->SetUINT32(MF_MT_DEFAULT_STRIDE, stride);
+        uint32_t bitrate = static_cast<uint32_t>(sampleBytes * 8 * fps);
+        mt->SetUINT32(MF_MT_AVG_BITRATE, bitrate);
+        return mt;
+    };
 
-    hr = nv12Type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-    if (FAILED(hr)) return hr;
-    hr = nv12Type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeSize(nv12Type.Get(), MF_MT_FRAME_SIZE, protocol::kWidth, protocol::kHeight);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeRatio(nv12Type.Get(), MF_MT_FRAME_RATE, 30, 1);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeRatio(nv12Type.Get(), MF_MT_FRAME_RATE_RANGE_MIN, 30, 1);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeRatio(nv12Type.Get(), MF_MT_FRAME_RATE_RANGE_MAX, 30, 1);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeRatio(nv12Type.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-    if (FAILED(hr)) return hr;
-    hr = nv12Type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    if (FAILED(hr)) return hr;
-    hr = nv12Type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-    if (FAILED(hr)) return hr;
-    hr = nv12Type->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES, TRUE);
-    if (FAILED(hr)) return hr;
-    hr = nv12Type->SetUINT32(MF_MT_SAMPLE_SIZE, protocol::kPayloadBytes);
-    if (FAILED(hr)) return hr;
-    hr = nv12Type->SetUINT32(MF_MT_DEFAULT_STRIDE, protocol::kWidth);
-    if (FAILED(hr)) return hr;
-    uint32_t bitrateNv12 = static_cast<uint32_t>(protocol::kWidth * 1.5 * protocol::kHeight * 8 * 30);
-    hr = nv12Type->SetUINT32(MF_MT_AVG_BITRATE, bitrateNv12);
-    if (FAILED(hr)) return hr;
+    // Format list: 120 FPS, 60 FPS, and 30 FPS for both NV12 and RGB32
+    auto nv12_120 = createMediaType(MFVideoFormat_NV12, protocol::kWidth, protocol::kHeight, 120);
+    auto nv12_60  = createMediaType(MFVideoFormat_NV12, protocol::kWidth, protocol::kHeight, 60);
+    auto nv12_30  = createMediaType(MFVideoFormat_NV12, protocol::kWidth, protocol::kHeight, 30);
+    auto rgb_120  = createMediaType(MFVideoFormat_RGB32, protocol::kWidth, protocol::kHeight, 120);
+    auto rgb_60   = createMediaType(MFVideoFormat_RGB32, protocol::kWidth, protocol::kHeight, 60);
+    auto rgb_30   = createMediaType(MFVideoFormat_RGB32, protocol::kWidth, protocol::kHeight, 30);
 
-    // Format 1: RGB32 (Native Direct3D / Windows Settings swapchain format)
-    Microsoft::WRL::ComPtr<IMFMediaType> rgbType;
-    hr = MFCreateMediaType(&rgbType);
-    if (FAILED(hr)) return hr;
+    IMFMediaType* mediaTypes[] = {
+        nv12_60.Get(),
+        nv12_120.Get(),
+        nv12_30.Get(),
+        rgb_60.Get(),
+        rgb_120.Get(),
+        rgb_30.Get()
+    };
+    const DWORD typeCount = sizeof(mediaTypes) / sizeof(mediaTypes[0]);
 
-    hr = rgbType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-    if (FAILED(hr)) return hr;
-    hr = rgbType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeSize(rgbType.Get(), MF_MT_FRAME_SIZE, protocol::kWidth, protocol::kHeight);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeRatio(rgbType.Get(), MF_MT_FRAME_RATE, 30, 1);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeRatio(rgbType.Get(), MF_MT_FRAME_RATE_RANGE_MIN, 30, 1);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeRatio(rgbType.Get(), MF_MT_FRAME_RATE_RANGE_MAX, 30, 1);
-    if (FAILED(hr)) return hr;
-    hr = MFSetAttributeRatio(rgbType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-    if (FAILED(hr)) return hr;
-    hr = rgbType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    if (FAILED(hr)) return hr;
-    hr = rgbType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-    if (FAILED(hr)) return hr;
-    hr = rgbType->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES, TRUE);
-    if (FAILED(hr)) return hr;
-    hr = rgbType->SetUINT32(MF_MT_SAMPLE_SIZE, protocol::kWidth * protocol::kHeight * 4);
-    if (FAILED(hr)) return hr;
-    hr = rgbType->SetUINT32(MF_MT_DEFAULT_STRIDE, protocol::kWidth * 4);
-    if (FAILED(hr)) return hr;
-    uint32_t bitrateRgb = static_cast<uint32_t>(protocol::kWidth * 4 * protocol::kHeight * 8 * 30);
-    hr = rgbType->SetUINT32(MF_MT_AVG_BITRATE, bitrateRgb);
-    if (FAILED(hr)) return hr;
-
-    // Keep the transport's native format first. Consumers that explicitly
-    // negotiate RGB32 are handled by WebRtcBridgeMediaStream::SetMediaType.
-    IMFMediaType* mediaTypes[2] = { nv12Type.Get(), rgbType.Get() };
     Microsoft::WRL::ComPtr<IMFMediaTypeHandler> handler;
     Microsoft::WRL::ComPtr<IMFStreamDescriptor> streamDesc;
 
-    hr = MFCreateStreamDescriptor(0, 2, mediaTypes, &streamDesc);
+    HRESULT hr = MFCreateStreamDescriptor(0, typeCount, mediaTypes, &streamDesc);
     if (FAILED(hr)) return hr;
 
     // Set mandatory stream attributes required by FrameServer and Virtual Camera pipeline
@@ -279,7 +250,7 @@ HRESULT WebRtcBridgeMediaSource::CreateStreamDescriptor(IMFStreamDescriptor** pp
     hr = streamDesc->GetMediaTypeHandler(&handler);
     if (FAILED(hr)) return hr;
 
-    hr = handler->SetCurrentMediaType(nv12Type.Get());
+    hr = handler->SetCurrentMediaType(nv12_60.Get());
     if (FAILED(hr)) return hr;
 
     *ppDescriptor = streamDesc.Detach();

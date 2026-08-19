@@ -115,6 +115,7 @@ private:
     std::thread deliveryThread_;
 
     GUID currentSubType_{MFVideoFormat_NV12};
+    std::atomic<uint32_t> currentFps_{60};
     Microsoft::WRL::ComPtr<IMFVideoSampleAllocator> sampleAllocator_;
     LONGLONG startTime_{0};
     LONGLONG lastSampleTime_{0};

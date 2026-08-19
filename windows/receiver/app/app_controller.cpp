@@ -1,5 +1,8 @@
 #include "app_controller.h"
 #include <chrono>
+#include <avrt.h>
+
+#pragma comment(lib, "avrt.lib")
 
 namespace km::app {
 
@@ -250,7 +253,10 @@ void AppController::SignalingWorkerProc() {
 }
 
 void AppController::VideoWorkerProc() {
+    DWORD taskIndex = 0;
+    HANDLE hAvrt = AvSetMmThreadCharacteristicsW(L"Capture", &taskIndex);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+
     std::vector<uint8_t> localH264Buffer;
     std::vector<uint8_t> localDecodedBuffer;
     std::vector<uint8_t> localNv12Buffer(protocol::kPayloadBytes);
@@ -276,8 +282,10 @@ void AppController::VideoWorkerProc() {
                 lastDecodedFrameTick_.store(GetTickCount64(), std::memory_order_relaxed);
 
                 if (!isTestPatternMode_.load(std::memory_order_relaxed)) {
-                    mainWindow_->RenderPreviewFrame(localNv12Buffer);
+                    // Critical Path: Publish to Virtual Camera immediately with ZERO latency!
                     pipePublisher_.PublishFrame(localNv12Buffer.data(), protocol::kPayloadBytes, tsUs);
+                    // GUI preview rendered after critical frame dispatch
+                    mainWindow_->RenderPreviewFrame(localNv12Buffer);
                 }
 
                 uint64_t count = frameCount_.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -286,6 +294,10 @@ void AppController::VideoWorkerProc() {
                 }
             }
         }
+    }
+
+    if (hAvrt) {
+        AvRevertMmThreadCharacteristics(hAvrt);
     }
 }
 

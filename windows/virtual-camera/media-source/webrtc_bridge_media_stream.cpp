@@ -2,9 +2,13 @@
 #include "webrtc_bridge_media_source.h"
 #include "vcam_logger.h"
 #include <timeapi.h>
+#include <avrt.h>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
+
+#pragma comment(lib, "avrt.lib")
 
 namespace km::vcam {
 
@@ -391,15 +395,21 @@ HRESULT WebRtcBridgeMediaStream::Shutdown() {
 }
 
 void WebRtcBridgeMediaStream::DeliveryThreadProc() {
+    DWORD taskIndex = 0;
+    HANDLE hAvrt = AvSetMmThreadCharacteristicsW(L"Capture", &taskIndex);
     timeBeginPeriod(1);
+
     HANDLE hNewFrame = shmConsumer_.GetEventHandle();
     while (isDeliveryRunning_) {
+        uint32_t fps = currentFps_.load(std::memory_order_relaxed);
+        DWORD timeoutMs = (std::max)(5u, 1000u / (fps > 0 ? fps : 60u));
+
         DWORD waitRes = WAIT_TIMEOUT;
         if (hNewFrame) {
             HANDLE waitHandles[2] = { hWakeEvent_, hNewFrame };
-            waitRes = WaitForMultipleObjects(2, waitHandles, FALSE, 33);
+            waitRes = WaitForMultipleObjects(2, waitHandles, FALSE, timeoutMs);
         } else {
-            waitRes = WaitForSingleObject(hWakeEvent_, 33);
+            waitRes = WaitForSingleObject(hWakeEvent_, timeoutMs);
         }
 
         if (!isDeliveryRunning_) break;
@@ -408,6 +418,9 @@ void WebRtcBridgeMediaStream::DeliveryThreadProc() {
         DeliverSamples();
     }
     timeEndPeriod(1);
+    if (hAvrt) {
+        AvRevertMmThreadCharacteristics(hAvrt);
+    }
 }
 
 HRESULT WebRtcBridgeMediaStream::DeliverSamples() {
@@ -435,7 +448,7 @@ HRESULT WebRtcBridgeMediaStream::DeliverSamples() {
             return hr;
         }
         if (sampleIndex_ <= 3 || sampleIndex_ % 300 == 0) {
-            LogVcam(L"  [WebRtcBridgeMediaStream] Delivered Frame idx=%I64d", sampleIndex_);
+            LogVcam(L"  [WebRtcBridgeMediaStream] Delivered Frame idx=%I64d @ %u FPS", sampleIndex_, currentFps_.load(std::memory_order_relaxed));
         }
     }
     return S_OK;
@@ -456,11 +469,16 @@ HRESULT WebRtcBridgeMediaStream::SetMediaType(IMFMediaType* pMediaType) {
         return MF_E_INVALIDMEDIATYPE;
     }
 
+    UINT32 num = 60, den = 1;
+    if (SUCCEEDED(MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &num, &den)) && den > 0) {
+        currentFps_.store((std::max)(15u, num / den), std::memory_order_relaxed);
+    }
+
     std::lock_guard<std::mutex> lock(lock_);
     if (isShutdown_) return MF_E_SHUTDOWN;
     currentSubType_ = subType;
-    LogVcam(L"[WebRtcBridgeMediaStream::SetMediaType] subType=%s, size=%ux%u",
-        (subType == MFVideoFormat_RGB32) ? L"RGB32" : L"NV12", width, height);
+    LogVcam(L"[WebRtcBridgeMediaStream::SetMediaType] subType=%s, size=%ux%u, fps=%u",
+        (subType == MFVideoFormat_RGB32) ? L"RGB32" : L"NV12", width, height, currentFps_.load(std::memory_order_relaxed));
     return S_OK;
 }
 
@@ -483,13 +501,16 @@ HRESULT WebRtcBridgeMediaStream::CreateVideoSample(IMFSample** ppSample) {
     if (!ppSample) return E_POINTER;
     *ppSample = nullptr;
 
+    uint32_t fps = currentFps_.load(std::memory_order_relaxed);
+    if (fps == 0) fps = 60;
+
     uint64_t seq = 0;
     int64_t tsUs = 0;
     const uint8_t* pSrcNv12 = nullptr;
     bool hasFrame = shmConsumer_.GetLatestFrameDirect(pSrcNv12, seq, tsUs);
     if (!hasFrame || !pSrcNv12) {
         // Continuous monotonic time-based fallback frame index (cannot jump backward)
-        uint64_t fallbackIndex = static_cast<uint64_t>((MFGetSystemTime() * 30) / 10000000);
+        uint64_t fallbackIndex = static_cast<uint64_t>((MFGetSystemTime() * fps) / 10000000);
         fallbackPatternGen_.GenerateFrame(frameScratch_, fallbackIndex, MFGetSystemTime() / 10);
         pSrcNv12 = frameScratch_.data();
     }
@@ -608,7 +629,7 @@ HRESULT WebRtcBridgeMediaStream::CreateVideoSample(IMFSample** ppSample) {
     mediaBuffer->SetCurrentLength(static_cast<DWORD>(outBytes));
 
     // A live video source timestamps each frame with the actual system capture time.
-    LONGLONG sampleDuration = 10000000LL / 30LL;
+    LONGLONG sampleDuration = 10000000LL / static_cast<LONGLONG>(fps > 0 ? fps : 60);
     LONGLONG sampleTime = MFGetSystemTime();
     sampleIndex_++;
 

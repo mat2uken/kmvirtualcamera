@@ -88,6 +88,7 @@ target_link_libraries(VirtualCameraMediaSource PRIVATE
     ole32
     advapi32
     winmm
+    avrt
 )
 
 # -------------------------------------------------------------
@@ -142,6 +143,7 @@ target_link_libraries(Receiver PRIVATE
     user32
     advapi32
     ws2_32
+    avrt
 )
 
 # -------------------------------------------------------------

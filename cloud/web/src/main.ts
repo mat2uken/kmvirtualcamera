@@ -356,7 +356,8 @@ function App() {
                 disabled: () => status.val === "connected" || status.val === "connecting",
                 onchange: (e: Event) => (selectedFps.val = parseInt((e.target as HTMLSelectElement).value, 10))
               },
-              option({ value: "60", selected: selectedFps.val === 60 }, "60 fps (超滑らか)"),
+              option({ value: "120", selected: selectedFps.val === 120 }, "120 fps (極限低遅延・対応端末)"),
+              option({ value: "60", selected: selectedFps.val === 60 }, "60 fps (超低遅延・高滑らか)"),
               option({ value: "30", selected: selectedFps.val === 30 }, "30 fps (標準)"),
               option({ value: "24", selected: selectedFps.val === 24 }, "24 fps (映画風)"),
               option({ value: "15", selected: selectedFps.val === 15 }, "15 fps (省負荷)")

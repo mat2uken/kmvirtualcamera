@@ -92,6 +92,12 @@ void H264Decoder::Shutdown() {
         decoderMft_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
         decoderMft_.Reset();
     }
+    inSample_.Reset();
+    inBuffer_.Reset();
+    inBufferCapacity_ = 0;
+    outSample_.Reset();
+    outBuffer_.Reset();
+    outBufferCapacity_ = 0;
     isInitialized_ = false;
 }
 
@@ -249,29 +255,33 @@ bool H264Decoder::DecodeAccessUnit(
         return false;
     }
 
-    // 1. Create Input Sample Buffer
-    Microsoft::WRL::ComPtr<IMFMediaBuffer> inBuffer;
-    HRESULT hr = MFCreateMemoryBuffer(static_cast<DWORD>(size), &inBuffer);
-    if (FAILED(hr)) return false;
+    // 1. Reusable Input Sample Buffer (Zero heap allocation in steady state)
+    if (!inBuffer_ || inBufferCapacity_ < size) {
+        DWORD req = static_cast<DWORD>(size * 2);
+        DWORD minCap = 512u * 1024u;
+        inBufferCapacity_ = (req > minCap) ? req : minCap;
+        inBuffer_.Reset();
+        inSample_.Reset();
+        HRESULT hr = MFCreateMemoryBuffer(inBufferCapacity_, &inBuffer_);
+        if (FAILED(hr)) return false;
+        hr = MFCreateSample(&inSample_);
+        if (FAILED(hr)) return false;
+        inSample_->AddBuffer(inBuffer_.Get());
+    }
 
     BYTE* pDst = nullptr;
-    hr = inBuffer->Lock(&pDst, nullptr, nullptr);
+    HRESULT hr = inBuffer_->Lock(&pDst, nullptr, nullptr);
     if (FAILED(hr)) return false;
 
     memcpy(pDst, h264Data, size);
-    inBuffer->Unlock();
-    inBuffer->SetCurrentLength(static_cast<DWORD>(size));
+    inBuffer_->Unlock();
+    inBuffer_->SetCurrentLength(static_cast<DWORD>(size));
 
-    Microsoft::WRL::ComPtr<IMFSample> inSample;
-    hr = MFCreateSample(&inSample);
-    if (FAILED(hr)) return false;
-
-    inSample->AddBuffer(inBuffer.Get());
-    inSample->SetSampleTime(timestampUs * 10);
-    inSample->SetSampleDuration(333333);
+    inSample_->SetSampleTime(timestampUs * 10);
+    inSample_->SetSampleDuration(166666); // 60fps base interval
 
     // 2. Feed Sample to MFT
-    hr = decoderMft_->ProcessInput(0, inSample.Get(), 0);
+    hr = decoderMft_->ProcessInput(0, inSample_.Get(), 0);
     if (FAILED(hr) && hr != MF_E_NOTACCEPTING) {
         return false;
     }
@@ -287,19 +297,22 @@ bool H264Decoder::DecodeAccessUnit(
         MFT_OUTPUT_DATA_BUFFER outputBuffer{};
         outputBuffer.dwStreamID = 0;
 
-        Microsoft::WRL::ComPtr<IMFSample> outSample;
-        Microsoft::WRL::ComPtr<IMFMediaBuffer> outBuffer;
-
         if (!(streamInfo.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES))) {
-            DWORD cbSize = streamInfo.cbSize > 0 ? streamInfo.cbSize : (actualWidth_ * actualHeight_ * 3 / 2);
-            hr = MFCreateMemoryBuffer(cbSize, &outBuffer);
-            if (FAILED(hr)) break;
-
-            hr = MFCreateSample(&outSample);
-            if (FAILED(hr)) break;
-
-            outSample->AddBuffer(outBuffer.Get());
-            outputBuffer.pSample = outSample.Get();
+            DWORD cbSize = streamInfo.cbSize > 0 ? streamInfo.cbSize : static_cast<DWORD>(actualWidth_ * actualHeight_ * 3 / 2);
+            DWORD minOutCap = 1920u * 1088u * 2u;
+            DWORD targetCap = (cbSize > minOutCap) ? cbSize : minOutCap;
+            if (!outBuffer_ || outBufferCapacity_ < targetCap) {
+                outBufferCapacity_ = targetCap;
+                outBuffer_.Reset();
+                outSample_.Reset();
+                hr = MFCreateMemoryBuffer(outBufferCapacity_, &outBuffer_);
+                if (FAILED(hr)) break;
+                hr = MFCreateSample(&outSample_);
+                if (FAILED(hr)) break;
+                outSample_->AddBuffer(outBuffer_.Get());
+            }
+            outBuffer_->SetCurrentLength(0);
+            outputBuffer.pSample = outSample_.Get();
         }
 
         DWORD dwStatus = 0;
