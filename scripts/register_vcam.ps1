@@ -20,6 +20,7 @@ if ($DllPath -and (Test-Path $DllPath)) {
 } else {
     $searchLocations = @(
         (Join-Path $PSScriptRoot "..\windows\build\Release\VirtualCameraMediaSource.dll"),
+        (Join-Path $PSScriptRoot "..\VirtualCameraMediaSource.dll"),
         (Join-Path $PSScriptRoot "VirtualCameraMediaSource.dll"),
         (Join-Path $PWD "windows\build\Release\VirtualCameraMediaSource.dll"),
         (Join-Path $PWD "VirtualCameraMediaSource.dll"),
@@ -134,8 +135,19 @@ try {
 
 # 3. Remove an older instance of this camera before registering one device.
 try {
-    $vcamRegTool = Join-Path $PSScriptRoot "..\windows\build\Release\test_vcam_registration.exe"
-    if (Test-Path $vcamRegTool) {
+    $vcamRegTool = $null
+    $vcamRegToolCandidates = @(
+        (Join-Path $PSScriptRoot "..\windows\build\Release\test_vcam_registration.exe"),
+        (Join-Path $PSScriptRoot "..\test_vcam_registration.exe"),
+        (Join-Path $PSScriptRoot "test_vcam_registration.exe")
+    )
+    foreach ($candidate in $vcamRegToolCandidates) {
+        if (Test-Path $candidate) {
+            $vcamRegTool = (Resolve-Path $candidate).Path
+            break
+        }
+    }
+    if ($vcamRegTool -and (Test-Path $vcamRegTool)) {
         Start-Process $vcamRegTool -ArgumentList "--unregister" -Wait -NoNewWindow | Out-Null
     }
     # Also clean legacy instances created with the old category list. Limit
