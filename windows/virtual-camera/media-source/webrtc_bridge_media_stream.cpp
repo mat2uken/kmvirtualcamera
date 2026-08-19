@@ -497,12 +497,60 @@ HRESULT WebRtcBridgeMediaStream::SetSampleAllocator(IUnknown* pAllocator) {
     return S_OK;
 }
 
+HRESULT WebRtcBridgeMediaStream::SetD3DManager(IUnknown* pManager) {
+    if (!pManager) return E_POINTER;
+    Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> devMgr;
+    if (SUCCEEDED(pManager->QueryInterface(IID_PPV_ARGS(&devMgr))) && devMgr) {
+        HANDLE hDevice = nullptr;
+        if (SUCCEEDED(devMgr->OpenDeviceHandle(&hDevice))) {
+            Microsoft::WRL::ComPtr<ID3D11Device> d3d11;
+            if (SUCCEEDED(devMgr->GetVideoService(hDevice, IID_PPV_ARGS(&d3d11))) && d3d11) {
+                std::lock_guard<std::mutex> lock(lock_);
+                dxgiDeviceManager_ = devMgr;
+                hD3DDevice_ = hDevice;
+                d3dDevice_ = d3d11;
+                dxgiConsumer_.Initialize(d3d11.Get());
+                LogVcam(L"[WebRtcBridgeMediaStream::SetD3DManager] Initialized DXGI GPU Direct Zero-Copy pipeline (D3D11)!");
+                return S_OK;
+            }
+        }
+    }
+    return S_OK;
+}
+
 HRESULT WebRtcBridgeMediaStream::CreateVideoSample(IMFSample** ppSample) {
     if (!ppSample) return E_POINTER;
     *ppSample = nullptr;
 
     uint32_t fps = currentFps_.load(std::memory_order_relaxed);
     if (fps == 0) fps = 60;
+
+    // Fast-path: GPU-to-GPU DXGI Direct 0-Copy Sample Delivery
+    uint32_t activeSlot = shmConsumer_.GetActiveSlotIndex();
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> pSharedTex;
+    if (currentSubType_ == MFVideoFormat_NV12 && d3dDevice_ && dxgiConsumer_.GetLatestTexture(activeSlot, pSharedTex) && pSharedTex) {
+        Microsoft::WRL::ComPtr<IMFMediaBuffer> dxgiBuffer;
+        HRESULT hrDxgi = MFCreateDXGISurfaceBuffer(__uuidof(ID3D11Texture2D), pSharedTex.Get(), 0, FALSE, &dxgiBuffer);
+        if (SUCCEEDED(hrDxgi) && dxgiBuffer) {
+            Microsoft::WRL::ComPtr<IMFSample> sample;
+            hrDxgi = MFCreateSample(&sample);
+            if (SUCCEEDED(hrDxgi) && sample) {
+                sample->AddBuffer(dxgiBuffer.Get());
+                LONGLONG sampleDuration = 10000000LL / static_cast<LONGLONG>(fps > 0 ? fps : 60);
+                LONGLONG sampleTime = MFGetSystemTime();
+                sampleIndex_++;
+                sample->SetSampleTime(sampleTime);
+                sample->SetSampleDuration(sampleDuration);
+                sample->SetUINT32(MFSampleExtension_CleanPoint, 1);
+                sample->SetUINT32(MFSampleExtension_Discontinuity, sampleIndex_ == 1 ? 1 : 0);
+                if (sampleIndex_ <= 3 || sampleIndex_ % 300 == 0) {
+                    LogVcam(L"  [WebRtcBridgeMediaStream] GPU-Direct DXGI 0-Copy Sample delivered! (slot=%u, idx=%I64d)", activeSlot, sampleIndex_);
+                }
+                *ppSample = sample.Detach();
+                return S_OK;
+            }
+        }
+    }
 
     uint64_t seq = 0;
     int64_t tsUs = 0;

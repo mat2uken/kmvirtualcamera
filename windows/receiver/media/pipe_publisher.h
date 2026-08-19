@@ -2,7 +2,10 @@
 
 #include "../../common/frame_pipe_protocol.h"
 #include "../../common/shared_memory_frame.h"
+#include "../../common/dxgi_shared_texture.h"
 #include <windows.h>
+#include <d3d11.h>
+#include <wrl/client.h>
 #include <vector>
 #include <thread>
 #include <atomic>
@@ -17,7 +20,7 @@ public:
     void Start();
     void Stop();
 
-    // Publishes a 720p30 NV12 frame to the pipe server and shared memory.
+    // Publishes an NV12 frame to pipe server, CPU shared memory, and DXGI GPU shared texture.
     void PublishFrame(const uint8_t* nv12Data, size_t dataSize, int64_t captureTimeUs = 0);
 
 private:
@@ -35,6 +38,9 @@ private:
     int64_t latestCaptureTimeUs_{0};
 
     shm::SharedMemoryPublisher shmPublisher_;
+    dxgi::DxgiTexturePublisher dxgiPublisher_;
+    Microsoft::WRL::ComPtr<ID3D11Device> d3dDevice_;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3dContext_;
 };
 
 } // namespace km::media

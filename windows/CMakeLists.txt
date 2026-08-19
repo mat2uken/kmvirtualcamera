@@ -85,6 +85,8 @@ target_link_libraries(VirtualCameraMediaSource PRIVATE
     mfuuid
     mf
     mfsensorgroup
+    d3d11
+    dxgi
     ole32
     advapi32
     winmm
@@ -180,6 +182,8 @@ target_include_directories(test_pipe_integration PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
 )
 target_link_libraries(test_pipe_integration PRIVATE
+    d3d11
+    dxgi
     advapi32
 )
 add_test(NAME PipeIntegrationTest COMMAND test_pipe_integration)
@@ -258,6 +262,7 @@ add_executable(test_receiver_startup
     receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
     receiver/media/pipe_publisher.cpp
+    receiver/media/test_pattern_generator.cpp
     receiver/audio/audio_device_enumerator.cpp
     receiver/audio/wasapi_audio_renderer.cpp
     receiver/vcam/virtual_camera_registrar.cpp
@@ -333,6 +338,7 @@ add_test(NAME BandwidthEstimatorTest COMMAND test_bandwidth_estimator)
 add_executable(test_virtual_camera_e2e
     tests/test_virtual_camera_e2e.cpp
     receiver/media/pipe_publisher.cpp
+    receiver/media/test_pattern_generator.cpp
     receiver/vcam/virtual_camera_registrar.cpp
     virtual-camera/media-source/webrtc_bridge_media_source.cpp
     virtual-camera/media-source/webrtc_bridge_media_stream.cpp
@@ -345,6 +351,8 @@ target_include_directories(test_virtual_camera_e2e PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
 )
 target_link_libraries(test_virtual_camera_e2e PRIVATE
+    d3d11
+    dxgi
     mfplat
     mfuuid
     mf
@@ -352,6 +360,8 @@ target_link_libraries(test_virtual_camera_e2e PRIVATE
     mfreadwrite
     ole32
     advapi32
+    winmm
+    avrt
 )
 add_test(NAME VirtualCameraE2ETest COMMAND test_virtual_camera_e2e)
 
@@ -371,6 +381,8 @@ target_include_directories(test_vcam_pixel_fidelity PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
 )
 target_link_libraries(test_vcam_pixel_fidelity PRIVATE
+    d3d11
+    dxgi
     mfplat
     mfuuid
     mf
@@ -378,6 +390,8 @@ target_link_libraries(test_vcam_pixel_fidelity PRIVATE
     mfreadwrite
     ole32
     advapi32
+    winmm
+    avrt
 )
 add_test(NAME VirtualCameraPixelFidelityTest COMMAND test_vcam_pixel_fidelity)
 
@@ -394,6 +408,8 @@ target_include_directories(test_system_vcam_capture PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
 )
 target_link_libraries(test_system_vcam_capture PRIVATE
+    d3d11
+    dxgi
     mfplat
     mfuuid
     mf
@@ -417,6 +433,8 @@ target_include_directories(test_vcam_isolated PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
 )
 target_link_libraries(test_vcam_isolated PRIVATE
+    d3d11
+    dxgi
     mfplat
     mfuuid
     mf
@@ -466,4 +484,26 @@ target_link_libraries(test_vcam_smoothness_verifier PRIVATE
     winmm
 )
 add_test(NAME VirtualCameraSmoothnessTest COMMAND test_vcam_smoothness_verifier)
+
+add_executable(test_vcam_dxgi_zero_copy
+    tests/test_vcam_dxgi_zero_copy.cpp
+    receiver/media/test_pattern_generator.cpp
+)
+target_include_directories(test_vcam_dxgi_zero_copy PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver/media
+    ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
+)
+target_link_libraries(test_vcam_dxgi_zero_copy PRIVATE
+    d3d11
+    dxgi
+    mfplat
+    mfuuid
+    mf
+    mfreadwrite
+    ole32
+    advapi32
+    winmm
+)
+add_test(NAME VirtualCameraDxgiZeroCopyTest COMMAND test_vcam_dxgi_zero_copy)
 

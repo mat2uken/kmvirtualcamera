@@ -511,6 +511,9 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::SetD3DManager(IUnknown* pManager) {
     std::lock_guard<std::mutex> lock(lock_);
     if (isShutdown_) return MF_E_SHUTDOWN;
     dxgiManager_ = pManager;
+    if (stream_ && pManager) {
+        stream_->SetD3DManager(pManager);
+    }
     LogVcam(L"[WebRtcBridgeMediaSource::SetD3DManager] accepted DXGI device manager");
     return S_OK;
 }

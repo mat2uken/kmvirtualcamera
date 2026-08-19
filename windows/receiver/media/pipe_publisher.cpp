@@ -26,12 +26,36 @@ PipePublisher::~PipePublisher() {
 void PipePublisher::Start() {
     if (isRunning_.exchange(true)) return;
     shmPublisher_.Open();
+
+    if (!d3dDevice_) {
+        D3D_FEATURE_LEVEL featureLevels[] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0 };
+        D3D_FEATURE_LEVEL featureLevel;
+        HRESULT hr = D3D11CreateDevice(
+            nullptr,
+            D3D_DRIVER_TYPE_HARDWARE,
+            nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            featureLevels,
+            2,
+            D3D11_SDK_VERSION,
+            &d3dDevice_,
+            &featureLevel,
+            &d3dContext_
+        );
+        if (SUCCEEDED(hr) && d3dDevice_) {
+            dxgiPublisher_.Initialize(d3dDevice_.Get(), protocol::kWidth, protocol::kHeight);
+        }
+    }
+
     ResetEvent(hStopEvent_);
     serverThread_ = std::thread(&PipePublisher::ServerThreadProc, this);
 }
 
 void PipePublisher::Stop() {
     if (!isRunning_.exchange(false)) return;
+    dxgiPublisher_.Close();
+    d3dContext_.Reset();
+    d3dDevice_.Reset();
     shmPublisher_.Close();
     SetEvent(hStopEvent_);
     SetEvent(hNewFrameEvent_);
@@ -42,6 +66,10 @@ void PipePublisher::Stop() {
 
 void PipePublisher::PublishFrame(const uint8_t* nv12Data, size_t dataSize, int64_t captureTimeUs) {
     if (!nv12Data || dataSize != protocol::kPayloadBytes || !isRunning_) return;
+
+    if (dxgiPublisher_.IsInitialized() && d3dContext_) {
+        dxgiPublisher_.PublishNv12Frame(d3dContext_.Get(), nv12Data, protocol::kWidth, protocol::kHeight, captureTimeUs);
+    }
 
     shmPublisher_.PublishFrame(nv12Data, dataSize, captureTimeUs);
 

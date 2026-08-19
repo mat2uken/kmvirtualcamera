@@ -304,6 +304,15 @@ public:
         return true;
     }
 
+    // Return the active slot index (0 or 1) from the shared memory header
+    uint32_t GetActiveSlotIndex() {
+        if (!pBuffer_ && !Open()) return 0;
+        if (!pBuffer_) return 0;
+        const SharedMemoryHeader* hdr = reinterpret_cast<const SharedMemoryHeader*>(pBuffer_);
+        uint32_t idx = hdr->activeSlot;
+        return (idx > 1) ? 0 : idx;
+    }
+
     void Close() {
         if (hEvent_) {
             CloseHandle(hEvent_);

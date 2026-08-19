@@ -4,14 +4,19 @@
 #include <mfidl.h>
 #include <mfobjects.h>
 #include <mferror.h>
+#include <d3d11.h>
+#include <dxgi1_2.h>
 #include <wrl/client.h>
-#include <mutex>
 #include <queue>
+#include <mutex>
 #include <atomic>
-#include <algorithm>
-#include "pipe_frame_receiver.h"
-#include "shared_memory_frame.h"
-#include "test_pattern_generator.h"
+#include <thread>
+#include <vector>
+#include <cstdint>
+#include "../../common/frame_pipe_protocol.h"
+#include "../../common/shared_memory_frame.h"
+#include "../../common/dxgi_shared_texture.h"
+#include "../../receiver/media/test_pattern_generator.h"
 
 #include <ks.h>
 #include <ksproxy.h>
@@ -88,6 +93,7 @@ public:
     HRESULT Shutdown();
     HRESULT SetMediaType(IMFMediaType* pMediaType);
     HRESULT SetSampleAllocator(IUnknown* pAllocator);
+    HRESULT SetD3DManager(IUnknown* pManager);
 
     // Work queue callback for delivering samples
     HRESULT DeliverSamples();
@@ -102,6 +108,10 @@ private:
     Microsoft::WRL::ComPtr<IMFMediaEventQueue> eventQueue_;
     Microsoft::WRL::ComPtr<IMFStreamDescriptor> streamDesc_;
     shm::SharedMemoryConsumer shmConsumer_;
+    dxgi::DxgiTextureConsumer dxgiConsumer_;
+    Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> dxgiDeviceManager_;
+    Microsoft::WRL::ComPtr<ID3D11Device> d3dDevice_;
+    HANDLE hD3DDevice_{nullptr};
 
     std::mutex lock_;
     bool isStarted_{false};
