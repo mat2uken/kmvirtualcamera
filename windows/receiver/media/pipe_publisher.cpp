@@ -25,12 +25,14 @@ PipePublisher::~PipePublisher() {
 
 void PipePublisher::Start() {
     if (isRunning_.exchange(true)) return;
+    shmPublisher_.Open();
     ResetEvent(hStopEvent_);
     serverThread_ = std::thread(&PipePublisher::ServerThreadProc, this);
 }
 
 void PipePublisher::Stop() {
     if (!isRunning_.exchange(false)) return;
+    shmPublisher_.Close();
     SetEvent(hStopEvent_);
     SetEvent(hNewFrameEvent_);
     if (serverThread_.joinable()) {
@@ -40,6 +42,8 @@ void PipePublisher::Stop() {
 
 void PipePublisher::PublishFrame(const uint8_t* nv12Data, size_t dataSize, int64_t captureTimeUs) {
     if (!nv12Data || dataSize != protocol::kPayloadBytes || !isRunning_) return;
+
+    shmPublisher_.PublishFrame(nv12Data, dataSize, captureTimeUs);
 
     AcquireSRWLockExclusive(&srwLock_);
     std::memcpy(latestPayload_.data(), nv12Data, protocol::kPayloadBytes);
@@ -70,7 +74,12 @@ bool PipePublisher::WriteExact(HANDLE hPipe, const uint8_t* buffer, DWORD bytesT
             } else {
                 return false;
             }
+        } else {
+            if (!GetOverlappedResult(hPipe, &ov, &bytesWritten, FALSE)) {
+                return false;
+            }
         }
+        if (bytesWritten == 0) return false;
         totalWritten += bytesWritten;
     }
     return totalWritten == bytesToWrite;
@@ -86,17 +95,32 @@ void PipePublisher::ServerThreadProc() {
     std::vector<uint8_t> framePayload(protocol::kPayloadBytes);
     std::vector<uint8_t> headerBytes(protocol::kHeaderSize);
 
+    // Prepare Security Descriptor allowing NT AUTHORITY\LOCAL SERVICE, ALL APPLICATION PACKAGES, and Everyone
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = FALSE;
+    PSECURITY_DESCRIPTOR pSd = nullptr;
+    if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:(A;;GA;;;WD)(A;;GA;;;AC)(A;;GA;;;LS)(A;;GA;;;SY)(A;;GA;;;AU)S:(ML;;NW;;;LW)",
+            SDDL_REVISION_1,
+            &pSd,
+            nullptr)) {
+        sa.lpSecurityDescriptor = pSd;
+    }
+
+    uint64_t standbySeq = 0;
+
     while (isRunning_) {
-        // Create Pipe instance
+        // Create Pipe instance with permissive DACL and multiple instances support
         HANDLE hPipe = CreateNamedPipeW(
             L"\\\\.\\pipe\\WebRtcBridge.VirtualCamera.v1",
             PIPE_ACCESS_OUTBOUND | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-            1, // 1 instance
+            PIPE_UNLIMITED_INSTANCES,
             static_cast<DWORD>(protocol::kPayloadBytes * 2),
             0,
             0,
-            nullptr
+            &sa
         );
 
         if (hPipe == INVALID_HANDLE_VALUE) {
@@ -118,6 +142,8 @@ void PipePublisher::ServerThreadProc() {
                     CloseHandle(hPipe);
                     break;
                 }
+                DWORD dwDummy = 0;
+                GetOverlappedResult(hPipe, &connectOv, &dwDummy, TRUE);
             } else if (err != ERROR_PIPE_CONNECTED) {
                 CloseHandle(hPipe);
                 continue;
@@ -129,17 +155,22 @@ void PipePublisher::ServerThreadProc() {
             uint64_t seq = 0;
             int64_t tsUs = 0;
 
-            // Wait for new frame using lightweight event instead of condition_variable
+            // Wait for new frame with 33ms timeout (~30fps heartbeat) to ensure standby frames stream smoothly
             HANDLE waitEvents[2] = { hNewFrameEvent_, hStopEvent_ };
-            DWORD waitRes = WaitForMultipleObjects(2, waitEvents, FALSE, INFINITE);
+            DWORD waitRes = WaitForMultipleObjects(2, waitEvents, FALSE, 33);
             if (waitRes == WAIT_OBJECT_0 + 1 || !isRunning_) break;
 
-            // Copy latest frame under SRWLOCK (shared read would work but exclusive is fine for single consumer)
+            // Copy latest frame under SRWLOCK
             AcquireSRWLockShared(&srwLock_);
             std::memcpy(framePayload.data(), latestPayload_.data(), protocol::kPayloadBytes);
             seq = sequence_;
             tsUs = latestCaptureTimeUs_;
             ReleaseSRWLockShared(&srwLock_);
+
+            if (seq == 0) {
+                seq = ++standbySeq;
+                tsUs = static_cast<int64_t>(GetTickCount64() * 1000);
+            }
 
             // Prepare header
             protocol::FrameHeader header = protocol::CreateDefaultHeader(seq, tsUs);
@@ -162,6 +193,9 @@ void PipePublisher::ServerThreadProc() {
         CloseHandle(hPipe);
     }
 
+    if (pSd) {
+        LocalFree(pSd);
+    }
     if (connectOv.hEvent) CloseHandle(connectOv.hEvent);
     if (writeOv.hEvent) CloseHandle(writeOv.hEvent);
 }

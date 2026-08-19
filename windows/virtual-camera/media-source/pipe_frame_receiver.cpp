@@ -1,4 +1,5 @@
 #include "pipe_frame_receiver.h"
+#include "vcam_logger.h"
 #include <chrono>
 
 namespace km::vcam {
@@ -73,7 +74,12 @@ bool PipeFrameReceiver::ReadExact(HANDLE hPipe, uint8_t* buffer, DWORD bytesToRe
             } else {
                 return false;
             }
+        } else {
+            if (!GetOverlappedResult(hPipe, &ov, &bytesRead, FALSE)) {
+                return false;
+            }
         }
+        if (bytesRead == 0) return false;
         totalRead += bytesRead;
     }
     return totalRead == bytesToRead;
@@ -88,6 +94,7 @@ void PipeFrameReceiver::ReaderThreadProc() {
 
     while (isRunning_) {
         // Attempt to connect to pipe
+        LogVcam(L"[PipeFrameReceiver] Attempting to connect to named pipe...");
         HANDLE hPipe = CreateFileW(
             L"\\\\.\\pipe\\WebRtcBridge.VirtualCamera.v1",
             GENERIC_READ,
@@ -99,16 +106,21 @@ void PipeFrameReceiver::ReaderThreadProc() {
         );
 
         if (hPipe == INVALID_HANDLE_VALUE) {
+            DWORD err = GetLastError();
+            LogVcam(L"[PipeFrameReceiver] CreateFileW failed err=%u (0x%08X)", err, err);
             // Wait with backoff or stop event
             DWORD waitRes = WaitForSingleObject(hStopEvent_, 200);
             if (waitRes == WAIT_OBJECT_0 || !isRunning_) break;
             continue;
         }
 
+        LogVcam(L"[PipeFrameReceiver] Successfully connected to pipe publisher!");
+
         // Successfully connected to pipe server
         while (isRunning_) {
             // 1. Read header (64 bytes)
             if (!ReadExact(hPipe, headerBuffer.data(), protocol::kHeaderSize, ov, hStopEvent_)) {
+                LogVcam(L"[PipeFrameReceiver] Read header failed, disconnecting");
                 break; // Pipe disconnected or stopped
             }
 

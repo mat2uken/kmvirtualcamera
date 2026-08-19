@@ -1,18 +1,22 @@
 #include <windows.h>
+#include <timeapi.h>
 #include <unknwn.h>
 #include <atomic>
 #include <new>
+#include <stdio.h>
 #include "webrtc_bridge_guids.h"
 #include "webrtc_bridge_media_source.h"
 #include "webrtc_bridge_activate.h"
+#include "vcam_logger.h"
+#include "module_lifetime.h"
 
 static std::atomic<ULONG> g_serverLocks{0};
 static HINSTANCE g_hInstance = nullptr;
 
 class WebRtcBridgeClassFactory : public IClassFactory {
 public:
-    WebRtcBridgeClassFactory() = default;
-    virtual ~WebRtcBridgeClassFactory() = default;
+    WebRtcBridgeClassFactory() { km::vcam::ModuleObjectCreated(); }
+    virtual ~WebRtcBridgeClassFactory() { km::vcam::ModuleObjectDestroyed(); }
 
     // IUnknown
     IFACEMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
@@ -44,25 +48,25 @@ public:
         *ppv = nullptr;
         if (pUnkOuter) return CLASS_E_NOAGGREGATION;
 
-        // Create Activate object by default (implements IUnknown, IMFActivate, IMFAttributes)
-        Microsoft::WRL::ComPtr<IMFActivate> activate;
-        HRESULT hr = km::vcam::WebRtcBridgeActivate::CreateInstance(&activate);
-        if (FAILED(hr)) return hr;
+        wchar_t szGuid[64] = {0};
+        StringFromGUID2(riid, szGuid, 64);
+        LogVcam(L"[DLL CreateInstance] riid=%s", szGuid);
 
-        HRESULT hrQI = activate->QueryInterface(riid, ppv);
-        if (SUCCEEDED(hrQI)) {
-            return hrQI;
-        }
-
-        // If the caller requested IMFMediaSource or IMFMediaEventGenerator directly
-        if (riid == IID_IMFMediaSource || riid == IID_IMFMediaEventGenerator || riid == IID_IMFGetService) {
+        if (riid == IID_IMFMediaSource || riid == IID_IMFMediaSourceEx) {
             Microsoft::WRL::ComPtr<IMFMediaSource> source;
-            hr = km::vcam::WebRtcBridgeMediaSource::CreateInstance(&source);
+            HRESULT hr = km::vcam::WebRtcBridgeMediaSource::CreateInstance(&source);
+            LogVcam(L"  WebRtcBridgeMediaSource::CreateInstance hr=0x%08X", hr);
             if (FAILED(hr)) return hr;
             return source->QueryInterface(riid, ppv);
         }
 
-        return hrQI;
+        // Create Activate object (implements IMFActivate, IMFAttributes, and IUnknown)
+        Microsoft::WRL::ComPtr<IMFActivate> activate;
+        HRESULT hr = km::vcam::WebRtcBridgeActivate::CreateInstance(&activate);
+        LogVcam(L"  WebRtcBridgeActivate::CreateInstance hr=0x%08X", hr);
+        if (FAILED(hr)) return hr;
+
+        return activate->QueryInterface(riid, ppv);
     }
 
     IFACEMETHODIMP LockServer(BOOL fLock) override {
@@ -82,6 +86,10 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     if (fdwReason == DLL_PROCESS_ATTACH) {
         g_hInstance = hinstDLL;
         DisableThreadLibraryCalls(hinstDLL);
+        timeBeginPeriod(1);
+        LogVcam(L"[DllMain] Process Attach pid=%u", GetCurrentProcessId());
+    } else if (fdwReason == DLL_PROCESS_DETACH) {
+        timeEndPeriod(1);
     }
     return TRUE;
 }
@@ -89,6 +97,12 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv) {
     if (!ppv) return E_POINTER;
     *ppv = nullptr;
+
+    wchar_t szClsid[64] = {0};
+    StringFromGUID2(rclsid, szClsid, 64);
+    wchar_t szIid[64] = {0};
+    StringFromGUID2(riid, szIid, 64);
+    LogVcam(L"[DllGetClassObject] rclsid=%s riid=%s", szClsid, szIid);
 
     if (rclsid != CLSID_WebRtcBridgeVirtualCameraMediaSource) {
         return CLASS_E_CLASSNOTAVAILABLE;
@@ -103,7 +117,7 @@ STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv) {
 }
 
 STDAPI DllCanUnloadNow(void) {
-    return (g_serverLocks == 0) ? S_OK : S_FALSE;
+    return (g_serverLocks == 0 && km::vcam::g_moduleObjectCount == 0) ? S_OK : S_FALSE;
 }
 
 static HRESULT SetRegistryKeyAndValue(HKEY hKeyParent, const wchar_t* subKey, const wchar_t* valueName, const wchar_t* data) {
@@ -135,13 +149,30 @@ STDAPI DllRegisterServer(void) {
     if (FAILED(hr)) return hr;
 
     hr = SetRegistryKeyAndValue(HKEY_CLASSES_ROOT, inprocPath.c_str(), L"ThreadingModel", L"Both");
-    return hr;
+    if (FAILED(hr)) return hr;
+
+    return S_OK;
 }
 
 STDAPI DllUnregisterServer(void) {
     std::wstring clsidPath = L"CLSID\\";
     clsidPath += kClsidString;
     std::wstring inprocPath = clsidPath + L"\\InProcServer32";
+
+    // Remove category keys created by older builds. MFCreateVirtualCamera owns
+    // camera-device registration; the COM class itself must not masquerade as
+    // a DirectShow filter or Media Foundation transform.
+    std::wstring dshowCatPath = L"CLSID\\{860BB310-5D01-11d0-BD3B-00A0C911CE86}\\Instance\\";
+    dshowCatPath += kClsidString;
+    RegDeleteKeyW(HKEY_CLASSES_ROOT, dshowCatPath.c_str());
+
+    std::wstring mfCat1 = L"MediaFoundation\\Transforms\\Categories\\{E5323777-F976-4F5B-9B55-B94699C46E44}\\";
+    mfCat1 += kClsidString;
+    RegDeleteKeyW(HKEY_CLASSES_ROOT, mfCat1.c_str());
+
+    std::wstring mfCat2 = L"MediaFoundation\\Transforms\\Categories\\{65E8773D-8F56-11D0-A3B9-00A0C9223196}\\";
+    mfCat2 += kClsidString;
+    RegDeleteKeyW(HKEY_CLASSES_ROOT, mfCat2.c_str());
 
     RegDeleteKeyW(HKEY_CLASSES_ROOT, inprocPath.c_str());
     LONG res = RegDeleteKeyW(HKEY_CLASSES_ROOT, clsidPath.c_str());

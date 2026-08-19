@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../common/frame_pipe_protocol.h"
+#include "../../common/shared_memory_frame.h"
 #include <windows.h>
 #include <vector>
 #include <thread>
@@ -16,7 +17,7 @@ public:
     void Start();
     void Stop();
 
-    // Publishes a 720p30 NV12 frame to the pipe server. Non-blocking; drops intermediate frames.
+    // Publishes a 720p30 NV12 frame to the pipe server and shared memory.
     void PublishFrame(const uint8_t* nv12Data, size_t dataSize, int64_t captureTimeUs = 0);
 
 private:
@@ -32,6 +33,8 @@ private:
     std::vector<uint8_t> latestPayload_;
     uint64_t sequence_{0};
     int64_t latestCaptureTimeUs_{0};
+
+    shm::SharedMemoryPublisher shmPublisher_;
 };
 
 } // namespace km::media

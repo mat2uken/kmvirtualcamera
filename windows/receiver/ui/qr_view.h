@@ -2,6 +2,8 @@
 
 #include <windows.h>
 #include <string>
+#include <vector>
+#include <mutex>
 #include "../../third_party/qr/qrcodegen.hpp"
 
 namespace km::ui {
@@ -15,6 +17,7 @@ public:
     void Draw(HDC hdc, int x, int y, int width, int height);
 
 private:
+    std::mutex mutex_;
     std::string text_;
     std::vector<std::vector<bool>> qrMatrix_;
     int qrSize_{0};

@@ -10,6 +10,7 @@
 #include "../codec/h264_decoder.h"
 #include "../media/nv12_converter.h"
 #include "../media/pipe_publisher.h"
+#include "../media/test_pattern_generator.h"
 #include "../audio/audio_device_enumerator.h"
 #include "../audio/wasapi_audio_renderer.h"
 #include "../vcam/virtual_camera_registrar.h"
@@ -31,6 +32,7 @@ private:
     void StartNewSignalingSession();
     void SignalingWorkerProc();
     void VideoWorkerProc();
+    void TestPatternWorkerProc();
 
     std::wstring baseUrl_{L"http://127.0.0.1:8787"};
     std::unique_ptr<ui::MainWindow> mainWindow_;
@@ -40,6 +42,7 @@ private:
     codec::H264Decoder h264Decoder_;
     media::Nv12Converter nv12Converter_;
     media::PipePublisher pipePublisher_;
+    media::TestPatternGenerator testPatternGen_;
     audio::AudioDeviceEnumerator audioEnumerator_;
     audio::WasapiAudioRenderer audioRenderer_;
     vcam::VirtualCameraRegistrar vcamRegistrar_;
@@ -55,8 +58,13 @@ private:
     LockFreeH264Queue lockFreeVideoQueue_;
     HANDLE hVideoFrameReadyEvent_{nullptr};
 
+    std::atomic<bool> isTestPatternMode_{false};
+    std::atomic<bool> isTestPatternWorkerRunning_{false};
+    std::thread testPatternThread_;
+
     std::atomic<uint64_t> frameCount_{0};
     std::atomic<int> rotationDegrees_{0};
+    std::atomic<ULONGLONG> lastDecodedFrameTick_{0};
 };
 
 } // namespace km::app

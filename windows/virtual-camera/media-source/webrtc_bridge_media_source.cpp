@@ -1,5 +1,9 @@
 #include "webrtc_bridge_media_source.h"
 #include "webrtc_bridge_activate.h"
+#include "webrtc_bridge_guids.h"
+#include "vcam_logger.h"
+#include "module_lifetime.h"
+#include <mfvirtualcamera.h>
 
 namespace km::vcam {
 
@@ -11,6 +15,7 @@ HRESULT WebRtcBridgeMediaSource::CreateInstance(IMFMediaSource** ppSource) {
     if (!pSource) return E_OUTOFMEMORY;
 
     HRESULT hr = pSource->Initialize();
+    LogVcam(L"[WebRtcBridgeMediaSource::CreateInstance] Initialize hr=0x%08X", hr);
     if (FAILED(hr)) {
         pSource->Release();
         return hr;
@@ -21,19 +26,148 @@ HRESULT WebRtcBridgeMediaSource::CreateInstance(IMFMediaSource** ppSource) {
 }
 
 WebRtcBridgeMediaSource::WebRtcBridgeMediaSource() {
+    ModuleObjectCreated();
     MFCreateEventQueue(&eventQueue_);
+    MFCreateAttributes(&sourceAttributes_, 8);
+    if (sourceAttributes_) {
+        sourceAttributes_->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+        sourceAttributes_->SetString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, kFriendlyName);
+    }
 }
 
 WebRtcBridgeMediaSource::~WebRtcBridgeMediaSource() {
     Shutdown();
+    ModuleObjectDestroyed();
+}
+
+// IMFAttributes implementation
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetItem(REFGUID guidKey, PROPVARIANT* pValue) {
+    return sourceAttributes_ ? sourceAttributes_->GetItem(guidKey, pValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetItemType(REFGUID guidKey, MF_ATTRIBUTE_TYPE* pType) {
+    return sourceAttributes_ ? sourceAttributes_->GetItemType(guidKey, pType) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::CompareItem(REFGUID guidKey, REFPROPVARIANT Value, BOOL* pbResult) {
+    return sourceAttributes_ ? sourceAttributes_->CompareItem(guidKey, Value, pbResult) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::Compare(IMFAttributes* pTheirs, MF_ATTRIBUTES_MATCH_TYPE MatchType, BOOL* pbResult) {
+    return sourceAttributes_ ? sourceAttributes_->Compare(pTheirs, MatchType, pbResult) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetUINT32(REFGUID guidKey, UINT32* punValue) {
+    return sourceAttributes_ ? sourceAttributes_->GetUINT32(guidKey, punValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetUINT64(REFGUID guidKey, UINT64* punValue) {
+    return sourceAttributes_ ? sourceAttributes_->GetUINT64(guidKey, punValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetDouble(REFGUID guidKey, double* pfValue) {
+    return sourceAttributes_ ? sourceAttributes_->GetDouble(guidKey, pfValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetGUID(REFGUID guidKey, GUID* pguidValue) {
+    return sourceAttributes_ ? sourceAttributes_->GetGUID(guidKey, pguidValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetStringLength(REFGUID guidKey, UINT32* pcchLength) {
+    return sourceAttributes_ ? sourceAttributes_->GetStringLength(guidKey, pcchLength) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetString(REFGUID guidKey, LPWSTR pwszValue, UINT32 cchBufSize, UINT32* pcchLength) {
+    return sourceAttributes_ ? sourceAttributes_->GetString(guidKey, pwszValue, cchBufSize, pcchLength) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetAllocatedString(REFGUID guidKey, LPWSTR* ppwszValue, UINT32* pcchLength) {
+    return sourceAttributes_ ? sourceAttributes_->GetAllocatedString(guidKey, ppwszValue, pcchLength) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetBlobSize(REFGUID guidKey, UINT32* pcbBlobSize) {
+    return sourceAttributes_ ? sourceAttributes_->GetBlobSize(guidKey, pcbBlobSize) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetBlob(REFGUID guidKey, UINT8* pBuf, UINT32 cbBufSize, UINT32* pcbBlobSize) {
+    return sourceAttributes_ ? sourceAttributes_->GetBlob(guidKey, pBuf, cbBufSize, pcbBlobSize) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetAllocatedBlob(REFGUID guidKey, UINT8** ppBuf, UINT32* pcbSize) {
+    return sourceAttributes_ ? sourceAttributes_->GetAllocatedBlob(guidKey, ppBuf, pcbSize) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetUnknown(REFGUID guidKey, REFIID riid, LPVOID* ppv) {
+    return sourceAttributes_ ? sourceAttributes_->GetUnknown(guidKey, riid, ppv) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetItem(REFGUID guidKey, REFPROPVARIANT Value) {
+    return sourceAttributes_ ? sourceAttributes_->SetItem(guidKey, Value) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::DeleteItem(REFGUID guidKey) {
+    return sourceAttributes_ ? sourceAttributes_->DeleteItem(guidKey) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::DeleteAllItems() {
+    return sourceAttributes_ ? sourceAttributes_->DeleteAllItems() : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetUINT32(REFGUID guidKey, UINT32 unValue) {
+    return sourceAttributes_ ? sourceAttributes_->SetUINT32(guidKey, unValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetUINT64(REFGUID guidKey, UINT64 unValue) {
+    return sourceAttributes_ ? sourceAttributes_->SetUINT64(guidKey, unValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetDouble(REFGUID guidKey, double fValue) {
+    return sourceAttributes_ ? sourceAttributes_->SetDouble(guidKey, fValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetGUID(REFGUID guidKey, REFGUID guidValue) {
+    return sourceAttributes_ ? sourceAttributes_->SetGUID(guidKey, guidValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetString(REFGUID guidKey, LPCWSTR wszValue) {
+    return sourceAttributes_ ? sourceAttributes_->SetString(guidKey, wszValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetBlob(REFGUID guidKey, const UINT8* pBuf, UINT32 cbBufSize) {
+    return sourceAttributes_ ? sourceAttributes_->SetBlob(guidKey, pBuf, cbBufSize) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetUnknown(REFGUID guidKey, IUnknown* pUnknown) {
+    return sourceAttributes_ ? sourceAttributes_->SetUnknown(guidKey, pUnknown) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::LockStore() {
+    return sourceAttributes_ ? sourceAttributes_->LockStore() : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::UnlockStore() {
+    return sourceAttributes_ ? sourceAttributes_->UnlockStore() : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetCount(UINT32* pcItems) {
+    return sourceAttributes_ ? sourceAttributes_->GetCount(pcItems) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetItemByIndex(UINT32 unIndex, GUID* pguidKey, PROPVARIANT* pValue) {
+    return sourceAttributes_ ? sourceAttributes_->GetItemByIndex(unIndex, pguidKey, pValue) : E_UNEXPECTED;
+}
+IFACEMETHODIMP WebRtcBridgeMediaSource::CopyAllItems(IMFAttributes* pDest) {
+    return sourceAttributes_ ? sourceAttributes_->CopyAllItems(pDest) : E_UNEXPECTED;
 }
 
 HRESULT WebRtcBridgeMediaSource::Initialize() {
     std::lock_guard<std::mutex> lock(lock_);
     if (isInitialized_) return S_OK;
 
+    if (!sourceAttributes_) {
+        HRESULT hrAttr = MFCreateAttributes(&sourceAttributes_, 8);
+        if (FAILED(hrAttr)) return hrAttr;
+    }
+
+    sourceAttributes_->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+    sourceAttributes_->SetString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, L"WebRTC Bridge Virtual Camera");
+    sourceAttributes_->SetGUID(MFT_TRANSFORM_CLSID_Attribute, CLSID_WebRtcBridgeVirtualCameraMediaSource);
+
+    // Sensor profile collection for Windows 11 Frame Server, Camera Settings & Windows Camera App
+    Microsoft::WRL::ComPtr<IMFSensorProfileCollection> collection;
+    HRESULT hr = MFCreateSensorProfileCollection(&collection);
+    if (SUCCEEDED(hr)) {
+        auto addProfile = [&](REFGUID profileId, LPCWSTR filter) {
+            Microsoft::WRL::ComPtr<IMFSensorProfile> profile;
+            if (SUCCEEDED(MFCreateSensorProfile(profileId, 0, nullptr, &profile))) {
+                profile->AddProfileFilter(0, filter);
+                collection->AddProfile(profile.Get());
+            }
+        };
+
+        addProfile(KSCAMERAPROFILE_Legacy, L"((RES==;FRT<=30,1;SUT==))");
+        addProfile(KSCAMERAPROFILE_VideoRecording, L"((RES==;FRT<=30,1;SUT==))");
+        addProfile(KSCAMERAPROFILE_VideoConferencing, L"((RES==;FRT<=30,1;SUT==))");
+        addProfile(KSCAMERAPROFILE_PhotoSequence, L"((RES==;FRT<=30,1;SUT==))");
+        addProfile(KSCAMERAPROFILE_HighFrameRate, L"((RES==;FRT>=60,1;SUT==))");
+
+        sourceAttributes_->SetUnknown(MF_DEVICEMFT_SENSORPROFILE_COLLECTION, collection.Get());
+    }
+
     Microsoft::WRL::ComPtr<IMFStreamDescriptor> streamDesc;
-    HRESULT hr = CreateStreamDescriptor(&streamDesc);
+    hr = CreateStreamDescriptor(&streamDesc);
     if (FAILED(hr)) return hr;
 
     IMFStreamDescriptor* streamDescs[1] = { streamDesc.Get() };
@@ -43,7 +177,7 @@ HRESULT WebRtcBridgeMediaSource::Initialize() {
     hr = presentationDesc_->SelectStream(0);
     if (FAILED(hr)) return hr;
 
-    stream_.Attach(new (std::nothrow) WebRtcBridgeMediaStream(this, streamDesc.Get(), &frameReceiver_));
+    stream_.Attach(new (std::nothrow) WebRtcBridgeMediaStream(this, streamDesc.Get()));
     if (!stream_) return E_OUTOFMEMORY;
 
     isInitialized_ = true;
@@ -54,42 +188,98 @@ HRESULT WebRtcBridgeMediaSource::CreateStreamDescriptor(IMFStreamDescriptor** pp
     if (!ppDescriptor) return E_POINTER;
     *ppDescriptor = nullptr;
 
-    Microsoft::WRL::ComPtr<IMFMediaType> mediaType;
-    HRESULT hr = MFCreateMediaType(&mediaType);
+    // Format 0: NV12 (Native Hardware WebRTC format)
+    Microsoft::WRL::ComPtr<IMFMediaType> nv12Type;
+    HRESULT hr = MFCreateMediaType(&nv12Type);
     if (FAILED(hr)) return hr;
 
-    hr = mediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    hr = nv12Type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    if (FAILED(hr)) return hr;
+    hr = nv12Type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeSize(nv12Type.Get(), MF_MT_FRAME_SIZE, protocol::kWidth, protocol::kHeight);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeRatio(nv12Type.Get(), MF_MT_FRAME_RATE, 30, 1);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeRatio(nv12Type.Get(), MF_MT_FRAME_RATE_RANGE_MIN, 30, 1);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeRatio(nv12Type.Get(), MF_MT_FRAME_RATE_RANGE_MAX, 30, 1);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeRatio(nv12Type.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    if (FAILED(hr)) return hr;
+    hr = nv12Type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    if (FAILED(hr)) return hr;
+    hr = nv12Type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+    if (FAILED(hr)) return hr;
+    hr = nv12Type->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES, TRUE);
+    if (FAILED(hr)) return hr;
+    hr = nv12Type->SetUINT32(MF_MT_SAMPLE_SIZE, protocol::kPayloadBytes);
+    if (FAILED(hr)) return hr;
+    hr = nv12Type->SetUINT32(MF_MT_DEFAULT_STRIDE, protocol::kWidth);
+    if (FAILED(hr)) return hr;
+    uint32_t bitrateNv12 = static_cast<uint32_t>(protocol::kWidth * 1.5 * protocol::kHeight * 8 * 30);
+    hr = nv12Type->SetUINT32(MF_MT_AVG_BITRATE, bitrateNv12);
     if (FAILED(hr)) return hr;
 
-    hr = mediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+    // Format 1: RGB32 (Native Direct3D / Windows Settings swapchain format)
+    Microsoft::WRL::ComPtr<IMFMediaType> rgbType;
+    hr = MFCreateMediaType(&rgbType);
     if (FAILED(hr)) return hr;
 
-    hr = MFSetAttributeSize(mediaType.Get(), MF_MT_FRAME_SIZE, protocol::kWidth, protocol::kHeight);
+    hr = rgbType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    if (FAILED(hr)) return hr;
+    hr = rgbType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeSize(rgbType.Get(), MF_MT_FRAME_SIZE, protocol::kWidth, protocol::kHeight);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeRatio(rgbType.Get(), MF_MT_FRAME_RATE, 30, 1);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeRatio(rgbType.Get(), MF_MT_FRAME_RATE_RANGE_MIN, 30, 1);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeRatio(rgbType.Get(), MF_MT_FRAME_RATE_RANGE_MAX, 30, 1);
+    if (FAILED(hr)) return hr;
+    hr = MFSetAttributeRatio(rgbType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    if (FAILED(hr)) return hr;
+    hr = rgbType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    if (FAILED(hr)) return hr;
+    hr = rgbType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+    if (FAILED(hr)) return hr;
+    hr = rgbType->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES, TRUE);
+    if (FAILED(hr)) return hr;
+    hr = rgbType->SetUINT32(MF_MT_SAMPLE_SIZE, protocol::kWidth * protocol::kHeight * 4);
+    if (FAILED(hr)) return hr;
+    hr = rgbType->SetUINT32(MF_MT_DEFAULT_STRIDE, protocol::kWidth * 4);
+    if (FAILED(hr)) return hr;
+    uint32_t bitrateRgb = static_cast<uint32_t>(protocol::kWidth * 4 * protocol::kHeight * 8 * 30);
+    hr = rgbType->SetUINT32(MF_MT_AVG_BITRATE, bitrateRgb);
     if (FAILED(hr)) return hr;
 
-    hr = MFSetAttributeRatio(mediaType.Get(), MF_MT_FRAME_RATE, 30, 1);
-    if (FAILED(hr)) return hr;
-
-    hr = MFSetAttributeRatio(mediaType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-    if (FAILED(hr)) return hr;
-
-    hr = mediaType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    if (FAILED(hr)) return hr;
-
-    hr = mediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-    if (FAILED(hr)) return hr;
-
-    IMFMediaType* mediaTypes[1] = { mediaType.Get() };
+    // Keep the transport's native format first. Consumers that explicitly
+    // negotiate RGB32 are handled by WebRtcBridgeMediaStream::SetMediaType.
+    IMFMediaType* mediaTypes[2] = { nv12Type.Get(), rgbType.Get() };
     Microsoft::WRL::ComPtr<IMFMediaTypeHandler> handler;
     Microsoft::WRL::ComPtr<IMFStreamDescriptor> streamDesc;
 
-    hr = MFCreateStreamDescriptor(0, 1, mediaTypes, &streamDesc);
+    hr = MFCreateStreamDescriptor(0, 2, mediaTypes, &streamDesc);
+    if (FAILED(hr)) return hr;
+
+    // Set mandatory stream attributes required by FrameServer and Virtual Camera pipeline
+    hr = streamDesc->SetGUID(MF_DEVICESTREAM_STREAM_CATEGORY, PINNAME_VIDEO_CAPTURE);
+    if (FAILED(hr)) return hr;
+
+    hr = streamDesc->SetUINT32(MF_DEVICESTREAM_STREAM_ID, 0);
+    if (FAILED(hr)) return hr;
+
+    hr = streamDesc->SetUINT32(MF_DEVICESTREAM_FRAMESERVER_SHARED, 1);
+    if (FAILED(hr)) return hr;
+
+    hr = streamDesc->SetUINT32(MF_DEVICESTREAM_ATTRIBUTE_FRAMESOURCE_TYPES, MFFrameSourceTypes_Color);
     if (FAILED(hr)) return hr;
 
     hr = streamDesc->GetMediaTypeHandler(&handler);
     if (FAILED(hr)) return hr;
 
-    hr = handler->SetCurrentMediaType(mediaType.Get());
+    hr = handler->SetCurrentMediaType(nv12Type.Get());
     if (FAILED(hr)) return hr;
 
     *ppDescriptor = streamDesc.Detach();
@@ -100,6 +290,10 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::QueryInterface(REFIID riid, void** ppv) 
     if (!ppv) return E_POINTER;
     *ppv = nullptr;
 
+    wchar_t szGuid[64] = {0};
+    StringFromGUID2(riid, szGuid, 64);
+    LogVcam(L"  [WebRtcBridgeMediaSource::QI] riid=%s", szGuid);
+
     if (riid == IID_IUnknown) {
         *ppv = static_cast<IUnknown*>(static_cast<IMFMediaSourceEx*>(this));
     } else if (riid == IID_IMFMediaEventGenerator) {
@@ -108,21 +302,20 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::QueryInterface(REFIID riid, void** ppv) 
         *ppv = static_cast<IMFMediaSource*>(this);
     } else if (riid == IID_IMFMediaSourceEx) {
         *ppv = static_cast<IMFMediaSourceEx*>(this);
+    } else if (riid == IID_IMFAttributes) {
+        *ppv = static_cast<IMFAttributes*>(this);
     } else if (riid == IID_IMFGetService) {
         *ppv = static_cast<IMFGetService*>(this);
-    } else if (riid == __uuidof(IKsControl)) {
-        *ppv = static_cast<IKsControl*>(this);
     } else if (riid == IID_IMFSampleAllocatorControl) {
         *ppv = static_cast<IMFSampleAllocatorControl*>(this);
-    } else if (riid == IID_IMFActivate || riid == IID_IMFAttributes) {
-        Microsoft::WRL::ComPtr<IMFActivate> activate;
-        HRESULT hr = km::vcam::WebRtcBridgeActivate::CreateInstance(&activate);
-        if (FAILED(hr)) return hr;
-        return activate->QueryInterface(riid, ppv);
+    } else if (riid == __uuidof(IKsControl)) {
+        *ppv = static_cast<IKsControl*>(this);
     } else {
+        LogVcam(L"    -> E_NOINTERFACE for riid=%s", szGuid);
         return E_NOINTERFACE;
     }
 
+    LogVcam(L"    -> S_OK for riid=%s", szGuid);
     AddRef();
     return S_OK;
 }
@@ -152,9 +345,15 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::EndGetEvent(IMFAsyncResult* pResult, IMF
 }
 
 IFACEMETHODIMP WebRtcBridgeMediaSource::GetEvent(DWORD dwFlags, IMFMediaEvent** ppEvent) {
-    std::lock_guard<std::mutex> lock(lock_);
-    if (isShutdown_) return MF_E_SHUTDOWN;
-    return eventQueue_ ? eventQueue_->GetEvent(dwFlags, ppEvent) : MF_E_SHUTDOWN;
+    Microsoft::WRL::ComPtr<IMFMediaEventQueue> queue;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        if (isShutdown_) return MF_E_SHUTDOWN;
+        queue = eventQueue_;
+    }
+    // GetEvent may block. Holding the source lock here prevents Start/Stop
+    // from queuing the event that wakes the caller.
+    return queue ? queue->GetEvent(dwFlags, ppEvent) : MF_E_SHUTDOWN;
 }
 
 IFACEMETHODIMP WebRtcBridgeMediaSource::QueueEvent(MediaEventType met, REFGUID guidExtendedType, HRESULT hrStatus, const PROPVARIANT* pvValue) {
@@ -174,6 +373,7 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::GetCharacteristics(DWORD* pdwCharacteris
 }
 
 IFACEMETHODIMP WebRtcBridgeMediaSource::CreatePresentationDescriptor(IMFPresentationDescriptor** ppPresentationDescriptor) {
+    LogVcam(L"[WebRtcBridgeMediaSource::CreatePresentationDescriptor]");
     if (!ppPresentationDescriptor) return E_POINTER;
     *ppPresentationDescriptor = nullptr;
 
@@ -189,19 +389,55 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::Start(
     const GUID* pguidTimeFormat,
     const PROPVARIANT* pvarStartPosition
 ) {
+    LogVcam(L"[WebRtcBridgeMediaSource::Start]");
     std::lock_guard<std::mutex> lock(lock_);
     if (isShutdown_) return MF_E_SHUTDOWN;
 
-    frameReceiver_.Start();
+    // Use the media type selected on the caller's presentation descriptor.
+    // The descriptor owned by the source is cloned, so reading only the
+    // source-side descriptor would silently keep the default subtype.
     if (stream_) {
-        stream_->Start();
+        BOOL isSelected = TRUE;
+        Microsoft::WRL::ComPtr<IMFStreamDescriptor> selectedDescriptor;
+        if (pPresentationDescriptor) {
+            HRESULT hrDescriptor = pPresentationDescriptor->GetStreamDescriptorByIndex(
+                0, &isSelected, &selectedDescriptor);
+            if (FAILED(hrDescriptor)) return hrDescriptor;
+        }
+
+        if (isSelected) {
+            if (!selectedDescriptor) {
+                HRESULT hrDescriptor = presentationDesc_->GetStreamDescriptorByIndex(
+                    0, &isSelected, &selectedDescriptor);
+                if (FAILED(hrDescriptor)) return hrDescriptor;
+            }
+
+            Microsoft::WRL::ComPtr<IMFMediaTypeHandler> handler;
+            Microsoft::WRL::ComPtr<IMFMediaType> mediaType;
+            HRESULT hrType = selectedDescriptor->GetMediaTypeHandler(&handler);
+            if (FAILED(hrType)) return hrType;
+            hrType = handler->GetCurrentMediaType(&mediaType);
+            if (FAILED(hrType)) return hrType;
+            hrType = stream_->SetMediaType(mediaType.Get());
+            if (FAILED(hrType)) return hrType;
+
+            HRESULT hrEvent = eventQueue_->QueueEventParamUnk(
+                MENewStream, GUID_NULL, S_OK, static_cast<IMFMediaStream*>(stream_.Get()));
+            if (FAILED(hrEvent)) return hrEvent;
+            HRESULT hrStart = stream_->Start();
+            if (FAILED(hrStart)) return hrStart;
+        }
     }
 
-    PROPVARIANT var;
-    PropVariantInit(&var);
-    var.vt = VT_EMPTY;
-    HRESULT hr = eventQueue_->QueueEventParamVar(MESourceStarted, GUID_NULL, S_OK, &var);
-    PropVariantClear(&var);
+    PROPVARIANT varStart;
+    PropVariantInit(&varStart);
+    if (pvarStartPosition) {
+        PropVariantCopy(&varStart, pvarStartPosition);
+    } else {
+        varStart.vt = VT_EMPTY;
+    }
+    HRESULT hr = eventQueue_->QueueEventParamVar(MESourceStarted, GUID_NULL, S_OK, &varStart);
+    PropVariantClear(&varStart);
     return hr;
 }
 
@@ -212,7 +448,6 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::Stop() {
     if (stream_) {
         stream_->Stop();
     }
-    frameReceiver_.Stop();
 
     PROPVARIANT var;
     PropVariantInit(&var);
@@ -243,8 +478,6 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::Shutdown() {
     if (isShutdown_) return S_OK;
     isShutdown_ = true;
 
-    frameReceiver_.Stop();
-
     if (stream_) {
         stream_->Shutdown();
         stream_.Reset();
@@ -266,11 +499,7 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::GetService(REFGUID guidService, REFIID r
     std::lock_guard<std::mutex> lock(lock_);
     if (isShutdown_) return MF_E_SHUTDOWN;
 
-    if (guidService == MF_MEDIASOURCE_SERVICE) {
-        return QueryInterface(riid, ppvObject);
-    }
-
-    return MF_E_UNSUPPORTED_SERVICE;
+    return QueryInterface(riid, ppvObject);
 }
 
 // IMFMediaSourceEx
@@ -298,16 +527,37 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::GetStreamAttributes(DWORD dwStreamIdenti
     std::lock_guard<std::mutex> lock(lock_);
     if (isShutdown_) return MF_E_SHUTDOWN;
 
-    if (dwStreamIdentifier != 0) return E_INVALIDARG;
+    if (dwStreamIdentifier != 0) return MF_E_INVALIDSTREAMNUMBER;
 
     if (stream_) {
         return stream_->QueryInterface(IID_IMFAttributes, (void**)ppAttributes);
     }
 
-    return MFCreateAttributes(ppAttributes, 0);
+    return MF_E_NOT_INITIALIZED;
 }
 
 IFACEMETHODIMP WebRtcBridgeMediaSource::SetD3DManager(IUnknown* pManager) {
+    std::lock_guard<std::mutex> lock(lock_);
+    if (isShutdown_) return MF_E_SHUTDOWN;
+    dxgiManager_ = pManager;
+    LogVcam(L"[WebRtcBridgeMediaSource::SetD3DManager] accepted DXGI device manager");
+    return S_OK;
+}
+
+// IMFSampleAllocatorControl
+IFACEMETHODIMP WebRtcBridgeMediaSource::SetDefaultAllocator(DWORD dwOutputStreamID, IUnknown* pAllocator) {
+    if (dwOutputStreamID != 0) return MF_E_INVALIDSTREAMNUMBER;
+    if (!pAllocator) return E_POINTER;
+    std::lock_guard<std::mutex> lock(lock_);
+    if (isShutdown_) return MF_E_SHUTDOWN;
+    return stream_ ? stream_->SetSampleAllocator(pAllocator) : E_UNEXPECTED;
+}
+
+IFACEMETHODIMP WebRtcBridgeMediaSource::GetAllocatorUsage(DWORD dwOutputStreamID, DWORD* pdwInputStreamID, MFSampleAllocatorUsage* peUsage) {
+    if (dwOutputStreamID != 0) return MF_E_INVALIDSTREAMNUMBER;
+    if (!pdwInputStreamID || !peUsage) return E_POINTER;
+    *pdwInputStreamID = dwOutputStreamID;
+    *peUsage = MFSampleAllocatorUsage_DoesNotAllocate;
     return S_OK;
 }
 
@@ -325,17 +575,6 @@ IFACEMETHODIMP WebRtcBridgeMediaSource::KsMethod(PKSMETHOD Method, ULONG MethodL
 IFACEMETHODIMP WebRtcBridgeMediaSource::KsEvent(PKSEVENT Event, ULONG EventLength, LPVOID EventData, ULONG DataLength, ULONG* BytesReturned) {
     if (BytesReturned) *BytesReturned = 0;
     return HRESULT_FROM_WIN32(ERROR_SET_NOT_FOUND);
-}
-
-// IMFSampleAllocatorControl
-IFACEMETHODIMP WebRtcBridgeMediaSource::SetDefaultAllocator(DWORD dwOutputStreamID, IUnknown* pAllocator) {
-    return S_OK;
-}
-
-IFACEMETHODIMP WebRtcBridgeMediaSource::GetAllocatorUsage(DWORD dwOutputStreamID, DWORD* pdwInputStreamID, MFSampleAllocatorUsage* peUsage) {
-    if (pdwInputStreamID) *pdwInputStreamID = 0;
-    if (peUsage) *peUsage = MFSampleAllocatorUsage_DoesNotAllocate;
-    return S_OK;
 }
 
 } // namespace km::vcam

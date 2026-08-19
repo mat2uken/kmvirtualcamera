@@ -24,11 +24,16 @@ public:
     void SetStatusText(const std::wstring& status);
     void SetAudioDevices(const std::vector<audio::AudioDevice>& devices, int selectedIndex);
     void SetVirtualCameraStatus(bool isStarted);
+    void SetVirtualCameraRegistered(bool isRegistered);
+    void SetTestPatternStatus(bool isTestPatternActive);
     void RenderPreviewFrame(std::span<const uint8_t> nv12Data);
 
     void SetOnAudioDeviceChanged(std::function<void(int index)> cb) { onAudioDeviceChanged_ = std::move(cb); }
     void SetOnToggleVirtualCamera(std::function<void()> cb) { onToggleVirtualCamera_ = std::move(cb); }
+    void SetOnRegisterVirtualCamera(std::function<void()> cb) { onRegisterVirtualCamera_ = std::move(cb); }
+    void SetOnCheckCameras(std::function<void()> cb) { onCheckCameras_ = std::move(cb); }
     void SetOnNewSession(std::function<void()> cb) { onNewSession_ = std::move(cb); }
+    void SetOnToggleTestPattern(std::function<void()> cb) { onToggleTestPattern_ = std::move(cb); }
     void SetOnRotationChanged(std::function<void(int degrees)> cb) { onRotationChanged_ = std::move(cb); }
 
 private:
@@ -44,8 +49,12 @@ private:
     HWND hRotationLabel_{nullptr};
     HWND hRotLeftBtn_{nullptr};
     HWND hRotRightBtn_{nullptr};
+    HWND hVcamStatusLabel_{nullptr};
     HWND hVcamButton_{nullptr};
     HWND hNewSessionBtn_{nullptr};
+    HWND hTestPatternBtn_{nullptr};
+    HWND hRegisterVcamBtn_{nullptr};
+    HWND hCheckCamerasBtn_{nullptr};
     HWND hStatusLabel_{nullptr};
     HWND hUrlEdit_{nullptr};
     HFONT hFont_{nullptr};
@@ -61,7 +70,10 @@ private:
 
     std::function<void(int index)> onAudioDeviceChanged_;
     std::function<void()> onToggleVirtualCamera_;
+    std::function<void()> onRegisterVirtualCamera_;
+    std::function<void()> onCheckCameras_;
     std::function<void()> onNewSession_;
+    std::function<void()> onToggleTestPattern_;
     std::function<void(int degrees)> onRotationChanged_;
 };
 

@@ -70,20 +70,24 @@ add_library(VirtualCameraMediaSource SHARED
     virtual-camera/media-source/webrtc_bridge_media_source.cpp
     virtual-camera/media-source/webrtc_bridge_media_stream.cpp
     virtual-camera/media-source/pipe_frame_receiver.cpp
+    receiver/media/test_pattern_generator.cpp
     virtual-camera/media-source/VirtualCameraMediaSource.def
 )
 
 target_include_directories(VirtualCameraMediaSource PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/common
     ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver/media
 )
 
 target_link_libraries(VirtualCameraMediaSource PRIVATE
     mfplat
     mfuuid
     mf
+    mfsensorgroup
     ole32
     advapi32
+    winmm
 )
 
 # -------------------------------------------------------------
@@ -99,6 +103,7 @@ add_executable(Receiver WIN32
     receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
     receiver/media/pipe_publisher.cpp
+    receiver/media/test_pattern_generator.cpp
     receiver/audio/audio_device_enumerator.cpp
     receiver/audio/wasapi_audio_renderer.cpp
     receiver/vcam/virtual_camera_registrar.cpp
@@ -200,12 +205,20 @@ add_test(NAME QrGeneratorTest COMMAND test_qr_generator)
 
 add_executable(test_vcam_registration
     tests/test_vcam_registration.cpp
+    receiver/vcam/virtual_camera_registrar.cpp
+)
+target_include_directories(test_vcam_registration PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
 )
 target_link_libraries(test_vcam_registration PRIVATE
     mfplat
     mfuuid
     mf
     ole32
+    advapi32
+    shell32
+    user32
 )
 add_test(NAME VcamRegistrationTest COMMAND test_vcam_registration)
 
@@ -313,3 +326,142 @@ target_include_directories(test_bandwidth_estimator PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/receiver
 )
 add_test(NAME BandwidthEstimatorTest COMMAND test_bandwidth_estimator)
+
+# Test Target 8: test_virtual_camera_e2e
+add_executable(test_virtual_camera_e2e
+    tests/test_virtual_camera_e2e.cpp
+    receiver/media/pipe_publisher.cpp
+    receiver/vcam/virtual_camera_registrar.cpp
+    virtual-camera/media-source/webrtc_bridge_media_source.cpp
+    virtual-camera/media-source/webrtc_bridge_media_stream.cpp
+    virtual-camera/media-source/webrtc_bridge_activate.cpp
+    virtual-camera/media-source/pipe_frame_receiver.cpp
+)
+target_include_directories(test_virtual_camera_e2e PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+    ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
+)
+target_link_libraries(test_virtual_camera_e2e PRIVATE
+    mfplat
+    mfuuid
+    mf
+    mfsensorgroup
+    mfreadwrite
+    ole32
+    advapi32
+)
+add_test(NAME VirtualCameraE2ETest COMMAND test_virtual_camera_e2e)
+
+# Test Target 9: test_vcam_pixel_fidelity
+add_executable(test_vcam_pixel_fidelity
+    tests/test_vcam_pixel_fidelity.cpp
+    receiver/media/pipe_publisher.cpp
+    receiver/media/test_pattern_generator.cpp
+    virtual-camera/media-source/webrtc_bridge_media_source.cpp
+    virtual-camera/media-source/webrtc_bridge_media_stream.cpp
+    virtual-camera/media-source/webrtc_bridge_activate.cpp
+    virtual-camera/media-source/pipe_frame_receiver.cpp
+)
+target_include_directories(test_vcam_pixel_fidelity PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+    ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
+)
+target_link_libraries(test_vcam_pixel_fidelity PRIVATE
+    mfplat
+    mfuuid
+    mf
+    mfsensorgroup
+    mfreadwrite
+    ole32
+    advapi32
+)
+add_test(NAME VirtualCameraPixelFidelityTest COMMAND test_vcam_pixel_fidelity)
+
+# Test Target 10: test_system_vcam_capture (Windows Device Enumeration Capture)
+add_executable(test_system_vcam_capture
+    tests/test_system_vcam_capture.cpp
+    receiver/media/pipe_publisher.cpp
+    receiver/media/test_pattern_generator.cpp
+    receiver/vcam/virtual_camera_registrar.cpp
+)
+target_include_directories(test_system_vcam_capture PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+    ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
+)
+target_link_libraries(test_system_vcam_capture PRIVATE
+    mfplat
+    mfuuid
+    mf
+    mfsensorgroup
+    mfreadwrite
+    ole32
+    advapi32
+)
+add_test(NAME SystemVirtualCameraCaptureTest COMMAND test_system_vcam_capture)
+
+# Test Target 11: test_vcam_isolated (Minimal Standalone VCam Feeder & Capture Test)
+add_executable(test_vcam_isolated
+    tests/test_vcam_isolated.cpp
+    receiver/media/pipe_publisher.cpp
+    receiver/media/test_pattern_generator.cpp
+    receiver/vcam/virtual_camera_registrar.cpp
+)
+target_include_directories(test_vcam_isolated PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+    ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
+)
+target_link_libraries(test_vcam_isolated PRIVATE
+    mfplat
+    mfuuid
+    mf
+    mfsensorgroup
+    mfreadwrite
+    ole32
+    advapi32
+)
+add_test(NAME VirtualCameraIsolatedTest COMMAND test_vcam_isolated)
+
+# Test Target 12: test_vcam_e2e_capture (Real Windows FrameServer Capture Test)
+add_executable(test_vcam_e2e_capture
+    tests/test_vcam_e2e_capture.cpp
+    receiver/media/test_pattern_generator.cpp
+    receiver/vcam/virtual_camera_registrar.cpp
+)
+target_include_directories(test_vcam_e2e_capture PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+    ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
+)
+target_link_libraries(test_vcam_e2e_capture PRIVATE
+    mfplat
+    mfuuid
+    mf
+    mfreadwrite
+    ole32
+    advapi32
+    winmm
+)
+add_executable(test_vcam_smoothness_verifier
+    tests/test_vcam_smoothness_verifier.cpp
+    receiver/media/test_pattern_generator.cpp
+)
+target_include_directories(test_vcam_smoothness_verifier PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver/media
+    ${CMAKE_CURRENT_SOURCE_DIR}/virtual-camera/media-source
+)
+target_link_libraries(test_vcam_smoothness_verifier PRIVATE
+    mfplat
+    mfuuid
+    mf
+    mfreadwrite
+    ole32
+    advapi32
+    winmm
+)
+add_test(NAME VirtualCameraSmoothnessTest COMMAND test_vcam_smoothness_verifier)
+

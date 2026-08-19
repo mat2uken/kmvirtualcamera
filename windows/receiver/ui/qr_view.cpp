@@ -6,6 +6,7 @@ namespace km::ui {
 QrView::QrView() = default;
 
 void QrView::SetText(const std::string& text) {
+    std::lock_guard<std::mutex> lock(mutex_);
     text_ = text;
     qrMatrix_.clear();
     qrSize_ = 0;
@@ -27,6 +28,7 @@ void QrView::SetText(const std::string& text) {
 }
 
 void QrView::Draw(HDC hdc, int x, int y, int width, int height) {
+    std::lock_guard<std::mutex> lock(mutex_);
     // Fill white background
     RECT rect{ x, y, x + width, y + height };
     HBRUSH whiteBrush = CreateSolidBrush(RGB(255, 255, 255));

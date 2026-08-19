@@ -9,4 +9,4 @@ inline constexpr GUID CLSID_WebRtcBridgeVirtualCameraMediaSource = {
 };
 
 inline constexpr const wchar_t* kClsidString = L"{84BA9D22-C5E5-4674-8848-A979BD2764B2}";
-inline constexpr const wchar_t* kFriendlyName = L"WebRTC Bridge Virtual Camera Media Source";
+inline constexpr const wchar_t* kFriendlyName = L"WebRTC Bridge Virtual Camera";

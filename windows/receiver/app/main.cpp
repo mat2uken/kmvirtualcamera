@@ -59,12 +59,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         }
     }
 
-    {
+    try {
         km::app::AppController controller;
         if (controller.Initialize(hInstance, baseUrl)) {
+            std::cout << "[Main] Initialized successfully, entering RunMessageLoop..." << std::endl;
             controller.RunMessageLoop();
+            std::cout << "[Main] Exited RunMessageLoop." << std::endl;
+        } else {
+            std::cerr << "[Main] ERROR: controller.Initialize failed!" << std::endl;
         }
         controller.Shutdown();
+    } catch (const std::exception& e) {
+        std::cerr << "[Main] FATAL EXCEPTION: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "[Main] FATAL UNKNOWN EXCEPTION!" << std::endl;
     }
 
     MFShutdown();

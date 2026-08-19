@@ -38,8 +38,13 @@ bool AppController::Initialize(HINSTANCE hInstance, std::wstring baseUrl) {
         audioRenderer_.Start();
     }
 
-    // 2. Start Named Pipe Publisher
+    // 2. Start Named Pipe & Shared Memory Publisher
     pipePublisher_.Start();
+    bool vcamRegistered = vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered();
+    bool vcamActive = vcamRegistered;
+    if (!vcamRegistered) {
+        vcamActive = vcamRegistrar_.StartVirtualCamera(L"WebRTC Bridge Virtual Camera");
+    }
 
     // 3. Create Main Window
     mainWindow_ = std::make_unique<ui::MainWindow>();
@@ -47,6 +52,8 @@ bool AppController::Initialize(HINSTANCE hInstance, std::wstring baseUrl) {
         return false;
     }
 
+    mainWindow_->SetVirtualCameraStatus(vcamActive);
+    mainWindow_->SetVirtualCameraRegistered(vcamRegistered);
     mainWindow_->SetAudioDevices(audioDevices_, selectedAudioIndex_);
     mainWindow_->SetOnAudioDeviceChanged([this](int idx) {
         if (idx >= 0 && idx < static_cast<int>(audioDevices_.size())) {
@@ -61,9 +68,50 @@ bool AppController::Initialize(HINSTANCE hInstance, std::wstring baseUrl) {
             vcamRegistrar_.StopVirtualCamera();
             mainWindow_->SetVirtualCameraStatus(false);
         } else {
-            bool ok = vcamRegistrar_.StartVirtualCamera();
+            bool ok = vcamRegistrar_.StartVirtualCamera(L"WebRTC Bridge Virtual Camera");
             mainWindow_->SetVirtualCameraStatus(ok);
         }
+    });
+
+    mainWindow_->SetOnRegisterVirtualCamera([this]() {
+        bool ok = vcam::VirtualCameraRegistrar::RegisterVirtualCameraWithElevation(mainWindow_->GetHwnd());
+        bool isReg = vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered();
+        mainWindow_->SetVirtualCameraRegistered(isReg);
+        if (isReg) {
+            vcamRegistrar_.StartVirtualCamera(L"WebRTC Bridge Virtual Camera");
+            mainWindow_->SetVirtualCameraStatus(true);
+            MessageBoxW(mainWindow_->GetHwnd(),
+                L"仮想カメラのシステム登録が完了しました。\nWindows「カメラ」アプリや OS 設定から「WebRTC Bridge Virtual Camera」をご利用いただけます。",
+                L"仮想カメラ登録完了", MB_OK | MB_ICONINFORMATION);
+        } else if (!ok) {
+            MessageBoxW(mainWindow_->GetHwnd(),
+                L"仮想カメラの登録がキャンセルされたか、エラーが発生しました。",
+                L"登録結果", MB_OK | MB_ICONWARNING);
+        }
+    });
+
+    mainWindow_->SetOnCheckCameras([this]() {
+        auto cameras = vcam::VirtualCameraRegistrar::EnumerateSystemCameras();
+        bool isReg = vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered();
+        mainWindow_->SetVirtualCameraRegistered(isReg);
+
+        std::wstring msg = L"【Windows 認識カメラ一覧 (計 " + std::to_wstring(cameras.size()) + L" 台)】\n\n";
+        if (cameras.empty()) {
+            msg += L"(カメラデバイスが見つかりませんでした)\n";
+        } else {
+            for (size_t i = 0; i < cameras.size(); ++i) {
+                msg += std::to_wstring(i + 1) + L". " + cameras[i].friendlyName;
+                if (cameras[i].isVirtualCamera) {
+                    msg += L" [KM仮想カメラ: 認識中]";
+                }
+                msg += L"\n";
+            }
+        }
+
+        msg += L"\n----------------------------------------\n";
+        msg += L"仮想カメラ状態: " + std::wstring(isReg ? L"システム登録済み (正常)" : L"未登録 (「システム登録 (UAC)」ボタンを押してください)");
+
+        MessageBoxW(mainWindow_->GetHwnd(), msg.c_str(), L"カメラデバイス認識状況", MB_OK | MB_ICONINFORMATION);
     });
 
     mainWindow_->SetOnNewSession([this]() {
@@ -73,6 +121,15 @@ bool AppController::Initialize(HINSTANCE hInstance, std::wstring baseUrl) {
     mainWindow_->SetOnRotationChanged([this](int deg) {
         rotationDegrees_.store(deg);
     });
+
+    mainWindow_->SetOnToggleTestPattern([this]() {
+        bool current = isTestPatternMode_.load();
+        isTestPatternMode_.store(!current);
+        mainWindow_->SetTestPatternStatus(!current);
+    });
+
+    isTestPatternWorkerRunning_ = true;
+    testPatternThread_ = std::thread(&AppController::TestPatternWorkerProc, this);
 
     mainWindow_->Show(SW_SHOWNORMAL);
 
@@ -216,8 +273,12 @@ void AppController::VideoWorkerProc() {
                     rotationDegrees_.load(std::memory_order_relaxed)
                 );
 
-                mainWindow_->RenderPreviewFrame(localNv12Buffer);
-                pipePublisher_.PublishFrame(localNv12Buffer.data(), protocol::kPayloadBytes, tsUs);
+                lastDecodedFrameTick_.store(GetTickCount64(), std::memory_order_relaxed);
+
+                if (!isTestPatternMode_.load(std::memory_order_relaxed)) {
+                    mainWindow_->RenderPreviewFrame(localNv12Buffer);
+                    pipePublisher_.PublishFrame(localNv12Buffer.data(), protocol::kPayloadBytes, tsUs);
+                }
 
                 uint64_t count = frameCount_.fetch_add(1, std::memory_order_relaxed) + 1;
                 if (count % 90 == 1) {
@@ -225,6 +286,27 @@ void AppController::VideoWorkerProc() {
                 }
             }
         }
+    }
+}
+
+void AppController::TestPatternWorkerProc() {
+    std::vector<uint8_t> testNv12(protocol::kPayloadBytes);
+    uint64_t frameIdx = 0;
+    while (isTestPatternWorkerRunning_) {
+        ULONGLONG now = GetTickCount64();
+        ULONGLONG lastDecoded = lastDecodedFrameTick_.load(std::memory_order_relaxed);
+        bool testMode = isTestPatternMode_.load(std::memory_order_relaxed);
+        bool hasLiveStream = (now - lastDecoded < 1000);
+
+        if (testMode || !hasLiveStream) {
+            int64_t tsUs = static_cast<int64_t>(now * 1000);
+            testPatternGen_.GenerateFrame(testNv12, frameIdx++, tsUs);
+            if (testMode) {
+                mainWindow_->RenderPreviewFrame(testNv12);
+            }
+            pipePublisher_.PublishFrame(testNv12.data(), protocol::kPayloadBytes, tsUs);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(33)); // 30fps
     }
 }
 
@@ -246,6 +328,11 @@ void AppController::Shutdown() {
     SetEvent(hVideoFrameReadyEvent_);
     if (videoWorkerThread_.joinable()) {
         videoWorkerThread_.join();
+    }
+
+    isTestPatternWorkerRunning_ = false;
+    if (testPatternThread_.joinable()) {
+        testPatternThread_.join();
     }
 
     vcamRegistrar_.StopVirtualCamera();

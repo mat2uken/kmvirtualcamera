@@ -174,6 +174,32 @@ Run-Step "11. Live Receiver.exe + Playwright Browser E2E Integration Test" {
     }
 }
 
+# 12. Virtual Camera Media Source & Windows Source Reader Consumer Pipeline Test
+Run-Step "12. Virtual Camera Media Source & Windows Source Reader Integration Test" {
+    $exe = Join-Path $rootDir "windows\build\Release\test_virtual_camera_e2e.exe"
+    if (-not (Test-Path $exe)) {
+        throw "test_virtual_camera_e2e.exe not found at $exe"
+    }
+    $out = & $exe 2>&1
+    Write-Host "     $($out | Out-String)" -ForegroundColor Gray
+    if ($LASTEXITCODE -ne 0) {
+        throw "Virtual Camera E2E test failed"
+    }
+}
+
+# 13. Virtual Camera Pixel-Level 100% Fidelity & Dynamic Switching Automated Test
+Run-Step "13. Virtual Camera Pixel-Level 100% Exact Match Fidelity Test" {
+    $exe = Join-Path $rootDir "windows\build\Release\test_vcam_pixel_fidelity.exe"
+    if (-not (Test-Path $exe)) {
+        throw "test_vcam_pixel_fidelity.exe not found at $exe"
+    }
+    $out = & $exe 2>&1
+    Write-Host "     $($out | Out-String)" -ForegroundColor Gray
+    if ($LASTEXITCODE -ne 0) {
+        throw "Virtual Camera Pixel Fidelity test failed"
+    }
+}
+
 Write-Host "============================================================" -ForegroundColor Cyan
 if ($allPassed) {
     Write-Host "  >>> ALL AUTOMATED VERIFICATION TESTS PASSED (100%) <<<    " -ForegroundColor Green
@@ -184,3 +210,4 @@ if ($allPassed) {
     Write-Host "============================================================" -ForegroundColor Cyan
     exit 1
 }
+
