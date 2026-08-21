@@ -40,6 +40,7 @@ function App() {
   const audioDevices = van.state<{ id: string; label: string }[]>([]);
   const selectedVideo = van.state<string>("");
   const selectedAudio = van.state<string>("");
+  const facingMode = van.state<"user" | "environment">("environment");
 
   // Quality & Encoding settings
   const selectedResolution = van.state<string>("1280x720");
@@ -62,49 +63,117 @@ function App() {
   const updateDevices = async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const v = devices.filter((d) => d.kind === "videoinput").map((d, i) => ({ id: d.deviceId, label: d.label || `カメラ ${i + 1}` }));
-      const a = devices.filter((d) => d.kind === "audioinput").map((d, i) => ({ id: d.deviceId, label: d.label || `マイク ${i + 1}` }));
+      const v = devices
+        .filter((d) => d.kind === "videoinput")
+        .map((d, i) => ({ id: d.deviceId, label: d.label || (d.deviceId ? `カメラ ${i + 1}` : "カメラ") }));
+      const a = devices
+        .filter((d) => d.kind === "audioinput")
+        .map((d, i) => ({ id: d.deviceId, label: d.label || (d.deviceId ? `マイク ${i + 1}` : "マイク") }));
       videoDevices.val = v;
       audioDevices.val = a;
-      if (v.length && !selectedVideo.val) selectedVideo.val = v[0].id;
-      if (a.length && !selectedAudio.val) selectedAudio.val = a[0].id;
+
+      const activeVideoSettings = rtc.getActiveVideoTrackSettings();
+      if (activeVideoSettings?.deviceId && v.some((d) => d.id === activeVideoSettings.deviceId)) {
+        selectedVideo.val = activeVideoSettings.deviceId;
+      } else if (v.length > 0 && (!selectedVideo.val || !v.some((d) => d.id === selectedVideo.val))) {
+        selectedVideo.val = v[0].id;
+      }
+
+      const activeAudioSettings = rtc.getActiveAudioTrackSettings();
+      if (activeAudioSettings?.deviceId && a.some((d) => d.id === activeAudioSettings.deviceId)) {
+        selectedAudio.val = activeAudioSettings.deviceId;
+      } else if (a.length > 0 && (!selectedAudio.val || !a.some((d) => d.id === selectedAudio.val))) {
+        selectedAudio.val = a[0].id;
+      }
     } catch {
       // Ignore if permission not granted yet
     }
   };
 
   updateDevices();
+  if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === "function") {
+    navigator.mediaDevices.addEventListener("devicechange", updateDevices);
+  }
 
-  // Dynamic Camera / Mic Switch Handler
-  const handleDeviceChange = async (newVideoId: string, newAudioId: string) => {
+  // Dynamic Camera Switch Handler
+  const handleVideoChange = async (newVideoId: string) => {
     selectedVideo.val = newVideoId;
-    selectedAudio.val = newAudioId;
     const { width, height } = getTargetDimensions();
+    addLog(`カメラ切り替え要求: ${newVideoId || "デフォルト"}`);
 
-    if (status.val === "connected" || status.val === "connecting") {
+    if (status.val === "connected" || status.val === "connecting" || status.val === "requesting_media") {
       try {
-        const stream = await rtc.switchMedia(newVideoId, newAudioId, width, height, selectedFps.val);
+        const stream = await rtc.switchVideo(newVideoId, width, height, selectedFps.val);
         (videoElem as HTMLVideoElement).srcObject = stream;
         await updateDevices();
+        addLog("カメラ切り替え完了");
       } catch (err) {
-        console.error("Failed to switch media:", err);
+        console.error("Failed to switch video:", err);
+        addLog(`カメラ切り替えエラー: ${err}`);
+      }
+    }
+  };
+
+  // Dynamic Microphone Switch Handler
+  const handleAudioChange = async (newAudioId: string) => {
+    selectedAudio.val = newAudioId;
+    addLog(`マイク切り替え要求: ${newAudioId || "デフォルト"}`);
+
+    if (status.val === "connected" || status.val === "connecting" || status.val === "requesting_media") {
+      try {
+        const stream = await rtc.switchAudio(newAudioId);
+        (videoElem as HTMLVideoElement).srcObject = stream;
+        await updateDevices();
+        addLog("マイク切り替え完了");
+      } catch (err) {
+        console.error("Failed to switch audio:", err);
+        addLog(`マイク切り替えエラー: ${err}`);
       }
     }
   };
 
   // Flip Camera (Toggle between front / back camera)
   const handleFlipCamera = async () => {
-    if (videoDevices.val.length > 1) {
-      const curIdx = videoDevices.val.findIndex((d) => d.id === selectedVideo.val);
-      const nextIdx = (curIdx + 1) % videoDevices.val.length;
-      const nextId = videoDevices.val[nextIdx].id;
-      await handleDeviceChange(nextId, selectedAudio.val);
+    const { width, height } = getTargetDimensions();
+    addLog("📷 カメラ切り替え (Flip) 実行...");
+
+    // Toggle facingMode state
+    const nextFacing = facingMode.val === "environment" ? "user" : "environment";
+    facingMode.val = nextFacing;
+
+    const validDevices = videoDevices.val.filter((d) => d.id);
+    if (validDevices.length > 1) {
+      const curIdx = validDevices.findIndex((d) => d.id === selectedVideo.val);
+      const nextIdx = (curIdx + 1) % validDevices.length;
+      const nextDevice = validDevices[nextIdx];
+      selectedVideo.val = nextDevice.id;
+      addLog(`次のカメラへ切り替え: ${nextDevice.label}`);
+
+      if (status.val === "connected" || status.val === "connecting" || status.val === "requesting_media") {
+        try {
+          const stream = await rtc.switchVideo(nextDevice.id, width, height, selectedFps.val);
+          (videoElem as HTMLVideoElement).srcObject = stream;
+          await updateDevices();
+        } catch (err) {
+          console.warn("Flip camera by id failed, falling back to facingMode:", err);
+          try {
+            const stream = await rtc.switchVideo(nextFacing, width, height, selectedFps.val);
+            (videoElem as HTMLVideoElement).srcObject = stream;
+            await updateDevices();
+          } catch {}
+        }
+      }
     } else {
-      // Toggle facing mode constraint directly
-      const { width, height } = getTargetDimensions();
-      if (status.val === "connected" || status.val === "connecting") {
-        const stream = await rtc.switchMedia("", selectedAudio.val, width, height, selectedFps.val);
-        (videoElem as HTMLVideoElement).srcObject = stream;
+      addLog(`facingMode 切り替え: ${nextFacing === "user" ? "インカメラ" : "アウトカメラ"}`);
+      if (status.val === "connected" || status.val === "connecting" || status.val === "requesting_media") {
+        try {
+          const stream = await rtc.switchVideo(nextFacing, width, height, selectedFps.val);
+          (videoElem as HTMLVideoElement).srcObject = stream;
+          await updateDevices();
+        } catch (err) {
+          console.error("Flip camera by facingMode failed:", err);
+          addLog(`facingMode 切り替えエラー: ${err}`);
+        }
       }
     }
   };
@@ -147,7 +216,8 @@ function App() {
       addLog("カメラ・マイクの取得を開始...");
 
       const { width, height } = getTargetDimensions();
-      const stream = await rtc.getMedia(selectedVideo.val, selectedAudio.val, width, height, selectedFps.val);
+      const initialVideo = selectedVideo.val || facingMode.val;
+      const stream = await rtc.getMedia(initialVideo, selectedAudio.val, width, height, selectedFps.val);
       (videoElem as HTMLVideoElement).srcObject = stream;
       await updateDevices();
       addLog(`カメラ取得完了 (${width}x${height}, ${selectedFps.val}fps)`);
@@ -295,13 +365,19 @@ function App() {
         div(
           { class: "form-group" },
           label({ class: "label" }, "カメラ選択"),
-          select(
-            {
-              class: "select",
-              onchange: (e: Event) => handleDeviceChange((e.target as HTMLSelectElement).value, selectedAudio.val)
-            },
-            () => videoDevices.val.map((d) => option({ value: d.id, selected: d.id === selectedVideo.val }, d.label))
-          )
+          () =>
+            select(
+              {
+                class: "select",
+                value: selectedVideo.val,
+                onchange: (e: Event) => handleVideoChange((e.target as HTMLSelectElement).value)
+              },
+              videoDevices.val.length > 0
+                ? videoDevices.val.map((d) =>
+                    option({ value: d.id, selected: d.id === selectedVideo.val }, d.label)
+                  )
+                : [option({ value: "" }, "カメラ (検出中または未接続)")]
+            )
         ),
         button(
           {
@@ -317,13 +393,19 @@ function App() {
       div(
         { class: "form-group" },
         label({ class: "label" }, "マイク選択"),
-        select(
-          {
-            class: "select",
-            onchange: (e: Event) => handleDeviceChange(selectedVideo.val, (e.target as HTMLSelectElement).value)
-          },
-          () => audioDevices.val.map((d) => option({ value: d.id, selected: d.id === selectedAudio.val }, d.label))
-        )
+        () =>
+          select(
+            {
+              class: "select",
+              value: selectedAudio.val,
+              onchange: (e: Event) => handleAudioChange((e.target as HTMLSelectElement).value)
+            },
+            audioDevices.val.length > 0
+              ? audioDevices.val.map((d) =>
+                  option({ value: d.id, selected: d.id === selectedAudio.val }, d.label)
+                )
+              : [option({ value: "" }, "マイク (検出中または未接続)")]
+          )
       ),
 
       // Video Quality Settings

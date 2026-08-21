@@ -90,13 +90,35 @@ function enhanceSdpForLowLatency(sdp: string, bitrateBps = 2_500_000): string {
   return result.join("\r\n");
 }
 
+function buildVideoConstraint(
+  deviceIdOrFacing?: string,
+  width = 1280,
+  height = 720,
+  frameRate = 30
+): MediaTrackConstraints {
+  const constraint: MediaTrackConstraints = {
+    width: { ideal: width },
+    height: { ideal: height },
+    frameRate: { ideal: frameRate, max: frameRate }
+  };
+
+  if (deviceIdOrFacing === "user" || deviceIdOrFacing === "environment") {
+    constraint.facingMode = { ideal: deviceIdOrFacing };
+  } else if (deviceIdOrFacing) {
+    constraint.deviceId = { ideal: deviceIdOrFacing };
+  } else {
+    constraint.facingMode = { ideal: "environment" };
+  }
+  return constraint;
+}
+
 export class WebRtcSender {
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
   private statsTimer: number | null = null;
 
   async getMedia(
-    videoDeviceId?: string,
+    videoDeviceIdOrFacing?: string,
     audioDeviceId?: string,
     width = 1280,
     height = 720,
@@ -104,33 +126,145 @@ export class WebRtcSender {
   ): Promise<MediaStream> {
     this.stopMedia();
 
-    const videoConstraint: MediaTrackConstraints = {
-      width: { ideal: width },
-      height: { ideal: height },
-      frameRate: { ideal: frameRate, max: frameRate }
-    };
-
-    if (videoDeviceId) {
-      videoConstraint.deviceId = { exact: videoDeviceId };
-    } else {
-      videoConstraint.facingMode = { ideal: "environment" };
-    }
+    const videoConstraint = buildVideoConstraint(videoDeviceIdOrFacing, width, height, frameRate);
+    const audioConstraint: boolean | MediaTrackConstraints = audioDeviceId
+      ? { deviceId: { ideal: audioDeviceId } }
+      : true;
 
     try {
       this.localStream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraint,
-        audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true
+        audio: audioConstraint
       });
-    } catch {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
+    } catch (err) {
+      console.warn("getMedia failed with requested constraints, trying fallback:", err);
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: true
+        });
+      } catch {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+      }
     }
 
     for (const track of this.localStream.getVideoTracks()) {
       if ("contentHint" in track) {
         track.contentHint = "motion";
+      }
+    }
+
+    return this.localStream;
+  }
+
+  async switchVideo(
+    newVideoDeviceIdOrFacing?: string,
+    width = 1280,
+    height = 720,
+    frameRate = 30
+  ): Promise<MediaStream> {
+    const videoConstraint = buildVideoConstraint(newVideoDeviceIdOrFacing, width, height, frameRate);
+
+    // CRITICAL: Stop previous video tracks first so hardware release allows the new camera to open
+    const oldVideoTracks = this.localStream ? this.localStream.getVideoTracks() : [];
+    oldVideoTracks.forEach((t) => t.stop());
+
+    let newStream: MediaStream;
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraint,
+        audio: false
+      });
+    } catch (err) {
+      console.warn("switchVideo failed with exact constraints, trying fallback:", err);
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: newVideoDeviceIdOrFacing ? { deviceId: { ideal: newVideoDeviceIdOrFacing } } : true,
+          audio: false
+        });
+      } catch {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+      }
+    }
+
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    if (newVideoTrack && "contentHint" in newVideoTrack) {
+      newVideoTrack.contentHint = "motion";
+    }
+
+    if (!this.localStream) {
+      this.localStream = new MediaStream();
+    }
+
+    // Remove old video tracks from localStream and add new video track
+    oldVideoTracks.forEach((t) => this.localStream?.removeTrack(t));
+    if (newVideoTrack) {
+      this.localStream.addTrack(newVideoTrack);
+    }
+
+    // Replace track on RTCPeerConnection video sender
+    if (this.pc && newVideoTrack) {
+      const senders = this.pc.getSenders();
+      const videoSender = senders.find(
+        (s) => s.track?.kind === "video" || (!s.track && (s as unknown as { kind?: string }).kind === "video")
+      ) || senders[0];
+      if (videoSender) {
+        await videoSender.replaceTrack(newVideoTrack);
+      }
+    }
+
+    return this.localStream;
+  }
+
+  async switchAudio(newAudioDeviceId?: string): Promise<MediaStream> {
+    const audioConstraint: boolean | MediaTrackConstraints = newAudioDeviceId
+      ? { deviceId: { ideal: newAudioDeviceId } }
+      : true;
+
+    // Stop current audio tracks first
+    const oldAudioTracks = this.localStream ? this.localStream.getAudioTracks() : [];
+    oldAudioTracks.forEach((t) => t.stop());
+
+    let newStream: MediaStream;
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: audioConstraint
+      });
+    } catch (err) {
+      console.warn("switchAudio failed with requested device, falling back to default:", err);
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: true
+      });
+    }
+
+    const newAudioTrack = newStream.getAudioTracks()[0];
+
+    if (!this.localStream) {
+      this.localStream = new MediaStream();
+    }
+
+    // Remove old audio tracks from localStream and add new audio track
+    oldAudioTracks.forEach((t) => this.localStream?.removeTrack(t));
+    if (newAudioTrack) {
+      this.localStream.addTrack(newAudioTrack);
+    }
+
+    // Replace track on RTCPeerConnection audio sender
+    if (this.pc && newAudioTrack) {
+      const senders = this.pc.getSenders();
+      const audioSender = senders.find(
+        (s) => s.track?.kind === "audio" || (!s.track && (s as unknown as { kind?: string }).kind === "audio")
+      ) || senders[1];
+      if (audioSender) {
+        await audioSender.replaceTrack(newAudioTrack);
       }
     }
 
@@ -144,50 +278,29 @@ export class WebRtcSender {
     height = 720,
     frameRate = 30
   ): Promise<MediaStream> {
-    const videoConstraint: MediaTrackConstraints = {
-      width: { ideal: width },
-      height: { ideal: height },
-      frameRate: { ideal: frameRate, max: frameRate }
-    };
-
-    if (newVideoDeviceId) {
-      videoConstraint.deviceId = { exact: newVideoDeviceId };
-    } else {
-      videoConstraint.facingMode = { ideal: "environment" };
+    if (newVideoDeviceId !== undefined) {
+      await this.switchVideo(newVideoDeviceId, width, height, frameRate);
     }
-
-    let newStream: MediaStream;
-    try {
-      newStream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraint,
-        audio: newAudioDeviceId ? { deviceId: { exact: newAudioDeviceId } } : true
-      });
-    } catch {
-      newStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
+    if (newAudioDeviceId !== undefined) {
+      await this.switchAudio(newAudioDeviceId);
     }
+    return this.localStream || new MediaStream();
+  }
 
-    for (const track of newStream.getVideoTracks()) {
-      if ("contentHint" in track) {
-        track.contentHint = "motion";
-      }
+  getActiveVideoTrackSettings(): MediaTrackSettings | null {
+    if (this.localStream) {
+      const vTrack = this.localStream.getVideoTracks()[0];
+      if (vTrack) return vTrack.getSettings();
     }
+    return null;
+  }
 
-    if (this.pc) {
-      const senders = this.pc.getSenders();
-      for (const track of newStream.getTracks()) {
-        const sender = senders.find((s) => s.track && s.track.kind === track.kind);
-        if (sender) {
-          await sender.replaceTrack(track);
-        }
-      }
+  getActiveAudioTrackSettings(): MediaTrackSettings | null {
+    if (this.localStream) {
+      const aTrack = this.localStream.getAudioTracks()[0];
+      if (aTrack) return aTrack.getSettings();
     }
-
-    this.stopMedia();
-    this.localStream = newStream;
-    return this.localStream;
+    return null;
   }
 
   async applyBitrateParameters(targetBitrateBps = 2_500_000, targetFps = 30): Promise<void> {
