@@ -59,15 +59,12 @@ Copy-Item (Join-Path $releaseDir "Receiver.exe") $distDir -Force
 Copy-Item (Join-Path $releaseDir "VirtualCameraMediaSource.dll") $distDir -Force
 Copy-Item (Join-Path $releaseDir "test_vcam_registration.exe") $distDir -Force
 
-# Copy scripts
+# Copy PowerShell and batch scripts
+Copy-Item (Join-Path $projectRoot "scripts" "install.ps1") (Join-Path $distDir "scripts") -Force
+Copy-Item (Join-Path $projectRoot "scripts" "uninstall.ps1") (Join-Path $distDir "scripts") -Force
 Copy-Item (Join-Path $projectRoot "scripts" "register_vcam.ps1") (Join-Path $distDir "scripts") -Force
+Copy-Item (Join-Path $projectRoot "scripts" "unregister_vcam.ps1") (Join-Path $distDir "scripts") -Force
 Copy-Item (Join-Path $projectRoot "scripts" "register_vcam.bat") (Join-Path $distDir "scripts") -Force
-
-# Copy unregister script from existing dist or create
-$unregSrc = Join-Path $projectRoot "dist-release" "kmvirtualcamera-windows-v1.0.0" "unregister_vcam.ps1"
-if (Test-Path $unregSrc) {
-    Copy-Item $unregSrc (Join-Path $distDir "scripts") -Force
-}
 
 # Copy VC++ Redistributable
 $vcRedist = "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\v143\vc_redist.x64.exe"
@@ -80,85 +77,42 @@ if (Test-Path $vcRedist) {
 
 Write-Host "  [OK] Files assembled" -ForegroundColor Green
 
-# --- Step 3: Generate install.bat ---
-Write-Host "`n[3/5] Generating install/uninstall scripts..." -ForegroundColor Yellow
+# --- Step 3: Generate Pure ASCII install.bat & uninstall.bat ---
+Write-Host "`n[3/5] Generating pure ASCII install.bat & uninstall.bat..." -ForegroundColor Yellow
 
-$installBat = @'
+$installBat = @"
 @echo off
-chcp 65001 >nul 2>&1
+setlocal
+cd /d "%~dp0"
+echo ==========================================================
+echo  KM Virtual Camera Installer
+echo ==========================================================
+echo Requesting Administrator privileges to install...
+powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -NoProfile -File \"%~dp0scripts\install.ps1\"' -Verb RunAs -Wait"
 echo.
-echo ============================================
-echo   KM Virtual Camera インストーラー
-echo ============================================
-echo.
+endlocal
+"@
 
-:: 管理者権限チェック & 昇格
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo 管理者権限で再起動します...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    exit /b
-)
-
-:: 1. VC++ ランタイムチェック & インストール
-echo [1/3] Visual C++ ランタイムを確認中...
-reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" >nul 2>&1
-if %errorlevel% neq 0 (
-    if exist "%~dp0vc_redist\vc_redist.x64.exe" (
-        echo   Visual C++ ランタイムをインストール中...
-        "%~dp0vc_redist\vc_redist.x64.exe" /install /quiet /norestart
-        echo   [OK] インストール完了
-    ) else (
-        echo   [警告] vc_redist.x64.exe が見つかりません
-        echo   https://aka.ms/vs/17/release/vc_redist.x64.exe からダウンロードしてください
-    )
-) else (
-    echo   [OK] 既にインストール済み
-)
-
-:: 2. 仮想カメラ DLL デプロイ & COM 登録
-echo.
-echo [2/3] 仮想カメラを登録中...
-powershell -ExecutionPolicy Bypass -NoProfile -File "%~dp0scripts\register_vcam.ps1" -DllPath "%~dp0VirtualCameraMediaSource.dll"
-
-:: 3. 完了
-echo.
-echo [3/3] インストール完了！
-echo.
-echo ============================================
-echo   Receiver.exe をダブルクリックして起動
-echo   QR コードをスマホで読み取り映像を送信
-echo ============================================
-echo.
-pause
-'@
-Set-Content -Path (Join-Path $distDir "install.bat") -Value $installBat -Encoding UTF8
-
-$uninstallBat = @'
+$uninstallBat = @"
 @echo off
-chcp 65001 >nul 2>&1
+setlocal
+cd /d "%~dp0"
+echo ==========================================================
+echo  KM Virtual Camera Uninstaller
+echo ==========================================================
+echo Requesting Administrator privileges to uninstall...
+powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -NoProfile -File \"%~dp0scripts\uninstall.ps1\"' -Verb RunAs -Wait"
 echo.
-echo ============================================
-echo   KM Virtual Camera アンインストーラー
-echo ============================================
-echo.
+endlocal
+"@
 
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo 管理者権限で再起動します...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    exit /b
-)
+# Write as 100% Pure ASCII (No BOM, no multibyte characters) to prevent cmd.exe CP932 syntax errors
+$installBatPath = Join-Path $distDir "install.bat"
+$uninstallBatPath = Join-Path $distDir "uninstall.bat"
+[System.IO.File]::WriteAllText($installBatPath, $installBat, [System.Text.Encoding]::ASCII)
+[System.IO.File]::WriteAllText($uninstallBatPath, $uninstallBat, [System.Text.Encoding]::ASCII)
 
-powershell -ExecutionPolicy Bypass -NoProfile -File "%~dp0scripts\unregister_vcam.ps1"
-
-echo.
-echo アンインストール完了
-pause
-'@
-Set-Content -Path (Join-Path $distDir "uninstall.bat") -Value $uninstallBat -Encoding UTF8
-
-Write-Host "  [OK] install.bat / uninstall.bat generated" -ForegroundColor Green
+Write-Host "  [OK] Pure ASCII install.bat / uninstall.bat generated" -ForegroundColor Green
 
 # --- Step 4: Generate README.txt ---
 Write-Host "`n[4/5] Generating README..." -ForegroundColor Yellow
@@ -219,7 +173,6 @@ Write-Host "`n[5/5] Creating ZIP package..." -ForegroundColor Yellow
 if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
 }
-$parentDir = Split-Path $distDir -Parent
 Compress-Archive -Path $distDir -DestinationPath $zipPath -CompressionLevel Optimal
 
 $zipSize = (Get-Item $zipPath).Length
