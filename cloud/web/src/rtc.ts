@@ -59,17 +59,11 @@ function enhanceSdpForLowLatency(sdp: string, bitrateBps = 2_500_000): string {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // NOTE: transport-cc lines are now PRESERVED so that the receiver's TWCC feedback
-    // generator can provide packet arrival timestamps, enabling the browser's built-in
-    // GCC (Google Congestion Control) bandwidth estimator.
-
     if (line.startsWith("m=video")) {
       inVideo = true;
       result.push(line);
       result.push(`b=AS:${Math.round(bitrateBps / 1000)}`);
       result.push(`b=TIAS:${bitrateBps}`);
-      // Zero playout delay extension for instantaneous playback without jitter buffer delay
-      result.push("a=extmap:4 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay");
       continue;
     } else if (line.startsWith("m=audio") || line.startsWith("m=application")) {
       inVideo = false;
@@ -83,12 +77,6 @@ function enhanceSdpForLowLatency(sdp: string, bitrateBps = 2_500_000): string {
       result.push(`a=rtcp-fb:${pt} ccm fir`);
       result.push(`a=rtcp-fb:${pt} nack`);
       result.push(`a=rtcp-fb:${pt} nack pli`);
-      result.push(`a=fmtp:${pt} level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f`);
-      continue;
-    }
-
-    // Replace or skip duplicate fmtp lines to ensure 42e01f baseline is used
-    if (inVideo && line.startsWith("a=fmtp:") && (line.includes("profile-level-id") || line.includes("packetization-mode"))) {
       continue;
     }
 
@@ -460,7 +448,7 @@ export class WebRtcSender {
     }
     onDiagnosticLog?.(`Answer SDPを適用中 (${sdp.length} 文字)...`);
     // RFC 4145 / RFC 8842: Answerer must use active or passive, never actpass
-    const sanitizedSdp = enhanceSdpForLowLatency(sdp.replace(/a=setup:actpass/g, "a=setup:passive"));
+    const sanitizedSdp = sdp.replace(/a=setup:actpass/g, "a=setup:passive");
     await this.pc.setRemoteDescription({ type: "answer", sdp: sanitizedSdp });
     onDiagnosticLog?.("Answer SDPを適用完了。ICE接続検証中...");
   }
