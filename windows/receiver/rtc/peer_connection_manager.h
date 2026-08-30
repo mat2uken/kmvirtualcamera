@@ -10,6 +10,7 @@
 
 #include "../codec/h264_rtp_depacketizer.h"
 #include "bandwidth_estimator.h"
+#include "enhanced_rtcp_session.h"
 
 // Forward declarations if libdatachannel is compiled conditionally or dynamically
 namespace rtc {
@@ -60,6 +61,7 @@ private:
     std::vector<std::shared_ptr<rtc::Track>> allTracks_;
     std::shared_ptr<rtc::Track> videoTrack_;
     std::shared_ptr<rtc::Track> audioTrack_;
+    std::shared_ptr<EnhancedRtcpReceivingSession> videoRtcpSession_;
     codec::H264RtpDepacketizer h264Depacketizer_;
     BandwidthEstimator bandwidthEstimator_;
 
@@ -68,6 +70,7 @@ private:
     AudioPcmCallback audioCallback_;
 
     std::atomic<bool> isGatheringComplete_{false};
+    std::atomic<uint8_t> transportCcExtId_{0};
 };
 
 } // namespace km::rtc_net

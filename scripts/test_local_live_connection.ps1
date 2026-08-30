@@ -70,7 +70,7 @@ try {
     Write-Host "           Join URL: $joinUrl" -ForegroundColor Gray
 
     # Parse Join Token from URL fragment
-    $joinToken = $joinUrl.Split("&j=")[1]
+    $joinToken = ($joinUrl -split "&j=")[1]
 
     # 3.2 Sender claims session
     $claimBody = @{ claimNonce = "live-nonce-1234567890"; client = @{ name = "browser-sender-sim"; version = "1.0.0" } } | ConvertTo-Json
@@ -83,7 +83,7 @@ try {
     $dummyOfferSdp = "v=0`r`no=- 12345678 2 IN IP4 127.0.0.1`r`ns=-`r`nt=0 0`r`nm=video 9 UDP/TLS/RTP/SAVPF 96`r`na=sendonly`r`n"
     $offerBody = @{ type = "offer"; sdp = $dummyOfferSdp } | ConvertTo-Json
     $offerHeaders = @{ Authorization = "Bearer $senderToken" }
-    $offerRes = Invoke-WebRequest -Uri "$baseUrl/v1/sessions/$sessionId/offer" -Method Put -Headers $offerHeaders -Body $offerBody -ContentType "application/json"
+    $offerRes = Invoke-WebRequest -Uri "$baseUrl/v1/sessions/$sessionId/offer" -Method Put -Headers $offerHeaders -Body $offerBody -ContentType "application/json" -UseBasicParsing
     Write-Host "  3.3 [OK] Sender uploaded Offer SDP (HTTP $($offerRes.StatusCode))" -ForegroundColor Green
 
     # 3.4 Receiver polls Offer SDP
@@ -98,7 +98,7 @@ try {
     # 3.5 Receiver puts Answer SDP
     $dummyAnswerSdp = "v=0`r`no=- 87654321 2 IN IP4 127.0.0.1`r`ns=-`r`nt=0 0`r`nm=video 9 UDP/TLS/RTP/SAVPF 96`r`na=recvonly`r`n"
     $answerBody = @{ type = "answer"; sdp = $dummyAnswerSdp } | ConvertTo-Json
-    $answerRes = Invoke-WebRequest -Uri "$baseUrl/v1/sessions/$sessionId/answer" -Method Put -Headers $recvHeaders -Body $answerBody -ContentType "application/json"
+    $answerRes = Invoke-WebRequest -Uri "$baseUrl/v1/sessions/$sessionId/answer" -Method Put -Headers $recvHeaders -Body $answerBody -ContentType "application/json" -UseBasicParsing
     Write-Host "  3.5 [OK] Receiver uploaded Answer SDP (HTTP $($answerRes.StatusCode))" -ForegroundColor Green
 
     # 3.6 Sender polls Answer SDP
@@ -110,7 +110,7 @@ try {
     }
 
     # 3.7 Delete session
-    $delRes = Invoke-WebRequest -Uri "$baseUrl/v1/sessions/$sessionId" -Method Delete -Headers $recvHeaders
+    $delRes = Invoke-WebRequest -Uri "$baseUrl/v1/sessions/$sessionId" -Method Delete -Headers $recvHeaders -UseBasicParsing
     Write-Host "  3.7 [OK] Explicit session termination (HTTP $($delRes.StatusCode))" -ForegroundColor Green
 
     # Step 4: Run Live Named Pipe IPC Frame Transfer Test

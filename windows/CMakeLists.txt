@@ -102,6 +102,8 @@ add_executable(Receiver WIN32
     receiver/signaling/win_http_client.cpp
     receiver/rtc/peer_connection_manager.cpp
     receiver/rtc/bandwidth_estimator.cpp
+    receiver/rtc/twcc_receiver.cpp
+    receiver/rtc/enhanced_rtcp_session.cpp
     receiver/codec/h264_decoder.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
@@ -258,6 +260,8 @@ add_executable(test_receiver_startup
     receiver/signaling/win_http_client.cpp
     receiver/rtc/peer_connection_manager.cpp
     receiver/rtc/bandwidth_estimator.cpp
+    receiver/rtc/twcc_receiver.cpp
+    receiver/rtc/enhanced_rtcp_session.cpp
     receiver/codec/h264_decoder.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
@@ -304,6 +308,8 @@ add_executable(test_webrtc_dtls
     tests/test_webrtc_dtls.cpp
     receiver/rtc/peer_connection_manager.cpp
     receiver/rtc/bandwidth_estimator.cpp
+    receiver/rtc/twcc_receiver.cpp
+    receiver/rtc/enhanced_rtcp_session.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
 )
 target_include_directories(test_webrtc_dtls PRIVATE
@@ -323,6 +329,16 @@ target_link_libraries(test_webrtc_dtls PRIVATE
     mbedx509
     ws2_32
 )
+
+add_executable(test_twcc_receiver
+    tests/test_twcc_receiver.cpp
+    receiver/rtc/twcc_receiver.cpp
+)
+target_include_directories(test_twcc_receiver PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver
+)
+add_test(NAME TwccReceiverTest COMMAND test_twcc_receiver)
 
 add_executable(test_bandwidth_estimator
     receiver/test_bandwidth_estimator.cpp

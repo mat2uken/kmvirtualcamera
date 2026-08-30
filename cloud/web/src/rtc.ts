@@ -59,11 +59,9 @@ function enhanceSdpForLowLatency(sdp: string, bitrateBps = 2_500_000): string {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Strip Transport-Wide CC extensions so browser uses Receiver Estimated Maximum Bitrate (REMB)
-    // without timing out on missing TWCC RTCP feedback
-    if (line.includes("transport-wide-cc-extensions") || line.includes("transport-cc")) {
-      continue;
-    }
+    // NOTE: transport-cc lines are now PRESERVED so that the receiver's TWCC feedback
+    // generator can provide packet arrival timestamps, enabling the browser's built-in
+    // GCC (Google Congestion Control) bandwidth estimator.
 
     if (line.startsWith("m=video")) {
       inVideo = true;
@@ -78,6 +76,7 @@ function enhanceSdpForLowLatency(sdp: string, bitrateBps = 2_500_000): string {
     if (inVideo && line.startsWith("a=rtpmap:") && line.includes("H264/90000")) {
       const pt = line.split(" ")[0].substring(9);
       result.push(line);
+      result.push(`a=rtcp-fb:${pt} transport-cc`);
       result.push(`a=rtcp-fb:${pt} goog-remb`);
       result.push(`a=rtcp-fb:${pt} ccm fir`);
       result.push(`a=rtcp-fb:${pt} nack`);

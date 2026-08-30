@@ -7,6 +7,31 @@
 #include <iostream>
 #include <sstream>
 
+static uint8_t ParseTransportCcExtensionIdFromSdp(const std::string& sdp) {
+    std::istringstream stream(sdp);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("a=extmap:", 0) == 0) {
+            if (line.find("transport-wide-cc-extensions") != std::string::npos ||
+                line.find("transport-cc") != std::string::npos ||
+                line.find("transport-wide-cc-02") != std::string::npos) {
+                size_t idStart = 9; // strlen("a=extmap:")
+                size_t idEnd = line.find_first_of("/ \t", idStart);
+                if (idEnd != std::string::npos) {
+                    try {
+                        int id = std::stoi(line.substr(idStart, idEnd - idStart));
+                        if (id > 0 && id <= 14) {
+                            return static_cast<uint8_t>(id);
+                        }
+                    } catch (...) {}
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 namespace km::rtc_net {
 
 PeerConnectionManager::PeerConnectionManager() = default;
@@ -120,7 +145,12 @@ bool PeerConnectionManager::Initialize(
 
             if (typeStr == "video" || descStr.find("video") != std::string::npos || descStr.find("H264") != std::string::npos || descStr.find("h264") != std::string::npos) {
                 videoTrack_ = track;
-                videoTrack_->setMediaHandler(std::make_shared<rtc::RtcpReceivingSession>());
+
+                // Attach Enhanced RTCP session for accurate RR, REMB timer, and TWCC feedback
+                videoRtcpSession_ = std::make_shared<EnhancedRtcpReceivingSession>();
+                videoRtcpSession_->SetBandwidthEstimator(&bandwidthEstimator_);
+                videoRtcpSession_->SetTransportCcExtensionId(transportCcExtId_.load(std::memory_order_relaxed));
+                videoTrack_->setMediaHandler(videoRtcpSession_);
 
                 videoTrack_->onMessage([this](rtc::message_variant msg) {
                     if (std::holds_alternative<rtc::binary>(msg)) {
@@ -173,21 +203,18 @@ bool PeerConnectionManager::ProcessOfferAndGenerateAnswer(const std::string& off
     try {
         isGatheringComplete_ = false;
 
-        // Sanitize Offer SDP: strip transport-cc header extensions so browser and receiver
-        // negotiate pure REMB and never experience TWCC feedback timeout after 10-15 seconds
-        std::string sanitizedOffer;
-        std::istringstream stream(offerSdp);
-        std::string line;
-        while (std::getline(stream, line)) {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line.find("transport-wide-cc-extensions") != std::string::npos ||
-                line.find("transport-cc") != std::string::npos) {
-                continue;
+        // Parse transport-cc extension ID from Offer SDP
+        uint8_t extId = ParseTransportCcExtensionIdFromSdp(offerSdp);
+        transportCcExtId_.store(extId, std::memory_order_relaxed);
+        if (extId > 0) {
+            std::cout << "[WebRTC] Negotiated TWCC extension ID: " << static_cast<int>(extId) << std::endl;
+            if (videoRtcpSession_) {
+                videoRtcpSession_->SetTransportCcExtensionId(extId);
             }
-            sanitizedOffer += line + "\r\n";
         }
 
-        pc_->setRemoteDescription(rtc::Description(sanitizedOffer, rtc::Description::Type::Offer, rtc::Description::Role::Active));
+        // Apply Offer SDP directly (preserving transport-cc for browser GCC)
+        pc_->setRemoteDescription(rtc::Description(offerSdp, rtc::Description::Type::Offer, rtc::Description::Role::Active));
         if (pc_->gatheringState() == rtc::PeerConnection::GatheringState::Complete) {
             isGatheringComplete_ = true;
         }
@@ -241,6 +268,7 @@ void PeerConnectionManager::Close() {
         pc_.reset();
     }
     allTracks_.clear();
+    videoRtcpSession_.reset();
     videoTrack_.reset();
     audioTrack_.reset();
     h264Depacketizer_.Reset();
