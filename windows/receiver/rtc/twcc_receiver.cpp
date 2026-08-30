@@ -166,10 +166,23 @@ std::vector<uint8_t> TwccReceiver::BuildFeedbackPacket(uint32_t sender_ssrc, uin
         }
 
         if (!hasReference) {
-            referenceTimeUs = rec.arrival_time_us;
+            // Reference time is represented in 64ms units (24-bit)
+            int64_t refTimeUnits = rec.arrival_time_us / kRefTimeResolutionUs;
+            referenceTimeUs = refTimeUnits * kRefTimeResolutionUs;
             hasReference = true;
             prevArrivalUs = rec.arrival_time_us;
-            statuses.push_back({1, 0}); // First packet: delta = 0
+
+            // First packet delta is the exact remainder (0..63750 us) in 250us units
+            int64_t delta0Us = rec.arrival_time_us - referenceTimeUs;
+            int64_t delta0Units = delta0Us / kTimeResolutionUs;
+            if (delta0Units >= 0 && delta0Units <= kSmallDeltaMaxUnits) {
+                statuses.push_back({1, static_cast<int16_t>(delta0Units)});
+            } else {
+                int16_t clamped = static_cast<int16_t>(
+                    (std::max)(static_cast<int64_t>(-32768),
+                    (std::min)(static_cast<int64_t>(32767), delta0Units)));
+                statuses.push_back({2, clamped});
+            }
             continue;
         }
 
@@ -317,7 +330,8 @@ std::vector<uint8_t> TwccReceiver::BuildFeedbackPacket(uint32_t sender_ssrc, uin
         uint16_t seq = baseSeq + i;
         records_[seq % kRingSize] = TransportPacketRecord{};
     }
-    hasPending_ = false;
+    pendingBaseSeq_ = static_cast<uint16_t>(baseSeq + packetStatusCount);
+    hasPending_ = (pendingBaseSeq_ != pendingEndSeq_);
 
     return packet;
 }
