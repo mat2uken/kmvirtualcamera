@@ -73,6 +73,12 @@ public:
         return head_.load(std::memory_order_acquire) == tail_.load(std::memory_order_relaxed);
     }
 
+    size_t GetQueuedCount() const {
+        const size_t h = head_.load(std::memory_order_acquire);
+        const size_t t = tail_.load(std::memory_order_relaxed);
+        return (h >= t) ? (h - t) : (kCapacity - t + h);
+    }
+
     void Clear() {
         tail_.store(head_.load(std::memory_order_relaxed), std::memory_order_release);
     }

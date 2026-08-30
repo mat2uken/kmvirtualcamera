@@ -49,6 +49,8 @@ bool H264Decoder::Initialize(int width, int height) {
         attributes->SetUINT32(CODECAPI_AVDecVideoThumbnailGenerationMode, 0);
         attributes->SetUINT32(CODECAPI_AVLowLatencyMode, 1);
         attributes->SetUINT32(MF_LOW_LATENCY, 1);
+        attributes->SetUINT32(MF_SA_MINIMUM_OUTPUT_SAMPLE_COUNT, 1);
+        attributes->SetUINT32(MF_MT_REALTIME_CONTENT, 1);
     }
 
     // Configure Input MediaType (H.264)

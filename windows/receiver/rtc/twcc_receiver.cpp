@@ -28,6 +28,12 @@ void TwccReceiver::Reset() {
     fbPacketCount_ = 0;
 }
 
+uint16_t TwccReceiver::GetPendingPacketCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!hasPending_) return 0;
+    return static_cast<uint16_t>(pendingEndSeq_ - pendingBaseSeq_);
+}
+
 bool TwccReceiver::ParseTransportSequence(
     const uint8_t* rtp_data, size_t rtp_size,
     uint8_t extension_id,

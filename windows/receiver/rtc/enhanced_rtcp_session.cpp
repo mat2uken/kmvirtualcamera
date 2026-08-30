@@ -244,10 +244,11 @@ void EnhancedRtcpReceivingSession::SendTwccFeedback(const rtc::message_callback 
 void EnhancedRtcpReceivingSession::CheckAndSendPeriodicFeedback(const rtc::message_callback &send, int64_t nowMs) {
     uint8_t twccId = transportCcExtId_.load(std::memory_order_relaxed);
 
-    // 1. TWCC feedback (every 50ms)
+    // 1. TWCC feedback (every 25ms or immediately upon 16-packet burst)
     if (twccId > 0) {
         int64_t lastTwcc = lastTwccSentMs_.load(std::memory_order_relaxed);
-        if (nowMs - lastTwcc >= kTwccIntervalMs) {
+        uint16_t pendingCount = twccReceiver_.GetPendingPacketCount();
+        if ((nowMs - lastTwcc >= kTwccIntervalMs && pendingCount > 0) || pendingCount >= 16) {
             lastTwccSentMs_.store(nowMs, std::memory_order_relaxed);
             SendTwccFeedback(send);
         }

@@ -37,6 +37,9 @@ public:
     /// Build RTCP TWCC feedback packet. Returns empty vector if nothing to report.
     std::vector<uint8_t> BuildFeedbackPacket(uint32_t sender_ssrc, uint32_t media_ssrc);
 
+    /// Return count of pending packets awaiting feedback
+    uint16_t GetPendingPacketCount() const;
+
     /// Reset all state
     void Reset();
 

@@ -84,7 +84,7 @@ private:
 
     static constexpr int64_t kRrIntervalMs = 500;
     static constexpr int64_t kRembIntervalMs = 1000;
-    static constexpr int64_t kTwccIntervalMs = 50;
+    static constexpr int64_t kTwccIntervalMs = 25; // 25ms (40Hz) ultra-low-latency feedback
 };
 
 } // namespace km::rtc_net
