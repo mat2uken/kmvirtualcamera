@@ -11,23 +11,25 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$rootDir = (Resolve-Path "$PSScriptRoot\..").Path
+$windowsDir = "$rootDir\windows"
+$releaseBinDir = "$windowsDir\build\Release"
+
+$outBase = "$rootDir\dist-release"
+if (-not (Test-Path $outBase)) {
+    New-Item -ItemType Directory -Path $outBase -Force | Out-Null
+}
+
+$packageDir = "$outBase\KMVirtualCamera-v$Version-Windows-x64"
+$zipPath = "$outBase\KMVirtualCamera-v$Version-Windows-x64.zip"
+
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " KM Virtual Camera - Release Packaging Tool (v$Version)" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-$windowsDir = Resolve-Path "$PSScriptRoot\..\windows"
-$releaseBinDir = "$windowsDir\build\Release"
-$packageDir = "$OutputDir\kmvirtualcamera-windows-v$Version"
-$zipPath = "$OutputDir\kmvirtualcamera-windows-v$Version.zip"
-
-# 1. Check binaries
-$receiverExe = "$releaseBinDir\Receiver.exe"
-$vcamDll = "$releaseBinDir\VirtualCameraMediaSource.dll"
-
-if (-not (Test-Path $receiverExe) -or -not (Test-Path $vcamDll)) {
-    Write-Host "Building Windows binaries in Release mode..." -ForegroundColor Yellow
-    & "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build $windowsDir\build --config Release
-}
+# 1. Build Windows Release binaries
+Write-Host "`n[1/3] Building Windows binaries in Release mode..." -ForegroundColor Yellow
+& "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build "$windowsDir\build" --config Release --target Receiver VirtualCameraMediaSource
 
 # 2. Re-create package folder
 if (Test-Path $packageDir) {
@@ -35,7 +37,10 @@ if (Test-Path $packageDir) {
 }
 New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
 
-Write-Host "`nStaging release files..." -ForegroundColor Yellow
+$receiverExe = "$releaseBinDir\Receiver.exe"
+$vcamDll = "$releaseBinDir\VirtualCameraMediaSource.dll"
+
+Write-Host "`n[2/3] Staging release files..." -ForegroundColor Yellow
 
 # Copy Binaries
 Copy-Item $receiverExe -Destination $packageDir\Receiver.exe -Force
@@ -46,29 +51,47 @@ Copy-Item "$PSScriptRoot\register_vcam.ps1" -Destination $packageDir\register_vc
 Copy-Item "$PSScriptRoot\unregister_vcam.ps1" -Destination $packageDir\unregister_vcam.ps1 -Force
 Copy-Item "$PSScriptRoot\run_receiver.ps1" -Destination $packageDir\run_receiver.ps1 -Force
 
+# Create One-Click Batch Launchers for End Users
+Set-Content -Path "$packageDir\Start-Receiver.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`nstart `"`" `"Receiver.exe`" --url=https://webrtc-bridge-signaling.mat2uken.workers.dev" -Encoding ascii
+Set-Content -Path "$packageDir\Register-VirtualCamera.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`necho Requesting Administrator privileges to register Virtual Camera...`r`npowershell.exe -ExecutionPolicy Bypass -NoProfile -Command `"Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -NoProfile -File `\`"%~dp0register_vcam.ps1`\`"' -Verb RunAs`"" -Encoding ascii
+Set-Content -Path "$packageDir\Unregister-VirtualCamera.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`necho Requesting Administrator privileges to unregister Virtual Camera...`r`npowershell.exe -ExecutionPolicy Bypass -NoProfile -Command `"Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -NoProfile -File `\`"%~dp0unregister_vcam.ps1`\`"' -Verb RunAs`"" -Encoding ascii
+
 # Create README.txt
 $readmeContent = @"
 ==========================================================
  KM Virtual Camera for Windows (v$Version)
 ==========================================================
 
-[クイックスタート手順]
+【概要】
+スマートフォンのカメラ映像・音声を、超低遅延（WebRTC / H.264 / TWCC）で
+Windows PC の仮想カメラ（OBS、Teams、Zoom、Google Meet等）および
+仮想マイク（VB-CABLE）へリアルタイム転送するアプリケーションです。
 
-1. 仮想カメラの登録 (初回のみ・管理者権限で実行):
-   PowerShell を管理者として開き、以下を実行します:
-   pwsh -File .\register_vcam.ps1
+----------------------------------------------------------
+【クイックスタート手順】
+----------------------------------------------------------
 
-2. アプリの起動:
-   pwsh -File .\run_receiver.ps1
-   または Receiver.exe を直接実行します。
+1. 仮想カメラのシステム登録（初回のみ）:
+   「Register-VirtualCamera.bat」をダブルクリックします。
+   （UAC 管理者権限の確認が表示されたら「はい」を押してください）
 
-3. クラウド / スマホ接続:
-   - 画面に表示される QR コードをスマートフォンのブラウザで読み取ります。
-   - ブラウザ画面で「送信開始」をタップします。
-   - 映像が Windows 上にプレビューされ、仮想カメラおよび仮想マイク (VB-CABLE) へ出力されます。
+2. アプリケーションの起動:
+   「Start-Receiver.bat」または「Receiver.exe」をダブルクリックして起動します。
 
-[アンインストール / 登録解除]:
-   pwsh -File .\unregister_vcam.ps1
+3. スマートフォンで接続:
+   - 画面上に表示された QR コードをスマートフォンのカメラで読み取ります。
+   - ブラウザが開いたら「送信開始」をタップします。
+   - すぐにプレビュー画面に低遅延で映像が表示されます。
+
+4. Web会議や配信ソフトでの利用:
+   - OBS、Zoom、Teams、Discord、Windows「カメラ」アプリ等で、
+     カメラデバイスとして「WebRTC Bridge Virtual Camera」を選択してください。
+   - 音声は「VB-Audio Virtual Cable」等を選択することでマイク音声も連携可能です。
+
+----------------------------------------------------------
+【登録解除 / アンインストール】
+----------------------------------------------------------
+「Unregister-VirtualCamera.bat」をダブルクリックして実行してください。
 
 ==========================================================
 "@
