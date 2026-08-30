@@ -27,6 +27,9 @@ public:
     bool requestBitrate(unsigned int bitrate, const rtc::message_callback &send) override;
     bool requestKeyframe(const rtc::message_callback &send) override;
 
+    /// Request immediate IDR keyframe (sends PLI + FIR) directly via cached transport callback
+    void RequestKeyframeDirect();
+
     /// Connect the bandwidth estimator for REMB values
     void SetBandwidthEstimator(BandwidthEstimator* estimator);
 
@@ -81,6 +84,7 @@ private:
     std::atomic<int64_t> lastRrSentMs_{0};
     std::atomic<int64_t> lastRembSentMs_{0};
     std::atomic<int64_t> lastTwccSentMs_{0};
+    std::atomic<uint8_t> firSeqNo_{0};
 
     static constexpr int64_t kRrIntervalMs = 500;
     static constexpr int64_t kRembIntervalMs = 1000;

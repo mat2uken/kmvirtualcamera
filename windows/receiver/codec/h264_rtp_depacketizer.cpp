@@ -58,8 +58,8 @@ void H264RtpDepacketizer::EmitAccessUnit() {
                     callback_(reconstructedFrameBuffer_.data(), reconstructedFrameBuffer_.size(), currentTimestamp_);
                 }
             } else {
-                // Periodically re-request PLI every 10 dropped frames (~300ms) until IDR arrives
-                if (++waitingKeyframeCount_ % 10 == 0) {
+                // Periodically re-request PLI/FIR every 3 dropped frames (~100ms) until IDR arrives
+                if (++waitingKeyframeCount_ % 3 == 0) {
                     if (keyframeRequestCallback_) {
                         keyframeRequestCallback_();
                     }

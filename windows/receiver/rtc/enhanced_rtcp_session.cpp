@@ -307,9 +307,37 @@ bool EnhancedRtcpReceivingSession::requestKeyframe(const rtc::message_callback &
         cachedSend_ = send;
     }
     if (mSsrc != 0) {
+        // Send PLI (PT=206, FMT=1)
         pushPLI(send);
+
+        // Also send FIR (Full Intra Request, PT=206, FMT=4) for immediate browser keyframe generation
+        auto firMsg = rtc::make_message(sizeof(rtc::RtcpFbHeader) + sizeof(rtc::RtcpFirPart), rtc::Message::Control);
+        auto *fir = reinterpret_cast<rtc::RtcpFir *>(firMsg->data());
+        fir->header.header.prepareHeader(206, 4, static_cast<uint16_t>((sizeof(rtc::RtcpFbHeader) + sizeof(rtc::RtcpFirPart)) / 4 - 1));
+        fir->header.setPacketSenderSSRC(1);
+        fir->header.setMediaSourceSSRC(0);
+        uint32_t ssrcVal = mSsrc;
+        fir->parts[0].ssrc = ((ssrcVal & 0xFF000000u) >> 24) |
+                             ((ssrcVal & 0x00FF0000u) >> 8)  |
+                             ((ssrcVal & 0x0000FF00u) << 8)  |
+                             ((ssrcVal & 0x000000FFu) << 24);
+        fir->parts[0].seqNo = firSeqNo_.fetch_add(1, std::memory_order_relaxed);
+        fir->parts[0].dummy1 = 0;
+        fir->parts[0].dummy2 = 0;
+        send(firMsg);
     }
     return true;
+}
+
+void EnhancedRtcpReceivingSession::RequestKeyframeDirect() {
+    rtc::message_callback sendCopy;
+    {
+        std::lock_guard<std::mutex> lock(sendMutex_);
+        sendCopy = cachedSend_;
+    }
+    if (sendCopy) {
+        requestKeyframe(sendCopy);
+    }
 }
 
 } // namespace km::rtc_net

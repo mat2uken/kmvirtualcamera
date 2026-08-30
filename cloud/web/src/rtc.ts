@@ -111,6 +111,35 @@ export class WebRtcSender {
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
   private statsTimer: number | null = null;
+  private keyframeTimer: number | null = null;
+
+  private startPeriodicKeyframe(intervalMs = 2000): void {
+    if (this.keyframeTimer !== null) {
+      clearInterval(this.keyframeTimer);
+    }
+    this.keyframeTimer = window.setInterval(() => {
+      if (this.pc && this.pc.connectionState === "connected") {
+        this.generateKeyFrame();
+      }
+    }, intervalMs);
+  }
+
+  generateKeyFrame(): void {
+    if (!this.pc) return;
+    for (const sender of this.pc.getSenders()) {
+      if (sender.track && sender.track.kind === "video") {
+        // @ts-expect-error generateKeyFrame is supported in modern Chromium WebRTC
+        if (typeof sender.generateKeyFrame === "function") {
+          try {
+            // @ts-expect-error generateKeyFrame
+            sender.generateKeyFrame();
+          } catch {
+            // Ignore if unsupported
+          }
+        }
+      }
+    }
+  }
 
   async getMedia(
     videoDeviceIdOrFacing?: string,
@@ -358,6 +387,7 @@ export class WebRtcSender {
         onStateChange(this.pc.connectionState);
         if (this.pc.connectionState === "connected") {
           this.applyBitrateParameters(targetBitrateBps, targetFps);
+          this.startPeriodicKeyframe(2000);
         }
       }
     };
@@ -461,6 +491,10 @@ export class WebRtcSender {
   }
 
   stop(): void {
+    if (this.keyframeTimer !== null) {
+      clearInterval(this.keyframeTimer);
+      this.keyframeTimer = null;
+    }
     if (this.statsTimer !== null) {
       clearInterval(this.statsTimer);
       this.statsTimer = null;

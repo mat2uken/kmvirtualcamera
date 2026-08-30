@@ -129,6 +129,9 @@ bool PeerConnectionManager::Initialize(
         });
         h264Depacketizer_.SetKeyframeRequestCallback([this]() {
             bandwidthEstimator_.OnLossEventDetected();
+            if (videoRtcpSession_) {
+                videoRtcpSession_->RequestKeyframeDirect();
+            }
             if (videoTrack_) {
                 videoTrack_->requestKeyframe();
                 uint32_t reduced = bandwidthEstimator_.GetCurrentEstimatedBitrate();
