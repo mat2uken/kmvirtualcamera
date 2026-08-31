@@ -24,6 +24,15 @@ VirtualCameraRegistrar::~VirtualCameraRegistrar() {
 bool VirtualCameraRegistrar::StartVirtualCamera(const std::wstring& cameraFriendlyName) {
     if (isRunning_) return true;
 
+    // Check if the virtual camera is already registered in Windows (e.g. via Register-VirtualCamera.bat).
+    // If registered, Windows Frame Server automatically routes capture requests to our named pipe.
+    // Creating a redundant session virtual camera would cause duplicate "WebRTC Bridge Virtual Camera" devices in Teams/OBS.
+    if (IsVirtualCameraRegistered()) {
+        wprintf(L"  [VirtualCameraRegistrar] System Virtual Camera is already registered. Using single system device.\n");
+        isRunning_ = true;
+        return true;
+    }
+
     HRESULT hrMf = MFStartup(MF_VERSION);
     if (FAILED(hrMf)) {
         wprintf(L"  [VirtualCameraRegistrar::StartVirtualCamera] MFStartup failed hr=0x%08X\n", hrMf);

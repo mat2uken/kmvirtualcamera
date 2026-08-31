@@ -150,14 +150,13 @@ try {
     if ($vcamRegTool -and (Test-Path $vcamRegTool)) {
         Start-Process $vcamRegTool -ArgumentList "--unregister" -Wait -NoNewWindow | Out-Null
     }
-    # Also clean legacy instances created with the old category list. Limit
-    # removal to this exact friendly name; other virtual cameras are untouched.
+    # Also clean legacy instances created with old category list or session runs.
     Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object {
-        $_.InstanceId -like "*VCAMDEVAPI*" -and $_.FriendlyName -eq $friendlyName
+        $_.InstanceId -like "*VCAMDEVAPI*"
     } | ForEach-Object {
         & pnputil /remove-device $_.InstanceId | Out-Null
     }
-    Write-Host "  [OK] Previous WebRTC Bridge camera instance cleaned up." -ForegroundColor Green
+    Write-Host "  [OK] Previous WebRTC Bridge camera instances cleaned up." -ForegroundColor Green
 } catch {}
 
 # 4. Register 1 clean System Virtual Camera device via test_vcam_registration --register
