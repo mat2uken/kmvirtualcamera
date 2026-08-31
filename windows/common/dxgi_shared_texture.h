@@ -121,6 +121,47 @@ public:
         return true;
     }
 
+    bool PublishGpuTextureDirect(
+        ID3D11DeviceContext* pContext,
+        ID3D11Texture2D* pSrcTexture,
+        UINT srcSubresource,
+        UINT srcWidth,
+        UINT srcHeight,
+        int64_t tsUs
+    ) {
+        if (!isInitialized_ || !pContext || !pSrcTexture) return false;
+
+        uint32_t targetSlot = 1 - currentSlot_.load(std::memory_order_relaxed);
+        auto& tex = textures_[targetSlot];
+        if (!tex) return false;
+
+        if (keyedMutexes_[targetSlot]) {
+            keyedMutexes_[targetSlot]->AcquireSync(0, 5);
+        }
+
+        if (srcWidth == width_ && srcHeight == height_) {
+            // Direct 1:1 GPU DMA subresource copy (<0.02ms)
+            pContext->CopySubresourceRegion(tex.Get(), 0, 0, 0, 0, pSrcTexture, srcSubresource, nullptr);
+        } else {
+            // Box-clipped copy or viewport
+            D3D11_BOX box{};
+            box.left = 0;
+            box.top = 0;
+            box.front = 0;
+            box.right = (std::min)(srcWidth, width_);
+            box.bottom = (std::min)(srcHeight, height_);
+            box.back = 1;
+            pContext->CopySubresourceRegion(tex.Get(), 0, 0, 0, 0, pSrcTexture, srcSubresource, &box);
+        }
+
+        if (keyedMutexes_[targetSlot]) {
+            keyedMutexes_[targetSlot]->ReleaseSync(1);
+        }
+
+        currentSlot_.store(targetSlot, std::memory_order_release);
+        return true;
+    }
+
     void Close() {
         for (int i = 0; i < 2; ++i) {
             keyedMutexes_[i].Reset();

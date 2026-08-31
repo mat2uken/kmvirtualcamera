@@ -81,6 +81,20 @@ void PipePublisher::PublishFrame(const uint8_t* nv12Data, size_t dataSize, int64
     SetEvent(hNewFrameEvent_);
 }
 
+bool PipePublisher::PublishGpuTexture(ID3D11Texture2D* pGpuTexture, UINT subresource, UINT width, UINT height, int64_t captureTimeUs) {
+    if (!pGpuTexture || !isRunning_) return false;
+
+    bool ok = false;
+    if (dxgiPublisher_.IsInitialized() && d3dContext_) {
+        ok = dxgiPublisher_.PublishGpuTextureDirect(d3dContext_.Get(), pGpuTexture, subresource, width, height, captureTimeUs);
+    }
+
+    sequence_++;
+    latestCaptureTimeUs_ = captureTimeUs;
+    SetEvent(hNewFrameEvent_);
+    return ok;
+}
+
 bool PipePublisher::WriteExact(HANDLE hPipe, const uint8_t* buffer, DWORD bytesToWrite, OVERLAPPED& ov, HANDLE hStopEvent) {
     DWORD totalWritten = 0;
     while (totalWritten < bytesToWrite && isRunning_) {

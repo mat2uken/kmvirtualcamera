@@ -23,6 +23,12 @@ public:
     // Publishes an NV12 frame to pipe server, CPU shared memory, and DXGI GPU shared texture.
     void PublishFrame(const uint8_t* nv12Data, size_t dataSize, int64_t captureTimeUs = 0);
 
+    // Fast Path: Publishes a GPU-decoded D3D11 Texture directly to DXGI shared texture in VRAM (<0.02ms)
+    bool PublishGpuTexture(ID3D11Texture2D* pGpuTexture, UINT subresource, UINT width, UINT height, int64_t captureTimeUs = 0);
+
+    ID3D11Device* GetD3D11Device() const { return d3dDevice_.Get(); }
+    ID3D11DeviceContext* GetD3D11Context() const { return d3dContext_.Get(); }
+
 private:
     void ServerThreadProc();
     bool WriteExact(HANDLE hPipe, const uint8_t* buffer, DWORD bytesToWrite, OVERLAPPED& ov, HANDLE hStopEvent);

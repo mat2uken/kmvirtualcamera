@@ -14,7 +14,7 @@ H264Decoder::~H264Decoder() {
     Shutdown();
 }
 
-bool H264Decoder::Initialize(int width, int height) {
+bool H264Decoder::Initialize(int width, int height, ID3D11Device* pD3DDevice) {
     if (isInitialized_) return true;
 
     targetWidth_ = width > 0 ? width : 1280;
@@ -51,6 +51,27 @@ bool H264Decoder::Initialize(int width, int height) {
         attributes->SetUINT32(MF_LOW_LATENCY, 1);
         attributes->SetUINT32(MF_SA_MINIMUM_OUTPUT_SAMPLE_COUNT, 1);
         attributes->SetUINT32(MF_MT_REALTIME_CONTENT, 1);
+        if (pD3DDevice) {
+            attributes->SetUINT32(MF_SA_D3D11_AWARE, 1);
+        }
+    }
+
+    // Attach D3D11 DXGI Device Manager if device provided for hardware DXVA decoding
+    if (pD3DDevice) {
+        d3dDevice_ = pD3DDevice;
+        UINT resetToken = 0;
+        hr = MFCreateDXGIDeviceManager(&resetToken, &dxgiDeviceManager_);
+        if (SUCCEEDED(hr) && dxgiDeviceManager_) {
+            dxgiResetToken_ = resetToken;
+            hr = dxgiDeviceManager_->ResetDevice(d3dDevice_.Get(), dxgiResetToken_);
+            if (SUCCEEDED(hr)) {
+                hr = decoderMft_->ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, reinterpret_cast<ULONG_PTR>(dxgiDeviceManager_.Get()));
+                if (SUCCEEDED(hr)) {
+                    isHardwareAccelerated_ = true;
+                    std::cout << "[H264Decoder] Hardware Acceleration (D3D11 / DXVA) ENABLED for MFT H.264 Decoder." << std::endl;
+                }
+            }
+        }
     }
 
     // Configure Input MediaType (H.264)
@@ -94,6 +115,9 @@ void H264Decoder::Shutdown() {
         decoderMft_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
         decoderMft_.Reset();
     }
+    dxgiDeviceManager_.Reset();
+    d3dDevice_.Reset();
+    isHardwareAccelerated_ = false;
     inSample_.Reset();
     inBuffer_.Reset();
     inBufferCapacity_ = 0;
@@ -243,17 +267,18 @@ bool H264Decoder::ExtractSampleNv12(IMFSample* pSample, std::vector<uint8_t>& ou
     return false;
 }
 
-bool H264Decoder::DecodeAccessUnit(
+bool H264Decoder::DecodeAccessUnitEx(
     const uint8_t* h264Data,
     size_t size,
     int64_t timestampUs,
-    std::vector<uint8_t>& outNv12,
-    int& outWidth,
-    int& outHeight
+    GpuDecodedFrame& outGpuFrame,
+    std::vector<uint8_t>& outCpuNv12,
+    bool& outIsGpuDirect
 ) {
+    outIsGpuDirect = false;
     if (!h264Data || size == 0) return false;
 
-    if (!isInitialized_ && !Initialize(targetWidth_, targetHeight_)) {
+    if (!isInitialized_ && !Initialize(targetWidth_, targetHeight_, d3dDevice_.Get())) {
         return false;
     }
 
@@ -299,7 +324,8 @@ bool H264Decoder::DecodeAccessUnit(
         MFT_OUTPUT_DATA_BUFFER outputBuffer{};
         outputBuffer.dwStreamID = 0;
 
-        if (!(streamInfo.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES))) {
+        bool mftProvidesSamples = (streamInfo.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES)) != 0;
+        if (!mftProvidesSamples) {
             DWORD cbSize = streamInfo.cbSize > 0 ? streamInfo.cbSize : static_cast<DWORD>(actualWidth_ * actualHeight_ * 3 / 2);
             DWORD minOutCap = 1920u * 1088u * 2u;
             DWORD targetCap = (cbSize > minOutCap) ? cbSize : minOutCap;
@@ -343,7 +369,32 @@ bool H264Decoder::DecodeAccessUnit(
         }
 
         if (SUCCEEDED(hr) && outputBuffer.pSample) {
-            if (ExtractSampleNv12(outputBuffer.pSample, outNv12, outWidth, outHeight)) {
+            // Check if hardware D3D11 texture is available (Zero-Copy Fast Path)
+            Microsoft::WRL::ComPtr<IMFMediaBuffer> buf;
+            if (SUCCEEDED(outputBuffer.pSample->GetBufferByIndex(0, &buf)) && buf) {
+                Microsoft::WRL::ComPtr<IMFDXGIBuffer> dxgiBuf;
+                if (SUCCEEDED(buf.As(&dxgiBuf)) && dxgiBuf) {
+                    Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+                    UINT subIndex = 0;
+                    if (SUCCEEDED(dxgiBuf->GetResource(IID_PPV_ARGS(&tex))) && tex && SUCCEEDED(dxgiBuf->GetSubresourceIndex(&subIndex))) {
+                        outGpuFrame.texture = tex;
+                        outGpuFrame.subresourceIndex = subIndex;
+                        outGpuFrame.codedWidth = actualWidth_;
+                        outGpuFrame.codedHeight = actualHeight_;
+                        outGpuFrame.displayWidth = displayWidth_ > 0 ? displayWidth_ : actualWidth_;
+                        outGpuFrame.displayHeight = displayHeight_ > 0 ? displayHeight_ : actualHeight_;
+                        outIsGpuDirect = true;
+                        gotFrame = true;
+                        ++sampleIndex_;
+                        break;
+                    }
+                }
+            }
+
+            // CPU Fallback Path
+            int decW = 0, decH = 0;
+            if (ExtractSampleNv12(outputBuffer.pSample, outCpuNv12, decW, decH)) {
+                outIsGpuDirect = false;
                 gotFrame = true;
                 ++sampleIndex_;
                 break;
@@ -352,6 +403,24 @@ bool H264Decoder::DecodeAccessUnit(
     }
 
     return gotFrame;
+}
+
+bool H264Decoder::DecodeAccessUnit(
+    const uint8_t* h264Data,
+    size_t size,
+    int64_t timestampUs,
+    std::vector<uint8_t>& outNv12,
+    int& outWidth,
+    int& outHeight
+) {
+    GpuDecodedFrame gpuFrame{};
+    bool isGpuDirect = false;
+    if (!DecodeAccessUnitEx(h264Data, size, timestampUs, gpuFrame, outNv12, isGpuDirect)) {
+        return false;
+    }
+    outWidth = actualWidth_;
+    outHeight = actualHeight_;
+    return true;
 }
 
 } // namespace km::codec

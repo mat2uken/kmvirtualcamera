@@ -1,9 +1,12 @@
 #pragma once
 
+#include <windows.h>
 #include <mfapi.h>
 #include <mftransform.h>
 #include <mfobjects.h>
 #include <mferror.h>
+#include <dxgi.h>
+#include <d3d11.h>
 #include <wrl/client.h>
 #include <vector>
 #include <cstdint>
@@ -11,16 +14,37 @@
 
 namespace km::codec {
 
+struct GpuDecodedFrame {
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    UINT subresourceIndex = 0;
+    int codedWidth = 0;
+    int codedHeight = 0;
+    int displayWidth = 0;
+    int displayHeight = 0;
+};
+
 class H264Decoder {
 public:
     H264Decoder();
     ~H264Decoder();
 
-    bool Initialize(int width = 1280, int height = 720);
+    bool Initialize(int width = 1280, int height = 720, ID3D11Device* pD3DDevice = nullptr);
     void Shutdown();
 
-    // Decodes an Annex-B H.264 Access Unit (NAL units with 00 00 00 01 start code) into NV12
-    // NOTE: Must only be called from a single thread (VideoWorkerProc)
+    // Decodes an Annex-B H.264 Access Unit (NAL units with 00 00 00 01 start code).
+    // If hardware D3D11 decoding is active and returns a GPU texture, outIsGpuDirect will be true
+    // and outGpuFrame will contain the decoded ID3D11Texture2D (Zero-Copy).
+    // Otherwise, outIsGpuDirect will be false and outCpuNv12 will contain the CPU NV12 bytes.
+    bool DecodeAccessUnitEx(
+        const uint8_t* h264Data,
+        size_t size,
+        int64_t timestampUs,
+        GpuDecodedFrame& outGpuFrame,
+        std::vector<uint8_t>& outCpuNv12,
+        bool& outIsGpuDirect
+    );
+
+    // Legacy CPU-only signature for compatibility
     bool DecodeAccessUnit(
         const uint8_t* h264Data,
         size_t size,
@@ -31,6 +55,7 @@ public:
     );
 
     bool IsInitialized() const { return isInitialized_; }
+    bool IsHardwareAccelerated() const { return isHardwareAccelerated_; }
     void GetDecodedResolution(int& width, int& height) const {
         width = actualWidth_;
         height = actualHeight_;
@@ -42,6 +67,7 @@ private:
     bool ExtractSampleNv12(IMFSample* pSample, std::vector<uint8_t>& outNv12, int& outW, int& outH);
 
     bool isInitialized_{false};
+    bool isHardwareAccelerated_{false};
     int targetWidth_{1280};
     int targetHeight_{720};
     int actualWidth_{1280};
@@ -49,6 +75,10 @@ private:
     int displayWidth_{1280};
     int displayHeight_{720};
     int64_t sampleIndex_{0};
+
+    Microsoft::WRL::ComPtr<ID3D11Device> d3dDevice_;
+    Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> dxgiDeviceManager_;
+    UINT dxgiResetToken_{0};
 
     Microsoft::WRL::ComPtr<IMFTransform> decoderMft_;
     Microsoft::WRL::ComPtr<IMFSample> inSample_;
