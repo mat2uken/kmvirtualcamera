@@ -413,14 +413,106 @@ bool H264Decoder::DecodeAccessUnit(
     int& outWidth,
     int& outHeight
 ) {
-    GpuDecodedFrame gpuFrame{};
-    bool isGpuDirect = false;
-    if (!DecodeAccessUnitEx(h264Data, size, timestampUs, gpuFrame, outNv12, isGpuDirect)) {
+    if (!h264Data || size == 0) return false;
+
+    if (!isInitialized_ && !Initialize(targetWidth_, targetHeight_, d3dDevice_.Get())) {
         return false;
     }
-    outWidth = actualWidth_;
-    outHeight = actualHeight_;
-    return true;
+
+    // 1. Reusable Input Sample Buffer
+    if (!inBuffer_ || inBufferCapacity_ < size) {
+        DWORD req = static_cast<DWORD>(size * 2);
+        DWORD minCap = 512u * 1024u;
+        inBufferCapacity_ = (req > minCap) ? req : minCap;
+        inBuffer_.Reset();
+        inSample_.Reset();
+        HRESULT hr = MFCreateMemoryBuffer(inBufferCapacity_, &inBuffer_);
+        if (FAILED(hr)) return false;
+        hr = MFCreateSample(&inSample_);
+        if (FAILED(hr)) return false;
+        inSample_->AddBuffer(inBuffer_.Get());
+    }
+
+    BYTE* pDst = nullptr;
+    HRESULT hr = inBuffer_->Lock(&pDst, nullptr, nullptr);
+    if (FAILED(hr)) return false;
+
+    memcpy(pDst, h264Data, size);
+    inBuffer_->Unlock();
+    inBuffer_->SetCurrentLength(static_cast<DWORD>(size));
+
+    inSample_->SetSampleTime(timestampUs * 10);
+    inSample_->SetSampleDuration(166666); // 60fps base interval
+
+    // 2. Feed Sample to MFT
+    hr = decoderMft_->ProcessInput(0, inSample_.Get(), 0);
+    if (FAILED(hr) && hr != MF_E_NOTACCEPTING) {
+        return false;
+    }
+
+    // 3. Process Output from MFT
+    bool gotFrame = false;
+    for (int iter = 0; iter < 4; ++iter) {
+        MFT_OUTPUT_STREAM_INFO streamInfo{};
+        hr = decoderMft_->GetOutputStreamInfo(0, &streamInfo);
+        if (FAILED(hr)) break;
+
+        MFT_OUTPUT_DATA_BUFFER outputBuffer{};
+        outputBuffer.dwStreamID = 0;
+
+        bool mftProvidesSamples = (streamInfo.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES)) != 0;
+        if (!mftProvidesSamples) {
+            DWORD cbSize = streamInfo.cbSize > 0 ? streamInfo.cbSize : static_cast<DWORD>(actualWidth_ * actualHeight_ * 3 / 2);
+            DWORD minOutCap = 1920u * 1088u * 2u;
+            DWORD targetCap = (cbSize > minOutCap) ? cbSize : minOutCap;
+            if (!outBuffer_ || outBufferCapacity_ < targetCap) {
+                outBufferCapacity_ = targetCap;
+                outBuffer_.Reset();
+                outSample_.Reset();
+                hr = MFCreateMemoryBuffer(outBufferCapacity_, &outBuffer_);
+                if (FAILED(hr)) break;
+                hr = MFCreateSample(&outSample_);
+                if (FAILED(hr)) break;
+                outSample_->AddBuffer(outBuffer_.Get());
+            }
+            outBuffer_->SetCurrentLength(0);
+            outputBuffer.pSample = outSample_.Get();
+        }
+
+        DWORD dwStatus = 0;
+        hr = decoderMft_->ProcessOutput(0, 1, &outputBuffer, &dwStatus);
+
+        if (outputBuffer.pEvents) {
+            outputBuffer.pEvents->Release();
+        }
+
+        if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
+            Microsoft::WRL::ComPtr<IMFMediaType> availType;
+            if (SUCCEEDED(decoderMft_->GetOutputAvailableType(0, 0, &availType))) {
+                UINT32 w = 0, h = 0;
+                if (SUCCEEDED(MFGetAttributeSize(availType.Get(), MF_MT_FRAME_SIZE, &w, &h)) && w > 0 && h > 0) {
+                    actualWidth_ = static_cast<int>(w);
+                    actualHeight_ = static_cast<int>(h);
+                    ConfigureOutputType(actualWidth_, actualHeight_);
+                }
+            }
+            continue;
+        }
+
+        if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
+            break;
+        }
+
+        if (SUCCEEDED(hr) && outputBuffer.pSample) {
+            if (ExtractSampleNv12(outputBuffer.pSample, outNv12, outWidth, outHeight)) {
+                gotFrame = true;
+                ++sampleIndex_;
+                break;
+            }
+        }
+    }
+
+    return gotFrame;
 }
 
 } // namespace km::codec
