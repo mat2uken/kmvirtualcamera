@@ -197,9 +197,15 @@ void Nv12Converter::ConvertNv12ToNv12Letterbox(
     int offsetHalfX = offsetX / 2;
     int offsetHalfY = offsetY / 2;
 
-    // 1. Process Y and UV planes branchlessly based on rotation angle with zero heap allocation
-    int xMapY[1920];
-    int xMapUv[960];
+    // 1. Process Y and UV planes branchlessly based on rotation angle with zero heap allocation (up to 4K resolution)
+    constexpr int kMaxFitDim = 3840;
+    fitW = (std::min)(fitW, kMaxFitDim);
+    fitH = (std::min)(fitH, kMaxFitDim);
+    fitHalfW = fitW / 2;
+    fitHalfH = fitH / 2;
+
+    int xMapY[kMaxFitDim];
+    int xMapUv[kMaxFitDim / 2];
 
     if (rot == 0) {
         for (int x = 0; x < fitW; ++x) xMapY[x] = (x * sampleW) / fitW;
