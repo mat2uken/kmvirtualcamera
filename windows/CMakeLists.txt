@@ -95,7 +95,7 @@ target_link_libraries(VirtualCameraMediaSource PRIVATE
 )
 
 if(MSVC)
-    target_link_options(VirtualCameraMediaSource PRIVATE /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT /GUARD:CF)
+    target_link_options(VirtualCameraMediaSource PRIVATE /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT /GUARD:CF /OPT:REF /OPT:ICF)
 endif()
 
 # -------------------------------------------------------------
@@ -158,7 +158,7 @@ target_link_libraries(Receiver PRIVATE
 )
 
 if(MSVC)
-    target_link_options(Receiver PRIVATE /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT /GUARD:CF)
+    target_link_options(Receiver PRIVATE /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT /GUARD:CF /OPT:REF /OPT:ICF)
 endif()
 
 # -------------------------------------------------------------

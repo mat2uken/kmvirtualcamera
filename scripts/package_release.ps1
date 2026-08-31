@@ -31,20 +31,44 @@ Write-Host "==========================================================" -Foregro
 Write-Host "`n[1/3] Building Windows binaries in Release mode..." -ForegroundColor Yellow
 & "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build "$windowsDir\build" --config Release --target Receiver VirtualCameraMediaSource
 
+# Sign Binaries with Developer Authenticode Certificate
+$receiverExe = "$releaseBinDir\Receiver.exe"
+$vcamDll = "$releaseBinDir\VirtualCameraMediaSource.dll"
+
+Write-Host "Signing Release binaries with Developer Certificate..." -ForegroundColor Yellow
+try {
+    $cert = Get-ChildItem -Path Cert:\CurrentUser\My -CodeSigningCert | Where-Object { $_.Subject -like "*KM Virtual Camera*" } | Select-Object -First 1
+    if (-not $cert) {
+        $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=KM Virtual Camera Project, O=KM Virtual Camera, C=JP" -CertStoreLocation "Cert:\CurrentUser\My" -NotAfter (Get-Date).AddYears(5)
+    }
+    $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
+    if (Test-Path $signtool) {
+        & $signtool sign /v /fd SHA256 /a /s My /n "KM Virtual Camera Project" "$receiverExe" | Out-Null
+        & $signtool sign /v /fd SHA256 /a /s My /n "KM Virtual Camera Project" "$vcamDll" | Out-Null
+        Write-Host "  [OK] Binaries signed with Authenticode signature." -ForegroundColor Green
+    }
+    # Export public certificate
+    $certExportPath = "$packageDir\KMVirtualCamera-Certificate.cer"
+} catch {
+    Write-Warning "Could not sign binaries: $_"
+}
+
 # 2. Re-create package folder
 if (Test-Path $packageDir) {
     Remove-Item $packageDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
 
-$receiverExe = "$releaseBinDir\Receiver.exe"
-$vcamDll = "$releaseBinDir\VirtualCameraMediaSource.dll"
-
 Write-Host "`n[2/3] Staging release files..." -ForegroundColor Yellow
 
 # Copy Binaries
 Copy-Item $receiverExe -Destination $packageDir\Receiver.exe -Force
 Copy-Item $vcamDll -Destination $packageDir\VirtualCameraMediaSource.dll -Force
+
+# Export public certificate into package
+if ($cert) {
+    Export-Certificate -Cert $cert -FilePath "$packageDir\KMVirtualCamera-Certificate.cer" -Force | Out-Null
+}
 
 # Copy Helper Scripts
 Copy-Item "$PSScriptRoot\register_vcam.ps1" -Destination $packageDir\register_vcam.ps1 -Force
@@ -55,6 +79,7 @@ Copy-Item "$PSScriptRoot\run_receiver.ps1" -Destination $packageDir\run_receiver
 Set-Content -Path "$packageDir\Start-Receiver.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`nstart `"`" `"Receiver.exe`" --url=https://webrtc-bridge-signaling.mat2uken.workers.dev" -Encoding ascii
 Set-Content -Path "$packageDir\Register-VirtualCamera.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`necho Requesting Administrator privileges to register Virtual Camera...`r`npowershell.exe -ExecutionPolicy Bypass -NoProfile -Command `"Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -NoProfile -File `\`"%~dp0register_vcam.ps1`\`"' -Verb RunAs`"" -Encoding ascii
 Set-Content -Path "$packageDir\Unregister-VirtualCamera.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`necho Requesting Administrator privileges to unregister Virtual Camera...`r`npowershell.exe -ExecutionPolicy Bypass -NoProfile -Command `"Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -NoProfile -File `\`"%~dp0unregister_vcam.ps1`\`"' -Verb RunAs`"" -Encoding ascii
+Set-Content -Path "$packageDir\Install-Certificate.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`necho Installing Developer Certificate to Trusted Publishers...`r`npowershell.exe -ExecutionPolicy Bypass -NoProfile -Command `"Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -NoProfile -Command Import-Certificate -FilePath `\`"%~dp0KMVirtualCamera-Certificate.cer`\`" -CertStoreLocation Cert:\LocalMachine\TrustedPublisher; Import-Certificate -FilePath `\`"%~dp0KMVirtualCamera-Certificate.cer`\`" -CertStoreLocation Cert:\LocalMachine\Root' -Verb RunAs`"" -Encoding ascii
 
 # Create README.txt
 $readmeContent = @"

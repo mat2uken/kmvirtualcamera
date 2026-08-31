@@ -94,6 +94,23 @@ try {
     & icacls.exe $programDataDir /grant 'ALL APPLICATION PACKAGES:(OI)(CI)F' /T /Q | Out-Null
     & icacls.exe $programDataDir /grant 'Users:(OI)(CI)F' /T /Q | Out-Null
     Write-Host "  [OK] Deployed DLL to system directory: $installedDllPath" -ForegroundColor Green
+
+    # Install Developer Code Signing Certificate to eliminate SmartScreen/Defender warnings
+    $certCandidates = @(
+        (Join-Path $PSScriptRoot "KMVirtualCamera-Certificate.cer"),
+        (Join-Path (Split-Path $targetPath) "KMVirtualCamera-Certificate.cer"),
+        (Join-Path (Split-Path $PSScriptRoot) "KMVirtualCamera-Certificate.cer")
+    )
+    foreach ($cPath in $certCandidates) {
+        if ($cPath -and (Test-Path $cPath)) {
+            try {
+                Import-Certificate -FilePath $cPath -CertStoreLocation "Cert:\LocalMachine\TrustedPublisher" | Out-Null
+                Import-Certificate -FilePath $cPath -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
+                Write-Host "  [OK] Installed developer signature to Trusted Publishers & Root." -ForegroundColor Green
+                break
+            } catch {}
+        }
+    }
 } catch {
     Write-Warning "Failed to deploy DLL to ${programDataDir}: $_"
     $installedDllPath = $targetPath
