@@ -80,6 +80,22 @@ function enhanceSdpForLowLatency(sdp: string, bitrateBps = 2_500_000): string {
       continue;
     }
 
+    if (inVideo && line.startsWith("a=fmtp:") && line.includes("packetization-mode=1")) {
+      // Enhance H.264 fmtp with multi-slice, max macroblock throughput, and recommended NALU size
+      let enhancedFmtp = line;
+      if (!enhancedFmtp.includes("level-asymmetry-allowed")) {
+        enhancedFmtp += ";level-asymmetry-allowed=1";
+      }
+      if (!enhancedFmtp.includes("max-mbps")) {
+        enhancedFmtp += ";max-mbps=245760;max-fs=8160;max-smbps=245760";
+      }
+      if (!enhancedFmtp.includes("max-rcmd-nalu-size")) {
+        enhancedFmtp += ";max-rcmd-nalu-size=1200";
+      }
+      result.push(enhancedFmtp);
+      continue;
+    }
+
     result.push(line);
   }
   return result.join("\r\n");

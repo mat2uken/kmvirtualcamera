@@ -2,6 +2,7 @@
 #include <wmcodecdsp.h>
 #include <codecapi.h>
 #include <algorithm>
+#include <thread>
 
 namespace km::codec {
 
@@ -35,17 +36,24 @@ bool H264Decoder::Initialize(int width, int height, ID3D11Device* pD3DDevice) {
         return false;
     }
 
-    // Enable Low Latency mode on Decoder MFT
+    // Enable Low Latency and Multi-Slice Parallel Decoding mode on Decoder MFT
+    unsigned int numThreads = (std::max)(2u, std::thread::hardware_concurrency());
     Microsoft::WRL::ComPtr<ICodecAPI> codecApi;
     if (SUCCEEDED(decoderMft_.As(&codecApi)) && codecApi) {
         VARIANT varLowLatency{};
         varLowLatency.vt = VT_BOOL;
         varLowLatency.boolVal = VARIANT_TRUE;
         codecApi->SetValue(&CODECAPI_AVLowLatencyMode, &varLowLatency);
+
+        VARIANT varThreads{};
+        varThreads.vt = VT_UI4;
+        varThreads.ulVal = numThreads;
+        codecApi->SetValue(&CODECAPI_AVDecNumWorkerThreads, &varThreads);
     }
 
     Microsoft::WRL::ComPtr<IMFAttributes> attributes;
     if (SUCCEEDED(decoderMft_->GetAttributes(&attributes)) && attributes) {
+        attributes->SetUINT32(CODECAPI_AVDecNumWorkerThreads, numThreads);
         attributes->SetUINT32(CODECAPI_AVDecVideoThumbnailGenerationMode, 0);
         attributes->SetUINT32(CODECAPI_AVLowLatencyMode, 1);
         attributes->SetUINT32(MF_LOW_LATENCY, 1);
