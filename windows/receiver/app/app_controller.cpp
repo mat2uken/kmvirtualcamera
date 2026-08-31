@@ -275,19 +275,18 @@ void AppController::VideoWorkerProc() {
             int decW = 0, decH = 0;
             if (h264Decoder_.DecodeAccessUnit(localH264Buffer.data(), localH264Buffer.size(), tsUs, localDecodedBuffer, decW, decH)) {
                 lastDecodedFrameTick_.store(GetTickCount64(), std::memory_order_relaxed);
+                int rot = rotationDegrees_.load(std::memory_order_relaxed);
 
                 nv12Converter_.ConvertNv12ToNv12Letterbox(
                     localDecodedBuffer.data(), decW,
                     decW, decH,
                     localNv12Buffer.data(),
                     1280, 720,
-                    rotationDegrees_.load(std::memory_order_relaxed)
+                    rot
                 );
 
                 if (!isTestPatternMode_.load(std::memory_order_relaxed)) {
-                    // Critical Path: Publish to Virtual Camera immediately with ZERO latency!
                     pipePublisher_.PublishFrame(localNv12Buffer.data(), protocol::kPayloadBytes, tsUs);
-                    // GUI preview rendered after critical frame dispatch
                     mainWindow_->RenderPreviewFrame(localNv12Buffer);
                 }
 

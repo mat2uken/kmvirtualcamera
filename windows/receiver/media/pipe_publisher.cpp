@@ -44,6 +44,7 @@ void PipePublisher::Start() {
         );
         if (SUCCEEDED(hr) && d3dDevice_) {
             dxgiPublisher_.Initialize(d3dDevice_.Get(), protocol::kWidth, protocol::kHeight);
+            videoProcessor_.Initialize(d3dDevice_.Get(), protocol::kWidth, protocol::kHeight);
         }
     }
 
@@ -53,6 +54,7 @@ void PipePublisher::Start() {
 
 void PipePublisher::Stop() {
     if (!isRunning_.exchange(false)) return;
+    videoProcessor_.Release();
     dxgiPublisher_.Close();
     d3dContext_.Reset();
     d3dDevice_.Reset();
@@ -81,12 +83,29 @@ void PipePublisher::PublishFrame(const uint8_t* nv12Data, size_t dataSize, int64
     SetEvent(hNewFrameEvent_);
 }
 
-bool PipePublisher::PublishGpuTexture(ID3D11Texture2D* pGpuTexture, UINT subresource, UINT width, UINT height, int64_t captureTimeUs) {
+bool PipePublisher::PublishGpuTexture(ID3D11Texture2D* pGpuTexture, UINT subresource, UINT width, UINT height, int rotationDegrees, int64_t captureTimeUs) {
     if (!pGpuTexture || !isRunning_) return false;
 
     bool ok = false;
     if (dxgiPublisher_.IsInitialized() && d3dContext_) {
-        ok = dxgiPublisher_.PublishGpuTextureDirect(d3dContext_.Get(), pGpuTexture, subresource, width, height, captureTimeUs);
+        uint32_t targetSlot = 1 - dxgiPublisher_.GetActiveSlot();
+        ID3D11Texture2D* pDstTex = dxgiPublisher_.GetTexture(targetSlot);
+        if (pDstTex && dxgiPublisher_.LockSlot(targetSlot, 5)) {
+            if (videoProcessor_.IsSupported()) {
+                ok = videoProcessor_.ProcessVideoFrame(
+                    d3dContext_.Get(),
+                    pGpuTexture,
+                    subresource,
+                    width,
+                    height,
+                    pDstTex,
+                    protocol::kWidth,
+                    protocol::kHeight,
+                    rotationDegrees
+                );
+            }
+            dxgiPublisher_.UnlockSlot(targetSlot);
+        }
     }
 
     sequence_++;

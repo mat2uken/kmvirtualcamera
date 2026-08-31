@@ -178,6 +178,24 @@ public:
     bool IsInitialized() const { return isInitialized_; }
     uint32_t GetActiveSlot() const { return currentSlot_.load(std::memory_order_acquire); }
 
+    ID3D11Texture2D* GetTexture(uint32_t slot) {
+        return (slot < 2) ? textures_[slot].Get() : nullptr;
+    }
+
+    bool LockSlot(uint32_t slot, DWORD timeoutMs = 5) {
+        if (slot < 2 && keyedMutexes_[slot]) {
+            return SUCCEEDED(keyedMutexes_[slot]->AcquireSync(0, timeoutMs));
+        }
+        return true;
+    }
+
+    void UnlockSlot(uint32_t slot) {
+        if (slot < 2 && keyedMutexes_[slot]) {
+            keyedMutexes_[slot]->ReleaseSync(1);
+        }
+        currentSlot_.store(slot, std::memory_order_release);
+    }
+
 private:
     bool isInitialized_{false};
     UINT width_{protocol::kWidth};

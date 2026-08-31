@@ -112,6 +112,7 @@ add_executable(Receiver WIN32
     receiver/codec/h264_decoder.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
+    receiver/media/d3d11_video_processor.cpp
     receiver/media/pipe_publisher.cpp
     receiver/media/test_pattern_generator.cpp
     receiver/audio/audio_device_enumerator.cpp

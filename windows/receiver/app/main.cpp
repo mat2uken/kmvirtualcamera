@@ -38,6 +38,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         int fd = _fileno(fpLog);
         _dup2(fd, _fileno(stdout));
         _dup2(fd, _fileno(stderr));
+        setvbuf(stdout, nullptr, _IONBF, 0);
+        setvbuf(stderr, nullptr, _IONBF, 0);
     }
     std::ios::sync_with_stdio(true);
     std::cout << "\n=== KM Virtual Camera Receiver Started ===" << std::endl;
