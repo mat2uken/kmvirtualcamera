@@ -31,14 +31,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(nCmdShow);
 
-    // Redirect stdout/stderr to receiver_debug.log with shared-read access (_SH_DENYNO)
-    FILE* fpLog = _wfsopen(L"receiver_debug.log", L"a", _SH_DENYNO);
-    if (fpLog) {
-        setvbuf(fpLog, nullptr, _IONBF, 0);
-        int fd = _fileno(fpLog);
-        _dup2(fd, _fileno(stdout));
-        _dup2(fd, _fileno(stderr));
-    }
+    // Redirect stdout/stderr to receiver_debug.log
+    FILE* fpOut = nullptr;
+    FILE* fpErr = nullptr;
+    _wfreopen_s(&fpOut, L"receiver_debug.log", L"a", stdout);
+    _wfreopen_s(&fpErr, L"receiver_debug.log", L"a", stderr);
+    if (fpOut) setvbuf(stdout, nullptr, _IONBF, 0);
+    if (fpErr) setvbuf(stderr, nullptr, _IONBF, 0);
+    std::ios::sync_with_stdio(true);
     std::cout << "\n=== KM Virtual Camera Receiver Started ===" << std::endl;
 
     // Initialize COM and Media Foundation
