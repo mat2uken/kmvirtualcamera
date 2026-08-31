@@ -72,6 +72,7 @@ add_library(VirtualCameraMediaSource SHARED
     virtual-camera/media-source/pipe_frame_receiver.cpp
     receiver/media/test_pattern_generator.cpp
     virtual-camera/media-source/VirtualCameraMediaSource.def
+    virtual-camera/media-source/virtual_camera.rc
 )
 
 target_include_directories(VirtualCameraMediaSource PRIVATE
@@ -92,6 +93,10 @@ target_link_libraries(VirtualCameraMediaSource PRIVATE
     winmm
     avrt
 )
+
+if(MSVC)
+    target_link_options(VirtualCameraMediaSource PRIVATE /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT /GUARD:CF)
+endif()
 
 # -------------------------------------------------------------
 # 2. Windows Native Receiver Application
@@ -116,6 +121,8 @@ add_executable(Receiver WIN32
     receiver/ui/d3d11_preview.cpp
     receiver/ui/qr_view.cpp
     third_party/qr/qrcodegen.cpp
+    receiver/app/receiver.rc
+    receiver/app/receiver.manifest
 )
 
 target_include_directories(Receiver PRIVATE
@@ -149,6 +156,10 @@ target_link_libraries(Receiver PRIVATE
     ws2_32
     avrt
 )
+
+if(MSVC)
+    target_link_options(Receiver PRIVATE /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT /GUARD:CF)
+endif()
 
 # -------------------------------------------------------------
 # 3. Unit & Integration Tests
