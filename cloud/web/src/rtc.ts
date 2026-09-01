@@ -409,17 +409,10 @@ export class WebRtcSender {
         onDiagnosticLog?.(`ConnectionState: ${this.pc.connectionState}`);
         onStateChange(this.pc.connectionState);
         if (this.pc.connectionState === "connected") {
-          if (this.transportMode === "webcodecs_datachannel" && this.localStream) {
+          if (this.transportMode === "webcodecs_datachannel" && this.localStream && this.webcodecsSender) {
             const videoTrack = this.localStream.getVideoTracks()[0];
             if (videoTrack) {
-              const settings = videoTrack.getSettings();
-              const w = settings.width || 1280;
-              const h = settings.height || 720;
-              this.webcodecsSender = new WebCodecsSender(
-                { width: w, height: h, fps: targetFps, bitrateBps: targetBitrateBps },
-                onDiagnosticLog
-              );
-              await this.webcodecsSender.start(videoTrack, this.pc, this.videoElement);
+              await this.webcodecsSender.start(videoTrack, this.videoElement);
             }
           } else {
             this.applyBitrateParameters(targetBitrateBps, targetFps);
@@ -443,10 +436,17 @@ export class WebRtcSender {
       onDiagnosticLog?.(`ICE Candidate Error: ${event.errorCode} ${event.errorText} (${event.url})`);
     };
 
-    // If in WebCodecs mode, create the DataChannels before creating the Offer SDP
-    if (this.transportMode === "webcodecs_datachannel") {
-      this.pc.createDataChannel("km-video-stream", { ordered: true, maxRetransmits: 0 });
-      this.pc.createDataChannel("km-control", { ordered: true });
+    // If in WebCodecs mode, initialize WebCodecsSender and create DataChannels ONCE before creating Offer SDP
+    if (this.transportMode === "webcodecs_datachannel" && this.localStream) {
+      const videoTrack = this.localStream.getVideoTracks()[0];
+      const settings = videoTrack ? videoTrack.getSettings() : {};
+      const w = settings.width || targetWidth;
+      const h = settings.height || targetHeight;
+      this.webcodecsSender = new WebCodecsSender(
+        { width: w, height: h, fps: targetFps, bitrateBps: targetBitrateBps },
+        onDiagnosticLog
+      );
+      this.webcodecsSender.initDataChannels(this.pc);
     }
 
     for (const track of this.localStream.getTracks()) {

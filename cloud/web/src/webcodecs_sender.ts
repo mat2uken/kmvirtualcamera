@@ -1,6 +1,7 @@
 /**
  * WebCodecs + RTCDataChannel (In-Order Zero-Retransmit) Ultra-Low Latency Sender
  * Features:
+ * - Single-Initialization DataChannels (Guarantees zero duplicate stream resets)
  * - Dynamic Native Aspect-Ratio & Orientation Detection (Zero Stretching/Squashing)
  * - Robust AVCC to Annex-B (00 00 00 01) normalization for all mobile and desktop hardware encoders
  * - Isolated SPS & PPS extraction (Clean Annex-B bitstream without duplicate IDR prepending)
@@ -182,18 +183,10 @@ export class WebCodecsSender {
     this.onStatsUpdate = onStatsUpdate;
   }
 
-  public async start(
-    track: MediaStreamTrack,
-    pc: RTCPeerConnection,
-    videoElem?: HTMLVideoElement
-  ): Promise<void> {
-    this.isRunning = true;
-    this.frameSeq = 0;
-    this.frameCount = 0;
-    this.forceKeyframeNext = true;
-    this.cachedSpsPpsAnnexB = null;
+  public initDataChannels(pc: RTCPeerConnection) {
+    if (this.videoDc || this.controlDc) return;
 
-    // 1. Create In-Order Zero-Retransmit Video DataChannel (Ultra-Low Latency + In-Order Delivery)
+    // 1. Create In-Order Zero-Retransmit Video DataChannel
     this.videoDc = pc.createDataChannel("km-video-stream", {
       ordered: true,
       maxRetransmits: 0
@@ -206,15 +199,26 @@ export class WebCodecsSender {
     });
 
     this.setupControlChannel(this.controlDc);
+  }
 
-    // 3. Detect initial track dimensions (Portrait / Landscape awareness)
+  public async start(
+    track: MediaStreamTrack,
+    videoElem?: HTMLVideoElement
+  ): Promise<void> {
+    this.isRunning = true;
+    this.frameSeq = 0;
+    this.frameCount = 0;
+    this.forceKeyframeNext = true;
+    this.cachedSpsPpsAnnexB = null;
+
+    // Detect initial track dimensions (Portrait / Landscape awareness)
     const settings = track.getSettings();
     const initialW = settings.width || this.config.width;
     const initialH = settings.height || this.config.height;
 
     this.initEncoder(initialW, initialH);
 
-    // 4. Ingest video frames from TrackProcessor or Video element fallback
+    // Ingest video frames from TrackProcessor or Video element fallback
     this.startFrameCapture(track, videoElem);
   }
 

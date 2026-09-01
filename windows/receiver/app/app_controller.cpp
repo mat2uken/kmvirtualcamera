@@ -1,8 +1,78 @@
 #include "app_controller.h"
 #include <chrono>
+#include <fstream>
+#include <algorithm>
 #include <avrt.h>
 
 #pragma comment(lib, "avrt.lib")
+
+#pragma pack(push, 1)
+struct BmpFileHeader {
+    uint16_t bfType{ 0x4D42 };
+    uint32_t bfSize{ 0 };
+    uint16_t bfReserved1{ 0 };
+    uint16_t bfReserved2{ 0 };
+    uint32_t bfOffBits{ 54 };
+};
+struct BmpInfoHeader {
+    uint32_t biSize{ 40 };
+    int32_t biWidth{ 0 };
+    int32_t biHeight{ 0 };
+    uint16_t biPlanes{ 1 };
+    uint16_t biBitCount{ 24 };
+    uint32_t biCompression{ 0 };
+    uint32_t biSizeImage{ 0 };
+    int32_t biXPelsPerMeter{ 0 };
+    int32_t biYPelsPerMeter{ 0 };
+    uint32_t biClrUsed{ 0 };
+    uint32_t biClrImportant{ 0 };
+};
+#pragma pack(pop)
+
+static void SaveNv12ToBmp(const uint8_t* nv12, int width, int height, const std::string& filepath) {
+    if (!nv12 || width <= 0 || height <= 0) return;
+
+    int rowStride = (width * 3 + 3) & ~3;
+    uint32_t imageSize = rowStride * height;
+
+    BmpFileHeader fileHeader{};
+    fileHeader.bfSize = sizeof(BmpFileHeader) + sizeof(BmpInfoHeader) + imageSize;
+
+    BmpInfoHeader infoHeader{};
+    infoHeader.biWidth = width;
+    infoHeader.biHeight = -height; // Top-down
+    infoHeader.biSizeImage = imageSize;
+
+    std::vector<uint8_t> rgbBuf(imageSize, 0);
+    const uint8_t* yPlane = nv12;
+    const uint8_t* uvPlane = nv12 + (width * height);
+
+    for (int y = 0; y < height; ++y) {
+        uint8_t* row = rgbBuf.data() + (y * rowStride);
+        for (int x = 0; x < width; ++x) {
+            int yVal = yPlane[y * width + x] - 16;
+            int uvIdx = ((y / 2) * width) + ((x / 2) * 2);
+            int uVal = uvPlane[uvIdx] - 128;
+            int vVal = uvPlane[uvIdx + 1] - 128;
+
+            int c = yVal < 0 ? 0 : yVal;
+            int r = std::clamp((298 * c + 409 * vVal + 128) >> 8, 0, 255);
+            int g = std::clamp((298 * c - 100 * uVal - 208 * vVal + 128) >> 8, 0, 255);
+            int b = std::clamp((298 * c + 516 * uVal + 128) >> 8, 0, 255);
+
+            row[x * 3 + 0] = static_cast<uint8_t>(b);
+            row[x * 3 + 1] = static_cast<uint8_t>(g);
+            row[x * 3 + 2] = static_cast<uint8_t>(r);
+        }
+    }
+
+    std::ofstream ofs(filepath, std::ios::binary);
+    if (ofs.is_open()) {
+        ofs.write(reinterpret_cast<const char*>(&fileHeader), sizeof(fileHeader));
+        ofs.write(reinterpret_cast<const char*>(&infoHeader), sizeof(infoHeader));
+        ofs.write(reinterpret_cast<const char*>(rgbBuf.data()), imageSize);
+    }
+}
 
 namespace km::app {
 
@@ -291,8 +361,9 @@ void AppController::VideoWorkerProc() {
                 }
 
                 uint64_t count = frameCount_.fetch_add(1, std::memory_order_relaxed) + 1;
-                if (count % 90 == 1) {
+                if (count == 10 || count == 30 || count == 60 || count == 90 || count % 90 == 1) {
                     std::cout << "[VideoPipeline] Stream active: " << count << " frames decoded (" << decW << "x" << decH << " -> 1280x720)" << std::endl;
+                    SaveNv12ToBmp(localNv12Buffer.data(), 1280, 720, "test_screenshots/last_decoded_frame.bmp");
                 }
             }
         }
