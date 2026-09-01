@@ -219,6 +219,7 @@ export class WebCodecsSender {
     videoElem?: HTMLVideoElement
   ): Promise<void> {
     this.isRunning = true;
+    this.activeVideoTrack = track;
     this.frameSeq = 0;
     this.frameCount = 0;
     this.forceKeyframeNext = true;
@@ -226,6 +227,8 @@ export class WebCodecsSender {
     this.pendingChunkData = [];
     this.pendingTimestampUs = -1;
     this.pendingIsKeyframe = false;
+
+    this.sendCameraCapabilities();
 
     // Detect initial track dimensions (Portrait / Landscape awareness)
     const settings = track.getSettings();
@@ -285,9 +288,55 @@ export class WebCodecsSender {
     this.logFn(`[WebCodecs] Reconfigured native resolution to ${width}x${height}`);
   }
 
+  public activeVideoTrack: MediaStreamTrack | null = null;
+  public onRemoteCommand?: (cmd: string, payload: any) => void;
+
+  public sendCameraCapabilities() {
+    if (!this.controlDc || this.controlDc.readyState !== "open" || !this.activeVideoTrack) return;
+    try {
+      // @ts-ignore
+      const caps = typeof this.activeVideoTrack.getCapabilities === "function" ? this.activeVideoTrack.getCapabilities() : {};
+      const settings = this.activeVideoTrack.getSettings();
+      const info = {
+        type: "camera_caps",
+        supportsTorch: !!caps.torch,
+        minZoom: caps.zoom ? caps.zoom.min : 1.0,
+        maxZoom: caps.zoom ? caps.zoom.max : 1.0,
+        currentZoom: (settings as any).zoom || 1.0,
+        facingMode: settings.facingMode || "environment"
+      };
+      this.controlDc.send(JSON.stringify(info));
+      this.logFn(`[WebCodecs] Sent camera capabilities: Torch=${info.supportsTorch}, Zoom=[${info.minZoom}..${info.maxZoom}], Facing=${info.facingMode}`);
+    } catch (e) {}
+  }
+
+  private async handleRemoteControl(msg: any) {
+    if (!this.activeVideoTrack) return;
+    try {
+      if (msg.cmd === "torch") {
+        await (this.activeVideoTrack as any).applyConstraints({
+          advanced: [{ torch: !!msg.enabled }]
+        });
+        this.logFn(`[WebCodecs] Remote Torch set to: ${msg.enabled}`);
+      } else if (msg.cmd === "zoom") {
+        await (this.activeVideoTrack as any).applyConstraints({
+          advanced: [{ zoom: Number(msg.value) }]
+        });
+        this.logFn(`[WebCodecs] Remote Zoom set to: ${msg.value}x`);
+      } else if (msg.cmd === "switch_camera") {
+        if (this.onRemoteCommand) {
+          this.onRemoteCommand("switch_camera", msg);
+        }
+      }
+    } catch (err) {
+      this.logFn(`[WebCodecs] Remote control command failed: ${err}`);
+    }
+  }
+
   private setupControlChannel(dc: RTCDataChannel) {
     dc.onopen = () => {
       this.logFn("[WebCodecs] Control DataChannel open.");
+      this.sendCameraCapabilities();
       setInterval(() => {
         if (this.controlDc && this.controlDc.readyState === "open") {
           this.lastPingTime = performance.now();
@@ -296,7 +345,7 @@ export class WebCodecsSender {
       }, 2000);
     };
 
-    dc.onmessage = (evt) => {
+    dc.onmessage = async (evt) => {
       try {
         const msg = JSON.parse(evt.data);
         if (msg.type === "pli") {
@@ -304,6 +353,10 @@ export class WebCodecsSender {
           this.logFn("[WebCodecs] Instant PLI Keyframe requested by receiver.");
         } else if (msg.type === "bitrate" && typeof msg.bps === "number") {
           this.setBitrate(msg.bps);
+        } else if (msg.type === "remote_control") {
+          await this.handleRemoteControl(msg);
+        } else if (msg.type === "query_caps") {
+          this.sendCameraCapabilities();
         } else if (msg.type === "pong") {
           if (this.lastPingTime > 0) {
             this.rttMs = Math.round(performance.now() - this.lastPingTime);

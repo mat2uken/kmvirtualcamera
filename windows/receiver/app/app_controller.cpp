@@ -203,6 +203,27 @@ bool AppController::Initialize(HINSTANCE hInstance, std::wstring baseUrl) {
         mainWindow_->SetTestPatternStatus(!current);
     });
 
+    mainWindow_->SetOnTorchToggle([this](bool enable) {
+        if (rtcManager_) {
+            std::string json = "{\"type\":\"remote_control\",\"cmd\":\"torch\",\"enabled\":" + std::string(enable ? "true" : "false") + "}";
+            rtcManager_->SendControlMessage(json);
+        }
+    });
+
+    mainWindow_->SetOnZoomChange([this](float zoom) {
+        if (rtcManager_) {
+            std::string json = "{\"type\":\"remote_control\",\"cmd\":\"zoom\",\"value\":" + std::to_string(zoom) + "}";
+            rtcManager_->SendControlMessage(json);
+        }
+    });
+
+    mainWindow_->SetOnSwitchCamera([this]() {
+        if (rtcManager_) {
+            std::string json = "{\"type\":\"remote_control\",\"cmd\":\"switch_camera\"}";
+            rtcManager_->SendControlMessage(json);
+        }
+    });
+
     isTestPatternWorkerRunning_ = true;
     testPatternThread_ = std::thread(&AppController::TestPatternWorkerProc, this);
 
@@ -295,6 +316,16 @@ void AppController::SignalingWorkerProc() {
                 std::cout << "[WebRTC] ERROR: rtcManager_->Initialize failed." << std::endl;
                 return;
             }
+
+            rtcManager_->SetControlMessageCallback([this](const std::string& json) {
+                if (json.find("\"camera_caps\"") != std::string::npos) {
+                    bool supportsTorch = (json.find("\"supportsTorch\":true") != std::string::npos);
+                    std::string facing = (json.find("\"facingMode\":\"user\"") != std::string::npos) ? "user" : "environment";
+                    if (mainWindow_) {
+                        mainWindow_->UpdateCameraCapabilities(supportsTorch, 1.0f, 5.0f, 1.0f, facing);
+                    }
+                }
+            });
 
             std::string answerSdp;
             std::cout << "[WebRTC] Generating Answer SDP and gathering ICE candidates..." << std::endl;

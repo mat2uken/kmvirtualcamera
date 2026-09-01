@@ -80,19 +80,13 @@ function enhanceSdpForLowLatency(sdp: string, bitrateBps = 2_500_000): string {
       continue;
     }
 
-    if (inVideo && line.startsWith("a=fmtp:") && line.includes("packetization-mode=1")) {
-      // Enhance H.264 fmtp with multi-slice, max macroblock throughput, and recommended NALU size
-      let enhancedFmtp = line;
-      if (!enhancedFmtp.includes("level-asymmetry-allowed")) {
-        enhancedFmtp += ";level-asymmetry-allowed=1";
-      }
-      if (!enhancedFmtp.includes("max-mbps")) {
-        enhancedFmtp += ";max-mbps=245760;max-fs=8160;max-smbps=245760";
-      }
-      if (!enhancedFmtp.includes("max-rcmd-nalu-size")) {
-        enhancedFmtp += ";max-rcmd-nalu-size=1200";
-      }
-      result.push(enhancedFmtp);
+    if (line.startsWith("a=fmtp:") && line.includes("opus")) {
+      let opusFmtp = line;
+      if (!opusFmtp.includes("useinbandfec=1")) opusFmtp += ";useinbandfec=1";
+      if (!opusFmtp.includes("minptime=10")) opusFmtp += ";minptime=10";
+      if (!opusFmtp.includes("stereo=1")) opusFmtp += ";stereo=1;sprop-stereo=1";
+      if (!opusFmtp.includes("cbr=1")) opusFmtp += ";cbr=1;maxaveragebitrate=128000";
+      result.push(opusFmtp);
       continue;
     }
 
@@ -446,6 +440,21 @@ export class WebRtcSender {
         { width: w, height: h, fps: targetFps, bitrateBps: targetBitrateBps },
         onDiagnosticLog
       );
+      this.webcodecsSender.onRemoteCommand = async (cmd, payload) => {
+        if (cmd === "switch_camera") {
+          const currentFacing = this.getActiveVideoTrackSettings()?.facingMode || "environment";
+          const newFacing = currentFacing === "user" ? "environment" : "user";
+          onDiagnosticLog?.(`Remote camera switch requested: switching to ${newFacing}`);
+          await this.switchVideo(newFacing, targetWidth, targetHeight, targetFps);
+          if (this.webcodecsSender && this.localStream) {
+            const newTrack = this.localStream.getVideoTracks()[0];
+            if (newTrack) {
+              this.webcodecsSender.activeVideoTrack = newTrack;
+              this.webcodecsSender.sendCameraCapabilities();
+            }
+          }
+        }
+      };
       this.webcodecsSender.initDataChannels(this.pc);
     }
 

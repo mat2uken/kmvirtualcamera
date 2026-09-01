@@ -181,6 +181,9 @@ bool PeerConnectionManager::Initialize(
                                 controlDc_->send("{\"type\":\"pong\"}");
                             }
                         }
+                        if (controlCallback_) {
+                            controlCallback_(text);
+                        }
                     }
                 });
             }
@@ -308,6 +311,15 @@ uint32_t PeerConnectionManager::GetMeasuredThroughput() const {
 
 float PeerConnectionManager::GetLossRatio() const {
     return bandwidthEstimator_.GetCurrentLossRatio();
+}
+
+void PeerConnectionManager::SendControlMessage(const std::string& json) {
+    std::lock_guard<std::mutex> lock(rtcMutex_);
+    if (controlDc_ && controlDc_->isOpen()) {
+        try {
+            controlDc_->send(json);
+        } catch (...) {}
+    }
 }
 
 void PeerConnectionManager::Close() {

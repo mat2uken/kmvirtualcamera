@@ -28,6 +28,9 @@ public:
     void SetTestPatternStatus(bool isTestPatternActive);
     void RenderPreviewFrame(std::span<const uint8_t> nv12Data);
 
+    void UpdateCameraCapabilities(bool supportsTorch, float minZoom, float maxZoom, float currentZoom, const std::string& facingMode);
+    void SetTorchState(bool isEnabled);
+
     void SetOnAudioDeviceChanged(std::function<void(int index)> cb) { onAudioDeviceChanged_ = std::move(cb); }
     void SetOnToggleVirtualCamera(std::function<void()> cb) { onToggleVirtualCamera_ = std::move(cb); }
     void SetOnRegisterVirtualCamera(std::function<void()> cb) { onRegisterVirtualCamera_ = std::move(cb); }
@@ -35,6 +38,9 @@ public:
     void SetOnNewSession(std::function<void()> cb) { onNewSession_ = std::move(cb); }
     void SetOnToggleTestPattern(std::function<void()> cb) { onToggleTestPattern_ = std::move(cb); }
     void SetOnRotationChanged(std::function<void(int degrees)> cb) { onRotationChanged_ = std::move(cb); }
+    void SetOnTorchToggle(std::function<void(bool enable)> cb) { onTorchToggle_ = std::move(cb); }
+    void SetOnZoomChange(std::function<void(float zoom)> cb) { onZoomChange_ = std::move(cb); }
+    void SetOnSwitchCamera(std::function<void()> cb) { onSwitchCamera_ = std::move(cb); }
 
 private:
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -59,6 +65,14 @@ private:
     HWND hUrlEdit_{nullptr};
     HFONT hFont_{nullptr};
 
+    // Remote Camera Controls (Torch, Switch Camera, Zoom)
+    HWND hTorchBtn_{nullptr};
+    HWND hSwitchCamBtn_{nullptr};
+    HWND hZoom1xBtn_{nullptr};
+    HWND hZoom2xBtn_{nullptr};
+    HWND hZoom3xBtn_{nullptr};
+    bool isTorchOn_{false};
+
     QrView qrView_;
     D3D11Preview d3dPreview_;
 
@@ -75,6 +89,9 @@ private:
     std::function<void()> onNewSession_;
     std::function<void()> onToggleTestPattern_;
     std::function<void(int degrees)> onRotationChanged_;
+    std::function<void(bool enable)> onTorchToggle_;
+    std::function<void(float zoom)> onZoomChange_;
+    std::function<void()> onSwitchCamera_;
 };
 
 } // namespace km::ui

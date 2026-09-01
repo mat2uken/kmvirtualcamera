@@ -55,6 +55,9 @@ public:
     uint32_t GetMeasuredThroughput() const;
     float GetLossRatio() const;
 
+    void SendControlMessage(const std::string& json);
+    void SetControlMessageCallback(std::function<void(const std::string& json)> cb) { controlCallback_ = std::move(cb); }
+
     void Close();
 
 private:
@@ -74,6 +77,7 @@ private:
     StateChangeCallback stateCallback_;
     VideoFrameCallback videoCallback_;
     AudioPcmCallback audioCallback_;
+    std::function<void(const std::string& json)> controlCallback_;
     std::atomic<bool> isGatheringComplete_{false};
     std::atomic<uint8_t> transportCcExtId_{0};
     std::atomic<bool> isDataChannelVideoActive_{false};

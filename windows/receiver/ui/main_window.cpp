@@ -11,6 +11,11 @@ constexpr int ID_ROT_RIGHT_BTN = 1006;
 constexpr int ID_REGISTER_VCAM_BTN = 1007;
 constexpr int ID_CHECK_CAMERAS_BTN = 1008;
 constexpr int ID_TEST_PATTERN_BTN = 1009;
+constexpr int ID_TORCH_BTN = 1010;
+constexpr int ID_SWITCH_CAM_BTN = 1011;
+constexpr int ID_ZOOM_1X_BTN = 1012;
+constexpr int ID_ZOOM_2X_BTN = 1013;
+constexpr int ID_ZOOM_3X_BTN = 1014;
 
 MainWindow::MainWindow() {
     InitializeSRWLock(&previewSrwLock_);
@@ -216,15 +221,56 @@ bool MainWindow::Create(HINSTANCE hInstance, int width, int height) {
     );
     if (hFont_) SendMessageW(hTestPatternBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
 
-    // Create Right Panel: D3D11 Video Preview window (315, 20, 755, 550)
+    // Remote Camera Controls (Torch, Switch Camera, Zoom)
+    hTorchBtn_ = CreateWindowExW(
+        0, L"BUTTON", L"🔦 ライト [消灯]",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        25, 562, 130, 30,
+        hWnd_, (HMENU)(INT_PTR)ID_TORCH_BTN, hInstance, nullptr
+    );
+    if (hFont_) SendMessageW(hTorchBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
+    hSwitchCamBtn_ = CreateWindowExW(
+        0, L"BUTTON", L"🔄 カメラ反転",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        165, 562, 130, 30,
+        hWnd_, (HMENU)(INT_PTR)ID_SWITCH_CAM_BTN, hInstance, nullptr
+    );
+    if (hFont_) SendMessageW(hSwitchCamBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
+    hZoom1xBtn_ = CreateWindowExW(
+        0, L"BUTTON", L"🔍 1.0x",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        25, 598, 85, 28,
+        hWnd_, (HMENU)(INT_PTR)ID_ZOOM_1X_BTN, hInstance, nullptr
+    );
+    if (hFont_) SendMessageW(hZoom1xBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
+    hZoom2xBtn_ = CreateWindowExW(
+        0, L"BUTTON", L"🔍 2.0x",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        117, 598, 85, 28,
+        hWnd_, (HMENU)(INT_PTR)ID_ZOOM_2X_BTN, hInstance, nullptr
+    );
+    if (hFont_) SendMessageW(hZoom2xBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
+    hZoom3xBtn_ = CreateWindowExW(
+        0, L"BUTTON", L"🔍 3.0x",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        210, 598, 85, 28,
+        hWnd_, (HMENU)(INT_PTR)ID_ZOOM_3X_BTN, hInstance, nullptr
+    );
+    if (hFont_) SendMessageW(hZoom3xBtn_, WM_SETFONT, (WPARAM)hFont_, TRUE);
+
+    // Create Right Panel: D3D11 Video Preview window (315, 20, 755, 610)
     hPreviewWnd_ = CreateWindowExW(
         0, wcChild.lpszClassName, L"",
         WS_CHILD | WS_VISIBLE,
-        315, 20, 755, 550,
+        315, 20, 755, 610,
         hWnd_, nullptr, hInstance, nullptr
     );
 
-    d3dPreview_.Initialize(hPreviewWnd_, 755, 550);
+    d3dPreview_.Initialize(hPreviewWnd_, 755, 610);
     isPreviewWorkerRunning_ = true;
     previewThread_ = std::thread(&MainWindow::PreviewWorkerProc, this);
     return true;
@@ -308,6 +354,22 @@ void MainWindow::SetVirtualCameraRegistered(bool isRegistered) {
 void MainWindow::SetTestPatternStatus(bool isTestPatternActive) {
     if (hTestPatternBtn_) {
         SetWindowTextW(hTestPatternBtn_, isTestPatternActive ? L"⏹ 実映像モードに戻す" : L"🎬 テスト映像注入 (カラーバー)");
+    }
+}
+
+void MainWindow::SetTorchState(bool isEnabled) {
+    isTorchOn_ = isEnabled;
+    if (hTorchBtn_) {
+        SetWindowTextW(hTorchBtn_, isEnabled ? L"🔦 ライト [点灯中]" : L"🔦 ライト [消灯]");
+    }
+}
+
+void MainWindow::UpdateCameraCapabilities(bool supportsTorch, float minZoom, float maxZoom, float currentZoom, const std::string& facingMode) {
+    if (hTorchBtn_) {
+        EnableWindow(hTorchBtn_, supportsTorch ? TRUE : FALSE);
+    }
+    if (hSwitchCamBtn_) {
+        SetWindowTextW(hSwitchCamBtn_, facingMode == "user" ? L"🔄 カメラ: 前面" : L"🔄 カメラ: 背面");
     }
 }
 
@@ -401,6 +463,28 @@ LRESULT MainWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             } else if (wmId == ID_TEST_PATTERN_BTN && wmEvent == BN_CLICKED) {
                 if (onToggleTestPattern_) {
                     onToggleTestPattern_();
+                }
+            } else if (wmId == ID_TORCH_BTN && wmEvent == BN_CLICKED) {
+                isTorchOn_ = !isTorchOn_;
+                SetTorchState(isTorchOn_);
+                if (onTorchToggle_) {
+                    onTorchToggle_(isTorchOn_);
+                }
+            } else if (wmId == ID_SWITCH_CAM_BTN && wmEvent == BN_CLICKED) {
+                if (onSwitchCamera_) {
+                    onSwitchCamera_();
+                }
+            } else if (wmId == ID_ZOOM_1X_BTN && wmEvent == BN_CLICKED) {
+                if (onZoomChange_) {
+                    onZoomChange_(1.0f);
+                }
+            } else if (wmId == ID_ZOOM_2X_BTN && wmEvent == BN_CLICKED) {
+                if (onZoomChange_) {
+                    onZoomChange_(2.0f);
+                }
+            } else if (wmId == ID_ZOOM_3X_BTN && wmEvent == BN_CLICKED) {
+                if (onZoomChange_) {
+                    onZoomChange_(3.0f);
                 }
             }
             return 0;
