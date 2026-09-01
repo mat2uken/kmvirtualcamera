@@ -139,6 +139,46 @@ bool PeerConnectionManager::Initialize(
             }
         });
 
+        // Initialize WebCodecs DataChannel Depacketizer & Congestion Controller
+        dcVideoDepacketizer_.Reset();
+        dcVideoDepacketizer_.SetCallback([this](const uint8_t* nalData, size_t size, int64_t ts) {
+            if (videoCallback_ && size > 0) {
+                videoCallback_(nalData, size, 1280, 720, ts);
+            }
+        });
+        dcVideoDepacketizer_.SetControlSendCallback([this](const std::string& jsonMsg) {
+            if (controlDc_ && controlDc_->isOpen()) {
+                controlDc_->send(jsonMsg);
+            }
+        });
+
+        pc_->onDataChannel([this](std::shared_ptr<rtc::DataChannel> dc) {
+            std::string label = dc->label();
+            std::cout << "[DataChannel] Received incoming channel: " << label << std::endl;
+
+            if (label == km::dc_protocol::kDataChannelVideo) {
+                videoDc_ = dc;
+                videoDc_->onMessage([this](rtc::message_variant msg) {
+                    if (std::holds_alternative<rtc::binary>(msg)) {
+                        const auto& bin = std::get<rtc::binary>(msg);
+                        dcVideoDepacketizer_.ProcessDataChannelPacket(reinterpret_cast<const uint8_t*>(bin.data()), bin.size());
+                    }
+                });
+            } else if (label == km::dc_protocol::kDataChannelControl) {
+                controlDc_ = dc;
+                controlDc_->onMessage([this](rtc::message_variant msg) {
+                    if (std::holds_alternative<std::string>(msg)) {
+                        const auto& text = std::get<std::string>(msg);
+                        if (text.find("\"ping\"") != std::string::npos) {
+                            if (controlDc_ && controlDc_->isOpen()) {
+                                controlDc_->send("{\"type\":\"pong\"}");
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
         pc_->onTrack([this](std::shared_ptr<rtc::Track> track) {
             allTracks_.push_back(track);
 
@@ -270,11 +310,14 @@ void PeerConnectionManager::Close() {
         } catch (...) {}
         pc_.reset();
     }
+    videoDc_.reset();
+    controlDc_.reset();
     allTracks_.clear();
     videoRtcpSession_.reset();
     videoTrack_.reset();
     audioTrack_.reset();
     h264Depacketizer_.Reset();
+    dcVideoDepacketizer_.Reset();
     bandwidthEstimator_.Reset();
 }
 

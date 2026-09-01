@@ -123,11 +123,18 @@ function buildVideoConstraint(
   return constraint;
 }
 
+import { WebCodecsSender } from "./webcodecs_sender";
+
+export type TransportMode = "mediatrack" | "webcodecs_datachannel";
+
 export class WebRtcSender {
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
-  private statsTimer: number | null = null;
   private keyframeTimer: number | null = null;
+  private statsTimer: number | null = null;
+  public transportMode: TransportMode = "mediatrack";
+  public webcodecsSender: WebCodecsSender | null = null;
+  public videoElement?: HTMLVideoElement;
 
   private startPeriodicKeyframe(intervalMs = 2000): void {
     if (this.keyframeTimer !== null) {
@@ -397,13 +404,27 @@ export class WebRtcSender {
 
     this.pc = new RTCPeerConnection(rtcConfig);
 
-    this.pc.onconnectionstatechange = () => {
+    this.pc.onconnectionstatechange = async () => {
       if (this.pc) {
         onDiagnosticLog?.(`ConnectionState: ${this.pc.connectionState}`);
         onStateChange(this.pc.connectionState);
         if (this.pc.connectionState === "connected") {
-          this.applyBitrateParameters(targetBitrateBps, targetFps);
-          this.startPeriodicKeyframe(2000);
+          if (this.transportMode === "webcodecs_datachannel" && this.localStream) {
+            const videoTrack = this.localStream.getVideoTracks()[0];
+            if (videoTrack) {
+              const settings = videoTrack.getSettings();
+              const w = settings.width || 1280;
+              const h = settings.height || 720;
+              this.webcodecsSender = new WebCodecsSender(
+                { width: w, height: h, fps: targetFps, bitrateBps: targetBitrateBps },
+                onDiagnosticLog
+              );
+              await this.webcodecsSender.start(videoTrack, this.pc, this.videoElement);
+            }
+          } else {
+            this.applyBitrateParameters(targetBitrateBps, targetFps);
+            this.startPeriodicKeyframe(2000);
+          }
         }
       }
     };
@@ -421,6 +442,12 @@ export class WebRtcSender {
       // @ts-expect-error RTCIceCandidateErrorEvent properties
       onDiagnosticLog?.(`ICE Candidate Error: ${event.errorCode} ${event.errorText} (${event.url})`);
     };
+
+    // If in WebCodecs mode, create the DataChannels before creating the Offer SDP
+    if (this.transportMode === "webcodecs_datachannel") {
+      this.pc.createDataChannel("km-video-stream", { ordered: false, maxRetransmits: 0 });
+      this.pc.createDataChannel("km-control", { ordered: true });
+    }
 
     for (const track of this.localStream.getTracks()) {
       const transceiver = this.pc.addTransceiver(track, {
@@ -514,6 +541,10 @@ export class WebRtcSender {
     if (this.statsTimer !== null) {
       clearInterval(this.statsTimer);
       this.statsTimer = null;
+    }
+    if (this.webcodecsSender) {
+      this.webcodecsSender.stop();
+      this.webcodecsSender = null;
     }
     if (this.pc) {
       this.pc.close();

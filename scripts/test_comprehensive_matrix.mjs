@@ -104,12 +104,12 @@ async function runComprehensiveMatrix() {
     console.log("--------------------------------------------------------------------------------");
 
     // Select 1080p
-    const resSelect = page.locator("select").nth(2);
+    const resSelect = page.locator("#select-resolution");
     await resSelect.selectOption("1920x1080");
     console.log("  - Configured resolution: 1080p (1920x1080)");
 
     // Select 6.0 Mbps bitrate
-    const bitrateSelect = page.locator("select").nth(4);
+    const bitrateSelect = page.locator("#select-bitrate");
     await bitrateSelect.selectOption("6000000");
     console.log("  - Configured initial bitrate: 6.0 Mbps");
 

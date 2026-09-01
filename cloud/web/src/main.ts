@@ -46,6 +46,7 @@ function App() {
   const selectedResolution = van.state<string>("1280x720");
   const selectedFps = van.state<number>(30);
   const selectedBitrate = van.state<number>(2500000); // 2.5 Mbps default (stable 30fps)
+  const selectedTransportMode = van.state<"mediatrack" | "webcodecs_datachannel">("mediatrack");
 
   const parsed = parseFragment();
   const sessionId = van.state<string>(parsed?.sessionId || "");
@@ -236,6 +237,8 @@ function App() {
       addLog(`Session claimed. 有効期限: ${claimRes.expiresAt}, STUNサーバー数: ${claimRes.rtcConfiguration.iceServers?.length || 0}`);
 
       statusText.val = "Offer SDP生成・ICE収集中...";
+      rtc.transportMode = selectedTransportMode.val;
+      rtc.videoElement = videoElem as HTMLVideoElement;
       const offerSdp = await rtc.createPeerConnection(
         claimRes.rtcConfiguration,
         (pcState) => {
@@ -368,6 +371,7 @@ function App() {
           () =>
             select(
               {
+                id: "select-video",
                 class: "select",
                 value: selectedVideo.val,
                 onchange: (e: Event) => handleVideoChange((e.target as HTMLSelectElement).value)
@@ -396,6 +400,7 @@ function App() {
         () =>
           select(
             {
+              id: "select-audio",
               class: "select",
               value: selectedAudio.val,
               onchange: (e: Event) => handleAudioChange((e.target as HTMLSelectElement).value)
@@ -408,6 +413,34 @@ function App() {
           )
       ),
 
+      // Transmission Mode Selection (Coexistence of Standard WebRTC and WebCodecs PoC)
+      div(
+        { class: "settings-group" },
+        div({ class: "settings-title" }, "🚀 伝送モード選択 (PoC低遅延検証)"),
+        div(
+          { class: "form-group" },
+          label({ class: "label" }, "伝送パイプライン"),
+          () =>
+            select(
+              {
+                id: "select-transport-mode",
+                class: "select",
+                disabled: () => status.val === "connected" || status.val === "connecting",
+                value: selectedTransportMode.val,
+                onchange: (e: Event) => (selectedTransportMode.val = (e.target as HTMLSelectElement).value as "mediatrack" | "webcodecs_datachannel")
+              },
+              option(
+                { value: "mediatrack", selected: selectedTransportMode.val === "mediatrack" },
+                "🔷 標準 WebRTC モード (MediaStreamTrack) [安定性推奨]"
+              ),
+              option(
+                { value: "webcodecs_datachannel", selected: selectedTransportMode.val === "webcodecs_datachannel" },
+                "⚡ 超低遅延 WebCodecs + DataChannel 直結モード (PoC)"
+              )
+            )
+        )
+      ),
+
       // Video Quality Settings
       div(
         { class: "settings-group" },
@@ -417,55 +450,61 @@ function App() {
           div(
             { class: "form-group" },
             label({ class: "label" }, "解像度"),
-            select(
-              {
-                class: "select",
-                disabled: () => status.val === "connected" || status.val === "connecting",
-                onchange: (e: Event) => (selectedResolution.val = (e.target as HTMLSelectElement).value)
-              },
-              option({ value: "1920x1080", selected: selectedResolution.val === "1920x1080" }, "1080p (Full HD)"),
-              option({ value: "1280x720", selected: selectedResolution.val === "1280x720" }, "720p (HD 推奨)"),
-              option({ value: "854x480", selected: selectedResolution.val === "854x480" }, "480p (SD)"),
-              option({ value: "640x360", selected: selectedResolution.val === "640x360" }, "360p (軽量)")
-            )
+            () =>
+              select(
+                {
+                  id: "select-resolution",
+                  class: "select",
+                  disabled: () => status.val === "connected" || status.val === "connecting",
+                  onchange: (e: Event) => (selectedResolution.val = (e.target as HTMLSelectElement).value)
+                },
+                option({ value: "1920x1080", selected: selectedResolution.val === "1920x1080" }, "1080p (Full HD)"),
+                option({ value: "1280x720", selected: selectedResolution.val === "1280x720" }, "720p (HD 推奨)"),
+                option({ value: "854x480", selected: selectedResolution.val === "854x480" }, "480p (SD)"),
+                option({ value: "640x360", selected: selectedResolution.val === "640x360" }, "360p (軽量)")
+              )
           ),
           div(
             { class: "form-group" },
             label({ class: "label" }, "フレームレート"),
-            select(
-              {
-                class: "select",
-                disabled: () => status.val === "connected" || status.val === "connecting",
-                onchange: (e: Event) => (selectedFps.val = parseInt((e.target as HTMLSelectElement).value, 10))
-              },
-              option({ value: "120", selected: selectedFps.val === 120 }, "120 fps (極限低遅延・対応端末)"),
-              option({ value: "60", selected: selectedFps.val === 60 }, "60 fps (超低遅延・高滑らか)"),
-              option({ value: "30", selected: selectedFps.val === 30 }, "30 fps (標準)"),
-              option({ value: "24", selected: selectedFps.val === 24 }, "24 fps (映画風)"),
-              option({ value: "15", selected: selectedFps.val === 15 }, "15 fps (省負荷)")
-            )
+            () =>
+              select(
+                {
+                  id: "select-fps",
+                  class: "select",
+                  disabled: () => status.val === "connected" || status.val === "connecting",
+                  onchange: (e: Event) => (selectedFps.val = parseInt((e.target as HTMLSelectElement).value, 10))
+                },
+                option({ value: "120", selected: selectedFps.val === 120 }, "120 fps (極限低遅延・対応端末)"),
+                option({ value: "60", selected: selectedFps.val === 60 }, "60 fps (超低遅延・高滑らか)"),
+                option({ value: "30", selected: selectedFps.val === 30 }, "30 fps (標準)"),
+                option({ value: "24", selected: selectedFps.val === 24 }, "24 fps (映画風)"),
+                option({ value: "15", selected: selectedFps.val === 15 }, "15 fps (省負荷)")
+              )
           )
         ),
         div(
           { class: "form-group" },
           label({ class: "label" }, "ビットレート (ブロックノイズ低減)"),
-          select(
-            {
-              class: "select",
-              onchange: (e: Event) => {
-                const b = parseInt((e.target as HTMLSelectElement).value, 10);
-                selectedBitrate.val = b;
-                if (status.val === "connected") {
-                  rtc.applyBitrateParameters(b, selectedFps.val);
+          () =>
+            select(
+              {
+                id: "select-bitrate",
+                class: "select",
+                onchange: (e: Event) => {
+                  const b = parseInt((e.target as HTMLSelectElement).value, 10);
+                  selectedBitrate.val = b;
+                  if (status.val === "connected") {
+                    rtc.applyBitrateParameters(b, selectedFps.val);
+                  }
                 }
-              }
-            },
-            option({ value: "6000000", selected: selectedBitrate.val === 6000000 }, "6.0 Mbps (超高画質・ノイズ極小)"),
-            option({ value: "4000000", selected: selectedBitrate.val === 4000000 }, "4.0 Mbps (高画質・推奨)"),
-            option({ value: "2500000", selected: selectedBitrate.val === 2500000 }, "2.5 Mbps (標準)"),
-            option({ value: "1500000", selected: selectedBitrate.val === 1500000 }, "1.5 Mbps (省帯域)"),
-            option({ value: "800000", selected: selectedBitrate.val === 800000 }, "800 kbps (低負荷)")
-          )
+              },
+              option({ value: "6000000", selected: selectedBitrate.val === 6000000 }, "6.0 Mbps (超高画質・ノイズ極小)"),
+              option({ value: "4000000", selected: selectedBitrate.val === 4000000 }, "4.0 Mbps (高画質・推奨)"),
+              option({ value: "2500000", selected: selectedBitrate.val === 2500000 }, "2.5 Mbps (標準)"),
+              option({ value: "1500000", selected: selectedBitrate.val === 1500000 }, "1.5 Mbps (省帯域)"),
+              option({ value: "800000", selected: selectedBitrate.val === 800000 }, "800 kbps (低負荷)")
+            )
         )
       ),
 

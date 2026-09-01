@@ -111,6 +111,7 @@ add_executable(Receiver WIN32
     receiver/rtc/enhanced_rtcp_session.cpp
     receiver/codec/h264_decoder.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
+    receiver/codec/dc_video_depacketizer.cpp
     receiver/media/nv12_converter.cpp
     receiver/media/d3d11_video_processor.cpp
     receiver/media/pipe_publisher.cpp

@@ -9,6 +9,7 @@
 #include "../signaling/signaling_models.h"
 
 #include "../codec/h264_rtp_depacketizer.h"
+#include "../codec/dc_video_depacketizer.h"
 #include "bandwidth_estimator.h"
 #include "enhanced_rtcp_session.h"
 
@@ -16,6 +17,7 @@
 namespace rtc {
     class PeerConnection;
     class Track;
+    class DataChannel;
 }
 
 namespace km::rtc_net {
@@ -63,7 +65,11 @@ private:
     std::shared_ptr<rtc::Track> audioTrack_;
     std::shared_ptr<EnhancedRtcpReceivingSession> videoRtcpSession_;
     codec::H264RtpDepacketizer h264Depacketizer_;
+    codec::DcVideoDepacketizer dcVideoDepacketizer_;
     BandwidthEstimator bandwidthEstimator_;
+
+    std::shared_ptr<rtc::DataChannel> videoDc_;
+    std::shared_ptr<rtc::DataChannel> controlDc_;
 
     StateChangeCallback stateCallback_;
     VideoFrameCallback videoCallback_;
