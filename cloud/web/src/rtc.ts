@@ -450,6 +450,12 @@ export class WebRtcSender {
     }
 
     for (const track of this.localStream.getTracks()) {
+      if (this.transportMode === "webcodecs_datachannel" && track.kind === "video") {
+        // In WebCodecs + DataChannel mode, do NOT add video RTP track to peer connection!
+        // Video is transmitted exclusively via DataChannel to avoid dual-stream collision.
+        continue;
+      }
+
       const transceiver = this.pc.addTransceiver(track, {
         direction: "sendonly",
         streams: [this.localStream]

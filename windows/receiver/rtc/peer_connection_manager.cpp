@@ -122,12 +122,18 @@ bool PeerConnectionManager::Initialize(
 
         bandwidthEstimator_.Reset();
         h264Depacketizer_.Reset();
+        isDataChannelVideoActive_.store(false, std::memory_order_relaxed);
+
         h264Depacketizer_.SetCallback([this](const uint8_t* nalData, size_t size, uint32_t ts) {
+            if (isDataChannelVideoActive_.load(std::memory_order_relaxed)) {
+                return; // Ignore RTP video when DataChannel video stream is active!
+            }
             if (videoCallback_ && size > 0) {
                 videoCallback_(nalData, size, 1280, 720, static_cast<int64_t>(ts));
             }
         });
         h264Depacketizer_.SetKeyframeRequestCallback([this]() {
+            if (isDataChannelVideoActive_.load(std::memory_order_relaxed)) return;
             bandwidthEstimator_.OnLossEventDetected();
             if (videoRtcpSession_) {
                 videoRtcpSession_->RequestKeyframeDirect();
@@ -142,6 +148,7 @@ bool PeerConnectionManager::Initialize(
         // Initialize WebCodecs DataChannel Depacketizer & Congestion Controller
         dcVideoDepacketizer_.Reset();
         dcVideoDepacketizer_.SetCallback([this](const uint8_t* nalData, size_t size, int64_t ts) {
+            isDataChannelVideoActive_.store(true, std::memory_order_relaxed);
             if (videoCallback_ && size > 0) {
                 videoCallback_(nalData, size, 1280, 720, ts);
             }

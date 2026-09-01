@@ -22,6 +22,9 @@ build/
 *.idb
 *.log
 *.bmp
+*.h264
+*.jsonl
+test_screenshots/
 
 # Visual Studio / IDE
 .vs/

@@ -1,10 +1,43 @@
 #include "dc_video_depacketizer.h"
 #include <algorithm>
-#include <cstring>
 #include <iostream>
+#include <fstream>
+#include <cstring>
 #include <sstream>
 
 namespace km::codec {
+
+static std::ofstream g_h264DumpFile;
+static std::ofstream g_h264MetaFile;
+static std::mutex g_dumpMutex;
+
+static void RecordH264AccessUnit(uint16_t seq, uint32_t tsUs, bool isKey, const uint8_t* data, size_t size) {
+    std::lock_guard<std::mutex> lock(g_dumpMutex);
+    if (!g_h264DumpFile.is_open()) {
+        g_h264DumpFile.open("debug_stream_dump.h264", std::ios::binary | std::ios::trunc);
+        g_h264MetaFile.open("debug_stream_dump.jsonl", std::ios::out | std::ios::trunc);
+    }
+    if (g_h264DumpFile.is_open() && data && size > 0) {
+        g_h264DumpFile.write(reinterpret_cast<const char*>(data), size);
+        g_h264DumpFile.flush();
+
+        std::string naluList;
+        for (size_t i = 0; i + 4 < size; ++i) {
+            if (data[i] == 0 && data[i+1] == 0 && data[i+2] == 0 && data[i+3] == 1) {
+                uint8_t t = data[i+4] & 0x1F;
+                if (!naluList.empty()) naluList += ",";
+                naluList += std::to_string(t);
+            }
+        }
+
+        g_h264MetaFile << "{\"seq\":" << seq
+                       << ",\"tsUs\":" << tsUs
+                       << ",\"isKey\":" << (isKey ? "true" : "false")
+                       << ",\"size\":" << size
+                       << ",\"nalus\":[" << naluList << "]}" << std::endl;
+        g_h264MetaFile.flush();
+    }
+}
 
 static const uint8_t kStartCode[4] = { 0x00, 0x00, 0x00, 0x01 };
 
@@ -185,7 +218,7 @@ void DcVideoDepacketizer::ProcessDataChannelPacket(const uint8_t* data, size_t s
     // Discard stale packets for frames that have already been played out
     if (hasInitializedSeq_) {
         int16_t diff = static_cast<int16_t>(seq - expectedSeq_);
-        if (diff < -50) {
+        if (diff < 0) {
             return;
         }
     }
@@ -272,11 +305,20 @@ void DcVideoDepacketizer::DrainCompletedFrames(int64_t nowUs) {
             continue;
         }
 
-        if (!pendingFramesMap_.empty()) {
-            auto oldestIt = pendingFramesMap_.begin();
-            int16_t diff = static_cast<int16_t>(oldestIt->first - expectedSeq_);
-            if (diff > 0 && (nowUs - oldestIt->second.firstChunkArrivalUs) > 10000) {
-                expectedSeq_ = oldestIt->first;
+        // Find next pending frame with smallest positive diff
+        auto nextPendingIt = pendingFramesMap_.end();
+        int16_t minPosDiff = 32767;
+        for (auto pit = pendingFramesMap_.begin(); pit != pendingFramesMap_.end(); ++pit) {
+            int16_t diff = static_cast<int16_t>(pit->first - expectedSeq_);
+            if (diff > 0 && diff < minPosDiff) {
+                minPosDiff = diff;
+                nextPendingIt = pit;
+            }
+        }
+
+        if (nextPendingIt != pendingFramesMap_.end()) {
+            if ((nowUs - nextPendingIt->second.firstChunkArrivalUs) > 10000) {
+                expectedSeq_ = nextPendingIt->first;
                 waitingForKeyframe_ = true;
                 RequestKeyframe();
                 continue;
@@ -309,6 +351,8 @@ void DcVideoDepacketizer::EmitFrame(IncompleteDcFrame& frame, int64_t nowUs) {
 
     NormalizeToAnnexB(rawAssembled, assemblyBuffer_, cachedSpsPps_, frame.isKeyframe);
 
+    RecordH264AccessUnit(frame.frameSeq, frame.timestampUs, frame.isKeyframe, assemblyBuffer_.data(), assemblyBuffer_.size());
+
     if (frame.isKeyframe) {
         // Extract ONLY SPS & PPS NALUs into cache (NEVER slices/IDR payload!)
         auto extracted = ExtractSpsPpsOnly(assemblyBuffer_.data(), assemblyBuffer_.size());
@@ -327,46 +371,23 @@ void DcVideoDepacketizer::EmitFrame(IncompleteDcFrame& frame, int64_t nowUs) {
 }
 
 void DcVideoDepacketizer::EvaluateDelayGradientBwe(uint32_t senderTsUs, int64_t arrivalTsUs, size_t frameSize) {
-    if (lastArrivalUs_ == 0 || lastSenderTsUs_ == 0) {
+    auto nowTime = std::chrono::steady_clock::now();
+    int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(nowTime.time_since_epoch()).count();
+
+    if (lastArrivalUs_ == 0) {
         lastArrivalUs_ = arrivalTsUs;
         lastSenderTsUs_ = senderTsUs;
+        lastBitrateUpdateMs_ = nowMs;
         return;
     }
-
-    int64_t deltaArrivalUs = arrivalTsUs - lastArrivalUs_;
-    int64_t deltaSenderUs = static_cast<int64_t>(senderTsUs - lastSenderTsUs_);
 
     lastArrivalUs_ = arrivalTsUs;
     lastSenderTsUs_ = senderTsUs;
 
-    if (deltaArrivalUs <= 0 || deltaArrivalUs > 200000 || deltaSenderUs <= 0 || deltaSenderUs > 200000) {
-        return;
-    }
-
-    int64_t delayGradientUs = deltaArrivalUs - deltaSenderUs;
-    smoothedDelayGradientUs_ = 0.9 * smoothedDelayGradientUs_ + 0.1 * static_cast<double>(delayGradientUs);
-
-    auto nowTime = std::chrono::steady_clock::now();
-    int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(nowTime.time_since_epoch()).count();
-
-    uint32_t currentBps = currentEstimatedBps_.load(std::memory_order_relaxed);
-    uint32_t targetBps = currentBps;
-
-    if (smoothedDelayGradientUs_ > 4000.0) {
-        if (nowMs - lastBitrateUpdateMs_ >= 300) {
-            targetBps = (std::max)(800000u, static_cast<uint32_t>(currentBps * 0.85));
-            currentEstimatedBps_.store(targetBps, std::memory_order_relaxed);
-            lastBitrateUpdateMs_ = nowMs;
-            smoothedDelayGradientUs_ = 0.0;
-
-            if (controlSendCallback_) {
-                std::ostringstream ss;
-                ss << "{\"type\":\"bitrate\",\"bps\":" << targetBps << "}";
-                controlSendCallback_(ss.str());
-            }
-        }
-    } else if (smoothedDelayGradientUs_ < 1000.0 && (nowMs - lastBitrateUpdateMs_ >= 1500)) {
-        targetBps = (std::min)(8000000u, currentBps + 250000u);
+    // In steady state without loss, smoothly probe upwards to 4.5 - 6.0 Mbps for crisp 720p60 motion
+    if (nowMs - lastBitrateUpdateMs_ >= 2000) {
+        uint32_t currentBps = currentEstimatedBps_.load(std::memory_order_relaxed);
+        uint32_t targetBps = (std::min)(8000000u, currentBps + 300000u);
         currentEstimatedBps_.store(targetBps, std::memory_order_relaxed);
         lastBitrateUpdateMs_ = nowMs;
 
@@ -382,10 +403,20 @@ void DcVideoDepacketizer::RequestKeyframe() {
     auto nowTime = std::chrono::steady_clock::now();
     int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(nowTime.time_since_epoch()).count();
 
-    if (nowMs - lastPliSentMs_ >= 200) {
+    if (nowMs - lastPliSentMs_ > 50) { // Limit PLI rate to at most 1 per 50ms
         lastPliSentMs_ = nowMs;
+
+        // On loss event, immediately throttle bitrate by 15% to relieve network queue
+        uint32_t currentBps = currentEstimatedBps_.load(std::memory_order_relaxed);
+        uint32_t backedOffBps = (std::max)(2000000u, static_cast<uint32_t>(currentBps * 0.85));
+        currentEstimatedBps_.store(backedOffBps, std::memory_order_relaxed);
+        lastBitrateUpdateMs_ = nowMs;
+
         if (controlSendCallback_) {
             controlSendCallback_("{\"type\":\"pli\"}");
+            std::ostringstream ss;
+            ss << "{\"type\":\"bitrate\",\"bps\":" << backedOffBps << "}";
+            controlSendCallback_(ss.str());
         }
     }
 }

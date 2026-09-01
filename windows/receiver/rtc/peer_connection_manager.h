@@ -74,9 +74,9 @@ private:
     StateChangeCallback stateCallback_;
     VideoFrameCallback videoCallback_;
     AudioPcmCallback audioCallback_;
-
     std::atomic<bool> isGatheringComplete_{false};
     std::atomic<uint8_t> transportCcExtId_{0};
+    std::atomic<bool> isDataChannelVideoActive_{false};
 };
 
 } // namespace km::rtc_net

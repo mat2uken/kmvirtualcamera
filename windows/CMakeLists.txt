@@ -258,6 +258,22 @@ target_link_libraries(test_h264_decoder PRIVATE
 )
 add_test(NAME H264DecoderTest COMMAND test_h264_decoder)
 
+add_executable(test_h264_stream_inspector
+    tests/test_h264_stream_inspector.cpp
+    receiver/codec/h264_decoder.cpp
+)
+target_include_directories(test_h264_stream_inspector PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver/codec
+)
+target_link_libraries(test_h264_stream_inspector PRIVATE
+    mfplat
+    mfuuid
+    mf
+    ole32
+    d3d11
+    dxgi
+)
+
 add_executable(test_h264_depacketizer
     tests/test_h264_depacketizer.cpp
     receiver/codec/h264_rtp_depacketizer.cpp

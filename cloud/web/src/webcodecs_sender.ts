@@ -199,9 +199,9 @@ export class WebCodecsSender {
   public initDataChannels(pc: RTCPeerConnection) {
     if (this.videoDc || this.controlDc) return;
 
-    // In-Order Video DataChannel with 50ms Realtime Deadline (Micro-Loss Recovery)
+    // Unordered Video DataChannel with 50ms Realtime Deadline (Zero Head-of-Line Blocking)
     this.videoDc = pc.createDataChannel("km-video-stream", {
-      ordered: true,
+      ordered: false,
       maxPacketLifeTime: 50
     });
     this.videoDc.binaryType = "arraybuffer";
@@ -315,7 +315,7 @@ export class WebCodecsSender {
 
   public setBitrate(newBps: number) {
     if (!this.encoder || newBps === this.currentBitrateBps) return;
-    this.currentBitrateBps = Math.max(500000, Math.min(8000000, newBps));
+    this.currentBitrateBps = Math.max(1500000, Math.min(8000000, newBps));
     if (this.currentEncoderW > 0 && this.currentEncoderH > 0) {
       this.encoder.configure({
         codec: "avc1.420028",
@@ -376,6 +376,13 @@ export class WebCodecsSender {
       return;
     }
 
+    // Adaptive Sender Backpressure: if DataChannel SCTP buffer has more than 96KB queued, skip non-keyframe encoding to prevent transport stall
+    if (this.videoDc && this.videoDc.bufferedAmount > 96 * 1024 && !this.forceKeyframeNext) {
+      this.forceKeyframeNext = true; // Request clean keyframe on next cycle
+      frame.close();
+      return;
+    }
+
     // Dynamic resolution / aspect ratio adaptation
     const frameW = frame.displayWidth;
     const frameH = frame.displayHeight;
@@ -383,9 +390,9 @@ export class WebCodecsSender {
       this.reconfigureResolution(frameW, frameH);
     }
 
-    // Periodic Keyframe (every 30 frames = 1s) for fast recovery
+    // Periodic Keyframe (every 60 frames = 1-2s) for instant drift recovery
     this.frameCount++;
-    if (this.frameCount % 30 === 0) {
+    if (this.frameCount % 60 === 0) {
       this.forceKeyframeNext = true;
     }
 
@@ -427,7 +434,7 @@ export class WebCodecsSender {
     chunk.copyTo(rawData);
     this.pendingChunkData.push(rawData);
 
-    // Flush immediately via microtask/timer to ensure low latency
+    // Flush immediately via microtask/timer to ensure ultra-low latency
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = setTimeout(() => {
       this.flushPendingAccessUnit();

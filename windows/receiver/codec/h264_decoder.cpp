@@ -361,8 +361,9 @@ bool H264Decoder::DecodeAccessUnitEx(
     inBuffer_->Unlock();
     inBuffer_->SetCurrentLength(static_cast<DWORD>(size));
 
-    inSample_->SetSampleTime(timestampUs * 10);
-    inSample_->SetSampleDuration(166666); // 60fps base interval
+    LONGLONG sampleTime = static_cast<LONGLONG>(sampleIndex_) * 166666LL;
+    inSample_->SetSampleTime(sampleTime);
+    inSample_->SetSampleDuration(166666LL); // 60fps base interval
 
     // 2. Helper lambda to drain all ready output samples from MFT
     auto DrainOutput = [&]() -> bool {
