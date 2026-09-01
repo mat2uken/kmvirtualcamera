@@ -339,101 +339,104 @@ bool H264Decoder::DecodeAccessUnitEx(
     inSample_->SetSampleTime(timestampUs * 10);
     inSample_->SetSampleDuration(166666); // 60fps base interval
 
-    // 2. Feed Sample to MFT
+    // 2. Helper lambda to drain all ready output samples from MFT
+    auto DrainOutput = [&]() -> bool {
+        bool gotAny = false;
+        for (int iter = 0; iter < 8; ++iter) {
+            MFT_OUTPUT_STREAM_INFO streamInfo{};
+            HRESULT ohr = decoderMft_->GetOutputStreamInfo(0, &streamInfo);
+            if (FAILED(ohr)) break;
+
+            MFT_OUTPUT_DATA_BUFFER outputBuffer{};
+            outputBuffer.dwStreamID = 0;
+
+            bool mftProvidesSamples = (streamInfo.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES)) != 0;
+            if (!mftProvidesSamples) {
+                DWORD cbSize = streamInfo.cbSize > 0 ? streamInfo.cbSize : static_cast<DWORD>(actualWidth_ * actualHeight_ * 3 / 2);
+                DWORD minOutCap = 1920u * 1088u * 2u;
+                DWORD targetCap = (cbSize > minOutCap) ? cbSize : minOutCap;
+                if (!outBuffer_ || outBufferCapacity_ < targetCap) {
+                    outBufferCapacity_ = targetCap;
+                    outBuffer_.Reset();
+                    outSample_.Reset();
+                    ohr = MFCreateMemoryBuffer(outBufferCapacity_, &outBuffer_);
+                    if (FAILED(ohr)) break;
+                    ohr = MFCreateSample(&outSample_);
+                    if (FAILED(ohr)) break;
+                    outSample_->AddBuffer(outBuffer_.Get());
+                }
+                outBuffer_->SetCurrentLength(0);
+                outputBuffer.pSample = outSample_.Get();
+            }
+
+            DWORD dwStatus = 0;
+            ohr = decoderMft_->ProcessOutput(0, 1, &outputBuffer, &dwStatus);
+
+            if (outputBuffer.pEvents) {
+                outputBuffer.pEvents->Release();
+            }
+
+            if (ohr == MF_E_TRANSFORM_STREAM_CHANGE) {
+                Microsoft::WRL::ComPtr<IMFMediaType> availType;
+                if (SUCCEEDED(decoderMft_->GetOutputAvailableType(0, 0, &availType))) {
+                    UINT32 w = 0, h = 0;
+                    if (SUCCEEDED(MFGetAttributeSize(availType.Get(), MF_MT_FRAME_SIZE, &w, &h)) && w > 0 && h > 0) {
+                        actualWidth_ = static_cast<int>(w);
+                        actualHeight_ = static_cast<int>(h);
+                        ConfigureOutputType(actualWidth_, actualHeight_);
+                    }
+                }
+                continue;
+            }
+
+            if (ohr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
+                break;
+            }
+
+            if (SUCCEEDED(ohr) && outputBuffer.pSample) {
+                Microsoft::WRL::ComPtr<IMFMediaBuffer> buf;
+                if (SUCCEEDED(outputBuffer.pSample->GetBufferByIndex(0, &buf)) && buf) {
+                    Microsoft::WRL::ComPtr<IMFDXGIBuffer> dxgiBuf;
+                    if (SUCCEEDED(buf.As(&dxgiBuf)) && dxgiBuf) {
+                        Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+                        UINT subIndex = 0;
+                        if (SUCCEEDED(dxgiBuf->GetResource(IID_PPV_ARGS(&tex))) && tex && SUCCEEDED(dxgiBuf->GetSubresourceIndex(&subIndex))) {
+                            outGpuFrame.texture = tex;
+                            outGpuFrame.subresourceIndex = subIndex;
+                            outGpuFrame.codedWidth = actualWidth_;
+                            outGpuFrame.codedHeight = actualHeight_;
+                            outGpuFrame.displayWidth = displayWidth_ > 0 ? displayWidth_ : actualWidth_;
+                            outGpuFrame.displayHeight = displayHeight_ > 0 ? displayHeight_ : actualHeight_;
+                            outIsGpuDirect = true;
+                        }
+                    }
+                }
+
+                int decW = 0, decH = 0;
+                if (ExtractSampleNv12(outputBuffer.pSample, outCpuNv12, decW, decH)) {
+                    gotAny = true;
+                    ++sampleIndex_;
+                } else if (outIsGpuDirect) {
+                    gotAny = true;
+                    ++sampleIndex_;
+                }
+            }
+        }
+        return gotAny;
+    };
+
+    // 3. Feed Sample to MFT with automatic drain retry
     hr = decoderMft_->ProcessInput(0, inSample_.Get(), 0);
-    if (FAILED(hr) && hr != MF_E_NOTACCEPTING) {
+    if (hr == MF_E_NOTACCEPTING) {
+        DrainOutput();
+        hr = decoderMft_->ProcessInput(0, inSample_.Get(), 0);
+    }
+    if (FAILED(hr)) {
         return false;
     }
 
-    // 3. Process Output from MFT in a drain loop
-    bool gotFrame = false;
-
-    for (int iter = 0; iter < 4; ++iter) {
-        MFT_OUTPUT_STREAM_INFO streamInfo{};
-        hr = decoderMft_->GetOutputStreamInfo(0, &streamInfo);
-        if (FAILED(hr)) break;
-
-        MFT_OUTPUT_DATA_BUFFER outputBuffer{};
-        outputBuffer.dwStreamID = 0;
-
-        bool mftProvidesSamples = (streamInfo.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES)) != 0;
-        if (!mftProvidesSamples) {
-            DWORD cbSize = streamInfo.cbSize > 0 ? streamInfo.cbSize : static_cast<DWORD>(actualWidth_ * actualHeight_ * 3 / 2);
-            DWORD minOutCap = 1920u * 1088u * 2u;
-            DWORD targetCap = (cbSize > minOutCap) ? cbSize : minOutCap;
-            if (!outBuffer_ || outBufferCapacity_ < targetCap) {
-                outBufferCapacity_ = targetCap;
-                outBuffer_.Reset();
-                outSample_.Reset();
-                hr = MFCreateMemoryBuffer(outBufferCapacity_, &outBuffer_);
-                if (FAILED(hr)) break;
-                hr = MFCreateSample(&outSample_);
-                if (FAILED(hr)) break;
-                outSample_->AddBuffer(outBuffer_.Get());
-            }
-            outBuffer_->SetCurrentLength(0);
-            outputBuffer.pSample = outSample_.Get();
-        }
-
-        DWORD dwStatus = 0;
-        hr = decoderMft_->ProcessOutput(0, 1, &outputBuffer, &dwStatus);
-
-        if (outputBuffer.pEvents) {
-            outputBuffer.pEvents->Release();
-        }
-
-        if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
-            // MFT detected actual stream resolution from SPS
-            Microsoft::WRL::ComPtr<IMFMediaType> availType;
-            if (SUCCEEDED(decoderMft_->GetOutputAvailableType(0, 0, &availType))) {
-                UINT32 w = 0, h = 0;
-                if (SUCCEEDED(MFGetAttributeSize(availType.Get(), MF_MT_FRAME_SIZE, &w, &h)) && w > 0 && h > 0) {
-                    actualWidth_ = static_cast<int>(w);
-                    actualHeight_ = static_cast<int>(h);
-                    ConfigureOutputType(actualWidth_, actualHeight_);
-                }
-            }
-            continue; // Continue loop to drain the frame for this new format
-        }
-
-        if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
-            break;
-        }
-
-        if (SUCCEEDED(hr) && outputBuffer.pSample) {
-            // Check if hardware D3D11 texture is available (Zero-Copy Fast Path)
-            Microsoft::WRL::ComPtr<IMFMediaBuffer> buf;
-            if (SUCCEEDED(outputBuffer.pSample->GetBufferByIndex(0, &buf)) && buf) {
-                Microsoft::WRL::ComPtr<IMFDXGIBuffer> dxgiBuf;
-                if (SUCCEEDED(buf.As(&dxgiBuf)) && dxgiBuf) {
-                    Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
-                    UINT subIndex = 0;
-                    if (SUCCEEDED(dxgiBuf->GetResource(IID_PPV_ARGS(&tex))) && tex && SUCCEEDED(dxgiBuf->GetSubresourceIndex(&subIndex))) {
-                        outGpuFrame.texture = tex;
-                        outGpuFrame.subresourceIndex = subIndex;
-                        outGpuFrame.codedWidth = actualWidth_;
-                        outGpuFrame.codedHeight = actualHeight_;
-                        outGpuFrame.displayWidth = displayWidth_ > 0 ? displayWidth_ : actualWidth_;
-                        outGpuFrame.displayHeight = displayHeight_ > 0 ? displayHeight_ : actualHeight_;
-                        outIsGpuDirect = true;
-                    }
-                }
-            }
-
-            int decW = 0, decH = 0;
-            if (ExtractSampleNv12(outputBuffer.pSample, outCpuNv12, decW, decH)) {
-                gotFrame = true;
-                ++sampleIndex_;
-                break;
-            } else if (outIsGpuDirect) {
-                gotFrame = true;
-                ++sampleIndex_;
-                break;
-            }
-        }
-    }
-
-    return gotFrame;
+    // 4. Drain output after feeding
+    return DrainOutput();
 }
 
 bool H264Decoder::DecodeAccessUnit(
