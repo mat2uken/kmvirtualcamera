@@ -44,9 +44,9 @@ function App() {
 
   // Quality & Encoding settings
   const selectedResolution = van.state<string>("1280x720");
-  const selectedFps = van.state<number>(30);
-  const selectedBitrate = van.state<number>(2500000); // 2.5 Mbps default (stable 30fps)
-  const selectedTransportMode = van.state<"mediatrack" | "webcodecs_datachannel">("mediatrack");
+  const selectedFps = van.state<number>(60);
+  const selectedBitrate = van.state<number>(3500000); // 3.5 Mbps default (ultra-smooth 60fps)
+  const selectedTransportMode = van.state<"mediatrack" | "webcodecs_datachannel">("webcodecs_datachannel");
 
   const parsed = parseFragment();
   const sessionId = van.state<string>(parsed?.sessionId || "");

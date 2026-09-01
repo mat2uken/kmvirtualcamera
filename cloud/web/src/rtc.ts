@@ -105,12 +105,12 @@ function buildVideoConstraint(
   deviceIdOrFacing?: string,
   width = 1280,
   height = 720,
-  frameRate = 30
+  frameRate = 60
 ): MediaTrackConstraints {
   const constraint: MediaTrackConstraints = {
     width: { ideal: width },
     height: { ideal: height },
-    frameRate: { ideal: frameRate, max: frameRate }
+    frameRate: { ideal: frameRate, min: 30 }
   };
 
   if (deviceIdOrFacing === "user" || deviceIdOrFacing === "environment") {

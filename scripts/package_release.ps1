@@ -65,6 +65,22 @@ Write-Host "`n[2/3] Staging release files..." -ForegroundColor Yellow
 Copy-Item $receiverExe -Destination $packageDir\Receiver.exe -Force
 Copy-Item $vcamDll -Destination $packageDir\VirtualCameraMediaSource.dll -Force
 
+# Copy MSVC C++ Runtime DLLs for standalone portable execution on any PC
+$vcDlls = @(
+    "msvcp140.dll",
+    "msvcp140_1.dll",
+    "msvcp140_2.dll",
+    "msvcp140_codecvt_ids.dll",
+    "vcruntime140.dll",
+    "vcruntime140_1.dll"
+)
+foreach ($dll in $vcDlls) {
+    $sysPath = "C:\Windows\System32\$dll"
+    if (Test-Path $sysPath) {
+        Copy-Item $sysPath -Destination "$packageDir\$dll" -Force
+    }
+}
+
 # Export public certificate into package
 if ($cert) {
     Export-Certificate -Cert $cert -FilePath "$packageDir\KMVirtualCamera-Certificate.cer" -Force | Out-Null

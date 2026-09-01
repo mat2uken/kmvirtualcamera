@@ -341,31 +341,8 @@ void AppController::VideoWorkerProc() {
 
         // Drain all available frames from lock-free queue
         int64_t tsUs = 0;
-        static std::ofstream s_rawH264("debug_stream_dump.h264", std::ios::binary | std::ios::trunc);
-        static std::ofstream s_metaJson("debug_stream_dump.jsonl", std::ios::out | std::ios::trunc);
-        static uint64_t s_dumpIdx = 0;
 
         while (lockFreeVideoQueue_.Pop(localH264Buffer, tsUs)) {
-            if (s_rawH264.is_open()) {
-                s_rawH264.write(reinterpret_cast<const char*>(localH264Buffer.data()), localH264Buffer.size());
-                s_rawH264.flush();
-
-                std::string naluList;
-                for (size_t i = 0; i + 4 < localH264Buffer.size(); ++i) {
-                    if (localH264Buffer[i] == 0 && localH264Buffer[i+1] == 0 && localH264Buffer[i+2] == 0 && localH264Buffer[i+3] == 1) {
-                        uint8_t t = localH264Buffer[i+4] & 0x1F;
-                        if (!naluList.empty()) naluList += ",";
-                        naluList += std::to_string(t);
-                    }
-                }
-
-                s_metaJson << "{\"frame\":" << s_dumpIdx++
-                           << ",\"tsUs\":" << tsUs
-                           << ",\"size\":" << localH264Buffer.size()
-                           << ",\"nalus\":[" << naluList << "]}" << std::endl;
-                s_metaJson.flush();
-            }
-
             int decW = 0, decH = 0;
             if (h264Decoder_.DecodeAccessUnit(localH264Buffer.data(), localH264Buffer.size(), tsUs, localDecodedBuffer, decW, decH)) {
                 lastDecodedFrameTick_.store(GetTickCount64(), std::memory_order_relaxed);
@@ -387,9 +364,8 @@ void AppController::VideoWorkerProc() {
                     mainWindow_->RenderPreviewFrame(localNv12Buffer);
                 }
 
-                if (count == 10 || count == 30 || count == 60 || count == 90 || count % 90 == 1) {
+                if (count == 10 || count == 60 || count % 300 == 0) {
                     std::cout << "[VideoPipeline] Stream active: " << count << " frames decoded (" << decW << "x" << decH << " -> 1280x720)" << std::endl;
-                    SaveNv12ToBmp(localNv12Buffer.data(), 1280, 720, "test_screenshots/last_decoded_frame.bmp");
                 }
             }
         }

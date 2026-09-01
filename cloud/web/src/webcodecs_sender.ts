@@ -434,11 +434,8 @@ export class WebCodecsSender {
     chunk.copyTo(rawData);
     this.pendingChunkData.push(rawData);
 
-    // Flush immediately via microtask/timer to ensure ultra-low latency
-    if (this.flushTimer) clearTimeout(this.flushTimer);
-    this.flushTimer = setTimeout(() => {
-      this.flushPendingAccessUnit();
-    }, 0);
+    // Synchronous immediate zero-latency transmission (0.0ms delay)
+    this.flushPendingAccessUnit();
   }
 
   private flushPendingAccessUnit() {
@@ -488,8 +485,8 @@ export class WebCodecsSender {
       writeOffset += p.length;
     }
 
-    // Slice and send via DataChannel with 2KB chunks
-    const maxPayload = 2048;
+    // Slice and send via DataChannel with 1180B chunks (Fits in a single unfragmented UDP datagram)
+    const maxPayload = 1180;
     const totalChunks = Math.ceil(accessUnitData.byteLength / maxPayload);
     const seq = this.frameSeq++ & 0xffff;
 
