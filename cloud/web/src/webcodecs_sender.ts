@@ -317,18 +317,20 @@ export class WebCodecsSender {
     if (!this.encoder || newBps === this.currentBitrateBps) return;
     this.currentBitrateBps = Math.max(1500000, Math.min(8000000, newBps));
     if (this.currentEncoderW > 0 && this.currentEncoderH > 0) {
-      this.encoder.configure({
-        codec: "avc1.420028",
-        width: this.currentEncoderW,
-        height: this.currentEncoderH,
-        bitrate: this.currentBitrateBps,
-        framerate: this.config.fps,
-        bitrateMode: "constant",
-        latencyMode: "realtime",
-        hardwareAcceleration: "prefer-hardware",
-        avc: { format: "annexb" }
-      });
-      this.logFn(`[WebCodecs] ABR Bitrate updated: ${(this.currentBitrateBps / 1e6).toFixed(2)} Mbps`);
+      try {
+        this.encoder.configure({
+          codec: "avc1.420028",
+          width: this.currentEncoderW,
+          height: this.currentEncoderH,
+          bitrate: this.currentBitrateBps,
+          framerate: this.config.fps,
+          bitrateMode: "constant",
+          latencyMode: "realtime",
+          hardwareAcceleration: "prefer-hardware",
+          avc: { format: "annexb" }
+        });
+        this.logFn(`[WebCodecs] ABR Bitrate updated: ${(this.currentBitrateBps / 1e6).toFixed(2)} Mbps`);
+      } catch (err) {}
     }
     if (this.onBitrateChanged) {
       this.onBitrateChanged(this.currentBitrateBps);

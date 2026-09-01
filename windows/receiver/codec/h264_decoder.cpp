@@ -152,7 +152,7 @@ HRESULT H264Decoder::CreateInputType(int width, int height, IMFMediaType** ppTyp
     hr = MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, width, height);
     if (FAILED(hr)) return hr;
 
-    hr = MFSetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, 30, 1);
+    hr = MFSetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, 60, 1);
     if (FAILED(hr)) return hr;
 
     hr = MFSetAttributeRatio(type.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
@@ -160,6 +160,12 @@ HRESULT H264Decoder::CreateInputType(int width, int height, IMFMediaType** ppTyp
 
     hr = type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
     if (FAILED(hr)) return hr;
+
+    // Advanced VUI / BT.709 Color Primaries & Dynamic Range Attributes
+    type->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709);
+    type->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709);
+    type->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709);
+    type->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235);
 
     type->SetUINT32(MF_LOW_LATENCY, 1);
     type->SetUINT32(MF_MT_REALTIME_CONTENT, 1);
@@ -182,9 +188,13 @@ HRESULT H264Decoder::ConfigureOutputType(int width, int height) {
 
                 availableType->CopyAllItems(selectedType.Get());
                 MFSetAttributeSize(selectedType.Get(), MF_MT_FRAME_SIZE, width, height);
-                MFSetAttributeRatio(selectedType.Get(), MF_MT_FRAME_RATE, 30, 1);
+                MFSetAttributeRatio(selectedType.Get(), MF_MT_FRAME_RATE, 60, 1);
                 MFSetAttributeRatio(selectedType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
                 selectedType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+                selectedType->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709);
+                selectedType->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709);
+                selectedType->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709);
+                selectedType->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235);
 
                 hr = decoderMft_->SetOutputType(0, selectedType.Get(), 0);
                 if (SUCCEEDED(hr)) {
