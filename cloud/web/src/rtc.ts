@@ -215,11 +215,14 @@ export class WebRtcSender {
     newVideoDeviceIdOrFacing?: string,
     width = 1280,
     height = 720,
-    frameRate = 30
+    frameRate = 60
   ): Promise<MediaStream> {
     const videoConstraint = buildVideoConstraint(newVideoDeviceIdOrFacing, width, height, frameRate);
 
-    // CRITICAL: Stop previous video tracks first so hardware release allows the new camera to open
+    // CRITICAL for iOS Safari: Clear video element srcObject and stop previous video tracks
+    if (this.videoElement) {
+      this.videoElement.srcObject = null;
+    }
     const oldVideoTracks = this.localStream ? this.localStream.getVideoTracks() : [];
     oldVideoTracks.forEach((t) => t.stop());
 
@@ -259,6 +262,14 @@ export class WebRtcSender {
       this.localStream.addTrack(newVideoTrack);
     }
 
+    // Rebind videoElement
+    if (this.videoElement) {
+      this.videoElement.srcObject = this.localStream;
+      try {
+        await this.videoElement.play();
+      } catch {}
+    }
+
     // Replace track on RTCPeerConnection video sender (for mediatrack mode)
     if (this.pc && newVideoTrack) {
       const senders = this.pc.getSenders();
@@ -272,7 +283,7 @@ export class WebRtcSender {
 
     // Update WebCodecs Sender with new track
     if (this.transportMode === "webcodecs_datachannel" && this.webcodecsSender && newVideoTrack) {
-      await this.webcodecsSender.updateTrack(newVideoTrack);
+      await this.webcodecsSender.updateTrack(newVideoTrack, this.videoElement);
     }
 
     return this.localStream;
@@ -448,16 +459,9 @@ export class WebRtcSender {
       this.webcodecsSender.onRemoteCommand = async (cmd, payload) => {
         if (cmd === "switch_camera") {
           const currentFacing = this.getActiveVideoTrackSettings()?.facingMode || "environment";
-          const newFacing = currentFacing === "user" ? "environment" : "user";
-          onDiagnosticLog?.(`Remote camera switch requested: switching to ${newFacing}`);
+          const newFacing = (currentFacing === "user" || currentFacing.includes("front")) ? "environment" : "user";
+          onDiagnosticLog?.(`[RemoteControl] Remote camera switch requested: switching to ${newFacing}`);
           await this.switchVideo(newFacing, targetWidth, targetHeight, targetFps);
-          if (this.webcodecsSender && this.localStream) {
-            const newTrack = this.localStream.getVideoTracks()[0];
-            if (newTrack) {
-              this.webcodecsSender.activeVideoTrack = newTrack;
-              this.webcodecsSender.sendCameraCapabilities();
-            }
-          }
         }
       };
       this.webcodecsSender.initDataChannels(this.pc);
