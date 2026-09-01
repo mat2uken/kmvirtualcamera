@@ -6,7 +6,69 @@
 
 namespace km::codec {
 
-static const uint8_t kStartSequence[4] = { 0x00, 0x00, 0x00, 0x01 };
+static const uint8_t kStartCode[4] = { 0x00, 0x00, 0x00, 0x01 };
+
+static bool HasSpsPps(const uint8_t* data, size_t size) {
+    if (size < 5) return false;
+    for (size_t i = 0; i + 4 < size; ++i) {
+        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 0 && data[i + 3] == 1) {
+            uint8_t naluType = data[i + 4] & 0x1F;
+            if (naluType == 7) return true; // SPS
+        }
+    }
+    return false;
+}
+
+static void NormalizeToAnnexB(
+    const std::vector<uint8_t>& inBuf,
+    std::vector<uint8_t>& outBuf,
+    const std::vector<uint8_t>& cachedSpsPps,
+    bool isKeyframe
+) {
+    if (inBuf.size() < 4) {
+        outBuf = inBuf;
+        return;
+    }
+
+    bool isAnnexB = (inBuf[0] == 0 && inBuf[1] == 0 && inBuf[2] == 0 && inBuf[3] == 1) ||
+                    (inBuf[0] == 0 && inBuf[1] == 0 && inBuf[2] == 1);
+
+    if (isAnnexB) {
+        if (isKeyframe && !HasSpsPps(inBuf.data(), inBuf.size()) && !cachedSpsPps.empty()) {
+            outBuf.clear();
+            outBuf.insert(outBuf.end(), cachedSpsPps.begin(), cachedSpsPps.end());
+            outBuf.insert(outBuf.end(), inBuf.begin(), inBuf.end());
+        } else {
+            outBuf = inBuf;
+        }
+        return;
+    }
+
+    // Convert AVCC (4-byte length prefix) to Annex-B (00 00 00 01)
+    outBuf.clear();
+    if (isKeyframe && !cachedSpsPps.empty()) {
+        outBuf.insert(outBuf.end(), cachedSpsPps.begin(), cachedSpsPps.end());
+    }
+
+    size_t offset = 0;
+    while (offset + 4 <= inBuf.size()) {
+        uint32_t naluLen = (static_cast<uint32_t>(inBuf[offset]) << 24) |
+                           (static_cast<uint32_t>(inBuf[offset + 1]) << 16) |
+                           (static_cast<uint32_t>(inBuf[offset + 2]) << 8) |
+                           (static_cast<uint32_t>(inBuf[offset + 3]));
+        offset += 4;
+        if (offset + naluLen > inBuf.size()) {
+            break;
+        }
+        outBuf.insert(outBuf.end(), kStartCode, kStartCode + 4);
+        outBuf.insert(outBuf.end(), inBuf.begin() + offset, inBuf.begin() + offset + naluLen);
+        offset += naluLen;
+    }
+
+    if (outBuf.empty()) {
+        outBuf = inBuf;
+    }
+}
 
 DcVideoDepacketizer::DcVideoDepacketizer() {
     assemblyBuffer_.reserve(256 * 1024);
@@ -50,10 +112,9 @@ void DcVideoDepacketizer::ProcessDataChannelPacket(const uint8_t* data, size_t s
     if (hasReceivedFirstFrame_) {
         int16_t diff = static_cast<int16_t>(seq - highestSeqReceived_);
         if (diff > 1) {
-            // Packet loss / frame gap detected
-            if (waitingForKeyframe_ || (header->flags & dc_protocol::kFlagKeyframe)) {
-                RequestKeyframe();
-            }
+            // Frame loss detected: gate decoder output until next keyframe to prevent artifact smearing
+            waitingForKeyframe_ = true;
+            RequestKeyframe();
         }
         if (diff > 0) {
             highestSeqReceived_ = seq;
@@ -73,9 +134,10 @@ void DcVideoDepacketizer::ProcessDataChannelPacket(const uint8_t* data, size_t s
     }
 
     if (!targetFrame) {
-        // Clean oldest frame if queue is full
         if (pendingFrames_.size() >= kMaxPendingFrames) {
             pendingFrames_.erase(pendingFrames_.begin());
+            waitingForKeyframe_ = true;
+            RequestKeyframe();
         }
 
         pendingFrames_.emplace_back();
@@ -108,28 +170,39 @@ void DcVideoDepacketizer::ProcessDataChannelPacket(const uint8_t* data, size_t s
         }
     }
 
-    // 5. Clean up expired frames older than 100ms
-    pendingFrames_.erase(
-        std::remove_if(pendingFrames_.begin(), pendingFrames_.end(), [nowUs](const IncompleteDcFrame& f) {
-            return (nowUs - f.firstChunkArrivalUs) > 100000;
-        }),
-        pendingFrames_.end()
-    );
+    // 5. Clean up expired frames older than 80ms
+    bool dropped = false;
+    for (auto it = pendingFrames_.begin(); it != pendingFrames_.end(); ) {
+        if ((nowUs - it->firstChunkArrivalUs) > 80000) {
+            it = pendingFrames_.erase(it);
+            dropped = true;
+        } else {
+            ++it;
+        }
+    }
+    if (dropped) {
+        waitingForKeyframe_ = true;
+        RequestKeyframe();
+    }
 }
 
 void DcVideoDepacketizer::AssembleAndEmit(IncompleteDcFrame& frame) {
-    assemblyBuffer_.clear();
+    std::vector<uint8_t> rawAssembled;
+    rawAssembled.reserve(64 * 1024);
 
     for (const auto& chunk : frame.chunks) {
-        assemblyBuffer_.insert(assemblyBuffer_.end(), chunk.begin(), chunk.end());
+        rawAssembled.insert(rawAssembled.end(), chunk.begin(), chunk.end());
     }
 
-    if (assemblyBuffer_.empty()) return;
+    if (rawAssembled.empty()) return;
+
+    // Normalize to standard Annex-B start codes
+    NormalizeToAnnexB(rawAssembled, assemblyBuffer_, cachedSpsPps_, frame.isKeyframe);
 
     // Cache SPS/PPS if keyframe
     if (frame.isKeyframe) {
-        bool hasSps = (assemblyBuffer_.size() > 4 && (assemblyBuffer_[4] & 0x1F) == 7);
-        if (hasSps) {
+        if (HasSpsPps(assemblyBuffer_.data(), assemblyBuffer_.size())) {
+            // Find end of PPS (starts with 00 00 00 01 07 ... 00 00 00 01 08 ...)
             cachedSpsPps_.assign(assemblyBuffer_.begin(), assemblyBuffer_.end());
         }
         waitingForKeyframe_ = false;
@@ -158,32 +231,27 @@ void DcVideoDepacketizer::EvaluateDelayGradientBwe(uint32_t senderTsUs, int64_t 
     lastArrivalUs_ = arrivalTsUs;
     lastSenderTsUs_ = senderTsUs;
 
-    // Reject outliers (e.g. clock jumps / sleep)
+    // Reject outliers
     if (deltaArrivalUs <= 0 || deltaArrivalUs > 200000 || deltaSenderUs <= 0 || deltaSenderUs > 200000) {
         return;
     }
 
-    // Delay gradient: Delta = (A_i - A_{i-1}) - (S_i - S_{i-1})
     int64_t delayGradientUs = deltaArrivalUs - deltaSenderUs;
-
-    // Smooth delay gradient with EMA (Exponential Moving Average)
     smoothedDelayGradientUs_ = 0.9 * smoothedDelayGradientUs_ + 0.1 * static_cast<double>(delayGradientUs);
 
     auto nowTime = std::chrono::steady_clock::now();
     int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(nowTime.time_since_epoch()).count();
 
-    // Congestion Control Overuse / Underuse Detection (AIMD)
     uint32_t currentBps = currentEstimatedBps_.load(std::memory_order_relaxed);
     uint32_t targetBps = currentBps;
 
     if (smoothedDelayGradientUs_ > 4000.0) {
-        // OVERUSE DETECTED: Network queue is buffering packets at router (>4ms gradient)
-        // Multiplicative Decrease (back off by 15%)
+        // Overuse detected: back off by 15%
         if (nowMs - lastBitrateUpdateMs_ >= 300) {
             targetBps = (std::max)(800000u, static_cast<uint32_t>(currentBps * 0.85));
             currentEstimatedBps_.store(targetBps, std::memory_order_relaxed);
             lastBitrateUpdateMs_ = nowMs;
-            smoothedDelayGradientUs_ = 0.0; // Reset after backoff
+            smoothedDelayGradientUs_ = 0.0;
 
             if (controlSendCallback_) {
                 std::ostringstream ss;
@@ -192,7 +260,7 @@ void DcVideoDepacketizer::EvaluateDelayGradientBwe(uint32_t senderTsUs, int64_t 
             }
         }
     } else if (smoothedDelayGradientUs_ < 1000.0 && (nowMs - lastBitrateUpdateMs_ >= 1500)) {
-        // UNDERUSE / NORMAL: Clean network, probe bandwidth with Additive Increase (+250 kbps)
+        // Underuse: probe bandwidth (+250 kbps)
         targetBps = (std::min)(8000000u, currentBps + 250000u);
         currentEstimatedBps_.store(targetBps, std::memory_order_relaxed);
         lastBitrateUpdateMs_ = nowMs;
