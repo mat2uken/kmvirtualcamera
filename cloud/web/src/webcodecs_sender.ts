@@ -191,9 +191,9 @@ export class WebCodecsSender {
     this.forceKeyframeNext = true;
     this.cachedSpsPpsAnnexB = null;
 
-    // 1. Create Unreliable Video DataChannel (UDP-like)
+    // 1. Create In-Order Zero-Retransmit Video DataChannel (Ultra-Low Latency + In-Order Delivery)
     this.videoDc = pc.createDataChannel("km-video-stream", {
-      ordered: false,
+      ordered: true,
       maxRetransmits: 0
     });
     this.videoDc.binaryType = "arraybuffer";

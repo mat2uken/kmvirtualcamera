@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <map>
 #include <functional>
 #include <mutex>
 #include <atomic>
@@ -17,6 +18,7 @@ struct IncompleteDcFrame {
     uint8_t totalChunks{0};
     uint8_t receivedChunks{0};
     bool isKeyframe{false};
+    bool isComplete{false};
     int64_t firstChunkArrivalUs{0};
     std::vector<std::vector<uint8_t>> chunks;
 };
@@ -34,17 +36,18 @@ public:
 
     void Reset();
 
-    // Process binary packet received from "km-video-stream" DataChannel
+    // Process binary packet received from DataChannel
     void ProcessDataChannelPacket(const uint8_t* data, size_t size);
 
-    // Periodic timer tick (every 50ms) for BWE evaluation & feedback
+    // Periodic timer tick (every 20ms) for timeout flush and BWE
     void OnTimerTick();
 
     uint32_t GetCurrentEstimatedBitrate() const { return currentEstimatedBps_.load(std::memory_order_relaxed); }
     uint64_t GetTotalFramesAssembled() const { return totalFramesAssembled_.load(std::memory_order_relaxed); }
 
 private:
-    void AssembleAndEmit(IncompleteDcFrame& frame);
+    void DrainCompletedFrames(int64_t nowUs);
+    void EmitFrame(IncompleteDcFrame& frame, int64_t nowUs);
     void RequestKeyframe();
     void EvaluateDelayGradientBwe(uint32_t senderTsUs, int64_t arrivalTsUs, size_t frameSize);
 
@@ -52,20 +55,19 @@ private:
     ControlSendCallback controlSendCallback_;
 
     std::mutex mutex_;
-    static constexpr size_t kMaxPendingFrames = 16;
-    std::vector<IncompleteDcFrame> pendingFrames_;
+    std::map<uint16_t, IncompleteDcFrame> pendingFramesMap_;
     std::vector<uint8_t> assemblyBuffer_;
     std::vector<uint8_t> cachedSpsPps_;
 
-    uint16_t highestSeqReceived_{0};
-    bool hasReceivedFirstFrame_{false};
+    uint16_t expectedSeq_{0};
+    bool hasInitializedSeq_{false};
     bool waitingForKeyframe_{true};
 
-    // Congestion Control / Delay Gradient Filter (GCC-like Trendline)
+    // Congestion Control / Delay Gradient Filter
     int64_t lastArrivalUs_{0};
     uint32_t lastSenderTsUs_{0};
     double smoothedDelayGradientUs_{0.0};
-    std::atomic<uint32_t> currentEstimatedBps_{3000000}; // Start at 3.0 Mbps
+    std::atomic<uint32_t> currentEstimatedBps_{3000000};
     int64_t lastBitrateUpdateMs_{0};
     int64_t lastPliSentMs_{0};
 

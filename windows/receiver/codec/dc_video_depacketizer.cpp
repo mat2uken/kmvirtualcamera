@@ -72,15 +72,14 @@ static void NormalizeToAnnexB(
 
 DcVideoDepacketizer::DcVideoDepacketizer() {
     assemblyBuffer_.reserve(256 * 1024);
-    pendingFrames_.reserve(kMaxPendingFrames);
 }
 
 void DcVideoDepacketizer::Reset() {
     std::lock_guard<std::mutex> lock(mutex_);
-    pendingFrames_.clear();
+    pendingFramesMap_.clear();
     assemblyBuffer_.clear();
     cachedSpsPps_.clear();
-    hasReceivedFirstFrame_ = false;
+    hasInitializedSeq_ = false;
     waitingForKeyframe_ = true;
     lastArrivalUs_ = 0;
     lastSenderTsUs_ = 0;
@@ -107,86 +106,130 @@ void DcVideoDepacketizer::ProcessDataChannelPacket(const uint8_t* data, size_t s
 
     std::lock_guard<std::mutex> lock(mutex_);
 
-    // 1. Check sequence number & detect gaps
     uint16_t seq = header->frameSeq;
-    if (hasReceivedFirstFrame_) {
-        int16_t diff = static_cast<int16_t>(seq - highestSeqReceived_);
-        if (diff > 1) {
-            // Frame loss detected: gate decoder output until next keyframe to prevent artifact smearing
-            waitingForKeyframe_ = true;
-            RequestKeyframe();
-        }
-        if (diff > 0) {
-            highestSeqReceived_ = seq;
-        }
-    } else {
-        hasReceivedFirstFrame_ = true;
-        highestSeqReceived_ = seq;
-    }
 
-    // 2. Find or create IncompleteDcFrame in pending queue
-    IncompleteDcFrame* targetFrame = nullptr;
-    for (auto& pf : pendingFrames_) {
-        if (pf.frameSeq == seq) {
-            targetFrame = &pf;
-            break;
+    // Discard stale packets for frames that have already been played out
+    if (hasInitializedSeq_) {
+        int16_t diff = static_cast<int16_t>(seq - expectedSeq_);
+        if (diff < -50) {
+            return; // Far in the past (already emitted), ignore
         }
     }
 
-    if (!targetFrame) {
-        if (pendingFrames_.size() >= kMaxPendingFrames) {
-            pendingFrames_.erase(pendingFrames_.begin());
-            waitingForKeyframe_ = true;
-            RequestKeyframe();
+    // Lookup or create entry in pending frames map
+    auto& frame = pendingFramesMap_[seq];
+    if (frame.chunks.empty()) {
+        frame.frameSeq = seq;
+        frame.timestampUs = header->timestampUs;
+        frame.totalChunks = header->totalChunks;
+        frame.receivedChunks = 0;
+        frame.isKeyframe = (header->flags & dc_protocol::kFlagKeyframe) != 0;
+        frame.isComplete = false;
+        frame.firstChunkArrivalUs = nowUs;
+        frame.chunks.resize(header->totalChunks);
+    }
+
+    if (frame.chunks[header->chunkIndex].empty()) {
+        frame.chunks[header->chunkIndex].assign(payload, payload + payloadSize);
+        frame.receivedChunks++;
+        if (frame.receivedChunks == frame.totalChunks) {
+            frame.isComplete = true;
         }
-
-        pendingFrames_.emplace_back();
-        targetFrame = &pendingFrames_.back();
-        targetFrame->frameSeq = seq;
-        targetFrame->timestampUs = header->timestampUs;
-        targetFrame->totalChunks = header->totalChunks;
-        targetFrame->receivedChunks = 0;
-        targetFrame->isKeyframe = (header->flags & dc_protocol::kFlagKeyframe) != 0;
-        targetFrame->firstChunkArrivalUs = nowUs;
-        targetFrame->chunks.resize(header->totalChunks);
     }
 
-    // 3. Store chunk data if not already received
-    if (targetFrame->chunks[header->chunkIndex].empty()) {
-        targetFrame->chunks[header->chunkIndex].assign(payload, payload + payloadSize);
-        targetFrame->receivedChunks++;
-    }
+    // Drain and emit completed frames in strict sequence order
+    DrainCompletedFrames(nowUs);
+}
 
-    // 4. If all chunks received, assemble and emit immediately (0ms delay)
-    if (targetFrame->receivedChunks == targetFrame->totalChunks) {
-        AssembleAndEmit(*targetFrame);
+void DcVideoDepacketizer::DrainCompletedFrames(int64_t nowUs) {
+    if (pendingFramesMap_.empty()) return;
 
-        // Remove from pending list
-        for (auto it = pendingFrames_.begin(); it != pendingFrames_.end(); ++it) {
-            if (it->frameSeq == seq) {
-                pendingFrames_.erase(it);
+    // 1. If not initialized yet, search for the first complete keyframe
+    if (!hasInitializedSeq_) {
+        for (auto it = pendingFramesMap_.begin(); it != pendingFramesMap_.end(); ++it) {
+            if (it->second.isComplete && it->second.isKeyframe) {
+                hasInitializedSeq_ = true;
+                expectedSeq_ = it->first;
                 break;
             }
         }
+        if (!hasInitializedSeq_) {
+            RequestKeyframe();
+            return;
+        }
     }
 
-    // 5. Clean up expired frames older than 80ms
-    bool dropped = false;
-    for (auto it = pendingFrames_.begin(); it != pendingFrames_.end(); ) {
-        if ((nowUs - it->firstChunkArrivalUs) > 80000) {
-            it = pendingFrames_.erase(it);
-            dropped = true;
+    // 2. Play out in-sequence frames (expectedSeq_, expectedSeq_+1, ...)
+    while (!pendingFramesMap_.empty()) {
+        auto it = pendingFramesMap_.find(expectedSeq_);
+        if (it != pendingFramesMap_.end()) {
+            if (it->second.isComplete) {
+                EmitFrame(it->second, nowUs);
+                pendingFramesMap_.erase(it);
+                expectedSeq_++;
+                continue;
+            } else {
+                // Frame exists but still waiting for remaining chunks.
+                // Allow up to 10ms jitter window for packet reordering.
+                if ((nowUs - it->second.firstChunkArrivalUs) < 10000) {
+                    break; // Wait for in-flight chunks
+                }
+                // Deadline exceeded: Frame declared lost.
+                pendingFramesMap_.erase(it);
+                expectedSeq_++;
+                waitingForKeyframe_ = true;
+                RequestKeyframe();
+                continue;
+            }
+        }
+
+        // What if expectedSeq_ is not in pending map at all?
+        // Check if a newer keyframe has arrived to immediately fast-forward
+        bool foundNewerKeyframe = false;
+        for (auto kit = pendingFramesMap_.begin(); kit != pendingFramesMap_.end(); ++kit) {
+            if (kit->second.isComplete && kit->second.isKeyframe) {
+                int16_t diff = static_cast<int16_t>(kit->first - expectedSeq_);
+                if (diff > 0) {
+                    // Fast-forward expectedSeq_ to this fresh keyframe
+                    expectedSeq_ = kit->first;
+                    foundNewerKeyframe = true;
+                    break;
+                }
+            }
+        }
+
+        if (foundNewerKeyframe) {
+            continue;
+        }
+
+        // If the map only contains future frames with gap > 1
+        if (!pendingFramesMap_.empty()) {
+            auto oldestIt = pendingFramesMap_.begin();
+            int16_t diff = static_cast<int16_t>(oldestIt->first - expectedSeq_);
+            if (diff > 0 && (nowUs - oldestIt->second.firstChunkArrivalUs) > 10000) {
+                // Skip missing gap
+                expectedSeq_ = oldestIt->first;
+                waitingForKeyframe_ = true;
+                RequestKeyframe();
+                continue;
+            }
+        }
+
+        break;
+    }
+
+    // 3. Clean up stale frames older than 60ms
+    for (auto it = pendingFramesMap_.begin(); it != pendingFramesMap_.end(); ) {
+        int16_t diff = static_cast<int16_t>(it->first - expectedSeq_);
+        if (diff < 0 || (nowUs - it->second.firstChunkArrivalUs) > 60000) {
+            it = pendingFramesMap_.erase(it);
         } else {
             ++it;
         }
     }
-    if (dropped) {
-        waitingForKeyframe_ = true;
-        RequestKeyframe();
-    }
 }
 
-void DcVideoDepacketizer::AssembleAndEmit(IncompleteDcFrame& frame) {
+void DcVideoDepacketizer::EmitFrame(IncompleteDcFrame& frame, int64_t nowUs) {
     std::vector<uint8_t> rawAssembled;
     rawAssembled.reserve(64 * 1024);
 
@@ -196,13 +239,10 @@ void DcVideoDepacketizer::AssembleAndEmit(IncompleteDcFrame& frame) {
 
     if (rawAssembled.empty()) return;
 
-    // Normalize to standard Annex-B start codes
     NormalizeToAnnexB(rawAssembled, assemblyBuffer_, cachedSpsPps_, frame.isKeyframe);
 
-    // Cache SPS/PPS if keyframe
     if (frame.isKeyframe) {
         if (HasSpsPps(assemblyBuffer_.data(), assemblyBuffer_.size())) {
-            // Find end of PPS (starts with 00 00 00 01 07 ... 00 00 00 01 08 ...)
             cachedSpsPps_.assign(assemblyBuffer_.begin(), assemblyBuffer_.end());
         }
         waitingForKeyframe_ = false;
@@ -213,8 +253,6 @@ void DcVideoDepacketizer::AssembleAndEmit(IncompleteDcFrame& frame) {
         totalFramesAssembled_.fetch_add(1, std::memory_order_relaxed);
     }
 
-    auto nowTime = std::chrono::steady_clock::now();
-    int64_t nowUs = std::chrono::duration_cast<std::chrono::microseconds>(nowTime.time_since_epoch()).count();
     EvaluateDelayGradientBwe(frame.timestampUs, nowUs, assemblyBuffer_.size());
 }
 
@@ -231,7 +269,6 @@ void DcVideoDepacketizer::EvaluateDelayGradientBwe(uint32_t senderTsUs, int64_t 
     lastArrivalUs_ = arrivalTsUs;
     lastSenderTsUs_ = senderTsUs;
 
-    // Reject outliers
     if (deltaArrivalUs <= 0 || deltaArrivalUs > 200000 || deltaSenderUs <= 0 || deltaSenderUs > 200000) {
         return;
     }
@@ -246,7 +283,6 @@ void DcVideoDepacketizer::EvaluateDelayGradientBwe(uint32_t senderTsUs, int64_t 
     uint32_t targetBps = currentBps;
 
     if (smoothedDelayGradientUs_ > 4000.0) {
-        // Overuse detected: back off by 15%
         if (nowMs - lastBitrateUpdateMs_ >= 300) {
             targetBps = (std::max)(800000u, static_cast<uint32_t>(currentBps * 0.85));
             currentEstimatedBps_.store(targetBps, std::memory_order_relaxed);
@@ -260,7 +296,6 @@ void DcVideoDepacketizer::EvaluateDelayGradientBwe(uint32_t senderTsUs, int64_t 
             }
         }
     } else if (smoothedDelayGradientUs_ < 1000.0 && (nowMs - lastBitrateUpdateMs_ >= 1500)) {
-        // Underuse: probe bandwidth (+250 kbps)
         targetBps = (std::min)(8000000u, currentBps + 250000u);
         currentEstimatedBps_.store(targetBps, std::memory_order_relaxed);
         lastBitrateUpdateMs_ = nowMs;
@@ -286,7 +321,11 @@ void DcVideoDepacketizer::RequestKeyframe() {
 }
 
 void DcVideoDepacketizer::OnTimerTick() {
+    auto nowTime = std::chrono::steady_clock::now();
+    int64_t nowUs = std::chrono::duration_cast<std::chrono::microseconds>(nowTime.time_since_epoch()).count();
+
     std::lock_guard<std::mutex> lock(mutex_);
+    DrainCompletedFrames(nowUs);
     if (waitingForKeyframe_) {
         RequestKeyframe();
     }

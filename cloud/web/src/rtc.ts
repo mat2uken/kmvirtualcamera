@@ -445,7 +445,7 @@ export class WebRtcSender {
 
     // If in WebCodecs mode, create the DataChannels before creating the Offer SDP
     if (this.transportMode === "webcodecs_datachannel") {
-      this.pc.createDataChannel("km-video-stream", { ordered: false, maxRetransmits: 0 });
+      this.pc.createDataChannel("km-video-stream", { ordered: true, maxRetransmits: 0 });
       this.pc.createDataChannel("km-control", { ordered: true });
     }
 
