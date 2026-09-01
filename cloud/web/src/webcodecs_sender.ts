@@ -1,13 +1,12 @@
 /**
- * WebCodecs + RTCDataChannel (In-Order Zero-Retransmit) Ultra-Low Latency Sender
+ * WebCodecs + RTCDataChannel (Ultra-Low Latency with 50ms Realtime Deadline)
  * Features:
- * - Single-Initialization DataChannels (Guarantees zero duplicate stream resets)
- * - Dynamic Native Aspect-Ratio & Orientation Detection (Zero Stretching/Squashing)
- * - Robust AVCC to Annex-B (00 00 00 01) normalization for all mobile and desktop hardware encoders
- * - Isolated SPS & PPS extraction (Clean Annex-B bitstream without duplicate IDR prepending)
- * - Periodic Intra-refresh (Keyframe every 30 frames = 1s) & Instant PLI recovery
- * - Application-level MTU chunking (<=1168B)
- * - Adaptive Bitrate (ABR) & Delay-gradient Congestion Control feedback
+ * - Deterministic AVCC vs Annex-B parser using bitstream structure verification
+ * - Single-Initialization DataChannels with 50ms MaxPacketLifeTime (Micro-Loss Recovery)
+ * - Dynamic Native Aspect-Ratio & Orientation Detection
+ * - Strict AUD (Access Unit Delimiter) injection on every frame for MFT boundary lock
+ * - Periodic Intra-refresh (Keyframe every 30 frames) & Instant PLI recovery
+ * - Adaptive Bitrate (ABR) & Constant Bitrate (CBR) mode to prevent motion packet spikes
  */
 
 export interface WebCodecsSenderConfig {
@@ -98,65 +97,75 @@ function hasAud(data: Uint8Array): boolean {
   return false;
 }
 
+function isAvccFormat(data: Uint8Array): boolean {
+  if (data.length < 5) return false;
+  let offset = 0;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  while (offset + 4 < data.byteLength) {
+    const len = view.getUint32(offset);
+    if (len === 0 || offset + 4 + len > data.byteLength) {
+      return false;
+    }
+    const naluHeader = data[offset + 4];
+    if ((naluHeader & 0x80) !== 0) return false;
+    const naluType = naluHeader & 0x1f;
+    if (naluType === 0 || naluType > 23) return false;
+    offset += 4 + len;
+  }
+  return offset === data.byteLength;
+}
+
 function normalizeChunkToAnnexB(chunkData: Uint8Array, spsPpsAnnexB: Uint8Array | null, isKeyframe: boolean): Uint8Array {
   const kAud = new Uint8Array([0, 0, 0, 1, 9, 0xf0]);
 
-  // 1. Check if chunkData is already Annex-B
-  const isAlreadyAnnexB =
-    (chunkData.length >= 4 && chunkData[0] === 0 && chunkData[1] === 0 && chunkData[2] === 0 && chunkData[3] === 1) ||
-    (chunkData.length >= 3 && chunkData[0] === 0 && chunkData[1] === 0 && chunkData[2] === 1);
+  // Check if chunk is AVCC (4-byte length prefix)
+  if (isAvccFormat(chunkData)) {
+    const naluList: Uint8Array[] = [];
+    let totalLen = 0;
 
-  if (isAlreadyAnnexB) {
-    let payload = chunkData;
-    if (isKeyframe && spsPpsAnnexB && !hasSpsNalu(chunkData)) {
-      const out = new Uint8Array(spsPpsAnnexB.length + chunkData.length);
-      out.set(spsPpsAnnexB, 0);
-      out.set(chunkData, spsPpsAnnexB.length);
-      payload = out;
+    if (isKeyframe && spsPpsAnnexB) {
+      naluList.push(spsPpsAnnexB);
+      totalLen += spsPpsAnnexB.length;
     }
-    if (!hasAud(payload)) {
-      const finalOut = new Uint8Array(kAud.length + payload.length);
-      finalOut.set(kAud, 0);
-      finalOut.set(payload, kAud.length);
-      return finalOut;
+
+    let offset = 0;
+    const view = new DataView(chunkData.buffer, chunkData.byteOffset, chunkData.byteLength);
+    while (offset + 4 <= chunkData.byteLength) {
+      const naluLen = view.getUint32(offset);
+      offset += 4;
+      if (offset + naluLen > chunkData.byteLength) break;
+      naluList.push(new Uint8Array([0, 0, 0, 1]));
+      naluList.push(chunkData.subarray(offset, offset + naluLen));
+      totalLen += 4 + naluLen;
+      offset += naluLen;
     }
-    return payload;
-  }
 
-  // 2. Convert AVCC (4-byte length prefix) to Annex-B (00 00 00 01)
-  const naluList: Uint8Array[] = [];
-  let totalLen = 0;
-
-  if (isKeyframe && spsPpsAnnexB) {
-    naluList.push(spsPpsAnnexB);
-    totalLen += spsPpsAnnexB.length;
-  }
-
-  let offset = 0;
-  const view = new DataView(chunkData.buffer, chunkData.byteOffset, chunkData.byteLength);
-
-  while (offset + 4 <= chunkData.byteLength) {
-    const naluLen = view.getUint32(offset);
-    offset += 4;
-    if (offset + naluLen > chunkData.byteLength) {
-      break;
+    const out = new Uint8Array(kAud.length + totalLen);
+    out.set(kAud, 0);
+    let writeOffset = kAud.length;
+    for (const item of naluList) {
+      out.set(item, writeOffset);
+      writeOffset += item.length;
     }
-    naluList.push(new Uint8Array([0, 0, 0, 1]));
-    naluList.push(chunkData.subarray(offset, offset + naluLen));
-    totalLen += 4 + naluLen;
-    offset += naluLen;
+    return out;
   }
 
-  if (totalLen === 0) return chunkData;
-
-  const out = new Uint8Array(kAud.length + totalLen);
-  out.set(kAud, 0);
-  let writeOffset = kAud.length;
-  for (const item of naluList) {
-    out.set(item, writeOffset);
-    writeOffset += item.length;
+  // Already Annex-B format
+  let payload = chunkData;
+  if (isKeyframe && spsPpsAnnexB && !hasSpsNalu(chunkData)) {
+    const out = new Uint8Array(spsPpsAnnexB.length + chunkData.length);
+    out.set(spsPpsAnnexB, 0);
+    out.set(chunkData, spsPpsAnnexB.length);
+    payload = out;
   }
-  return out;
+
+  if (!hasAud(payload)) {
+    const finalOut = new Uint8Array(kAud.length + payload.length);
+    finalOut.set(kAud, 0);
+    finalOut.set(payload, kAud.length);
+    return finalOut;
+  }
+  return payload;
 }
 
 export class WebCodecsSender {
@@ -207,10 +216,10 @@ export class WebCodecsSender {
   public initDataChannels(pc: RTCPeerConnection) {
     if (this.videoDc || this.controlDc) return;
 
-    // 1. Create In-Order Zero-Retransmit Video DataChannel
+    // 1. Create In-Order Video DataChannel with 50ms Realtime Deadline (Micro-Retransmit for 100% clean frames)
     this.videoDc = pc.createDataChannel("km-video-stream", {
       ordered: true,
-      maxRetransmits: 0
+      maxPacketLifeTime: 50
     });
     this.videoDc.binaryType = "arraybuffer";
 
@@ -306,6 +315,7 @@ export class WebCodecsSender {
         const msg = JSON.parse(evt.data);
         if (msg.type === "pli") {
           this.forceKeyframeNext = true;
+          this.logFn("[WebCodecs] Instant PLI Keyframe requested by receiver.");
         } else if (msg.type === "bitrate" && typeof msg.bps === "number") {
           this.setBitrate(msg.bps);
         } else if (msg.type === "pong") {
@@ -327,6 +337,7 @@ export class WebCodecsSender {
         height: this.currentEncoderH,
         bitrate: this.currentBitrateBps,
         framerate: this.config.fps,
+        bitrateMode: "constant",
         latencyMode: "realtime",
         hardwareAcceleration: "prefer-hardware",
         avc: { format: "annexb" }
@@ -386,7 +397,7 @@ export class WebCodecsSender {
       this.reconfigureResolution(frameW, frameH);
     }
 
-    // Periodic Keyframe (every 30 frames = 1 second at 30fps) for fast sync
+    // Periodic Keyframe (every 30 frames = 1s) for fast recovery
     this.frameCount++;
     if (this.frameCount % 30 === 0) {
       this.forceKeyframeNext = true;
@@ -407,7 +418,7 @@ export class WebCodecsSender {
   private handleEncodedChunk(chunk: EncodedVideoChunk, metadata?: EncodedVideoChunkMetadata) {
     if (!this.videoDc || this.videoDc.readyState !== "open") return;
 
-    // 1. Extract SPS/PPS from metadata description if available
+    // Extract SPS/PPS from metadata description if available
     if (metadata?.decoderConfig?.description) {
       const parsedSpsPps = parseDecoderConfigDescription(metadata.decoderConfig.description);
       if (parsedSpsPps) {
@@ -419,11 +430,11 @@ export class WebCodecsSender {
     const rawChunkData = new Uint8Array(chunk.byteLength);
     chunk.copyTo(rawChunkData);
 
-    // 2. Normalize bitstream to standard Annex-B format (00 00 00 01)
+    // Normalize bitstream to standard Annex-B format (00 00 00 01)
     const annexBData = normalizeChunkToAnnexB(rawChunkData, this.cachedSpsPpsAnnexB, isKeyframe);
 
-    // 3. Slice and send via DataChannel with MTU-safe chunks
-    const maxPayload = 1168;
+    // Slice and send via DataChannel with 2KB chunks
+    const maxPayload = 2048;
     const totalChunks = Math.ceil(annexBData.byteLength / maxPayload);
     const seq = this.frameSeq++ & 0xffff;
     const tsUs = Math.floor(chunk.timestamp) & 0xffffffff;

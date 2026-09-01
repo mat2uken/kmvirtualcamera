@@ -74,6 +74,26 @@ static bool HasAud(const uint8_t* data, size_t size) {
     return false;
 }
 
+static bool IsAvccFormat(const uint8_t* data, size_t size) {
+    if (size < 5) return false;
+    size_t offset = 0;
+    while (offset + 4 < size) {
+        uint32_t len = (static_cast<uint32_t>(data[offset]) << 24) |
+                       (static_cast<uint32_t>(data[offset + 1]) << 16) |
+                       (static_cast<uint32_t>(data[offset + 2]) << 8) |
+                       (static_cast<uint32_t>(data[offset + 3]));
+        if (len == 0 || offset + 4 + len > size) {
+            return false;
+        }
+        uint8_t naluHeader = data[offset + 4];
+        if ((naluHeader & 0x80) != 0) return false;
+        uint8_t naluType = naluHeader & 0x1F;
+        if (naluType == 0 || naluType > 23) return false;
+        offset += 4 + len;
+    }
+    return offset == size;
+}
+
 static void NormalizeToAnnexB(
     const std::vector<uint8_t>& inBuf,
     std::vector<uint8_t>& outBuf,
@@ -87,49 +107,40 @@ static void NormalizeToAnnexB(
         return;
     }
 
-    bool isAnnexB = (inBuf[0] == 0 && inBuf[1] == 0 && inBuf[2] == 0 && inBuf[3] == 1) ||
-                    (inBuf[0] == 0 && inBuf[1] == 0 && inBuf[2] == 1);
+    if (IsAvccFormat(inBuf.data(), inBuf.size())) {
+        outBuf.clear();
+        outBuf.insert(outBuf.end(), kAud, kAud + 6);
 
-    if (isAnnexB) {
-        if (isKeyframe && !HasSpsPps(inBuf.data(), inBuf.size()) && !cachedSpsPps.empty()) {
-            outBuf.clear();
+        if (isKeyframe && !cachedSpsPps.empty()) {
             outBuf.insert(outBuf.end(), cachedSpsPps.begin(), cachedSpsPps.end());
-            outBuf.insert(outBuf.end(), inBuf.begin(), inBuf.end());
-        } else {
-            outBuf = inBuf;
         }
 
-        if (!outBuf.empty() && !HasAud(outBuf.data(), outBuf.size())) {
-            outBuf.insert(outBuf.begin(), kAud, kAud + 6);
+        size_t offset = 0;
+        while (offset + 4 <= inBuf.size()) {
+            uint32_t naluLen = (static_cast<uint32_t>(inBuf[offset]) << 24) |
+                               (static_cast<uint32_t>(inBuf[offset + 1]) << 16) |
+                               (static_cast<uint32_t>(inBuf[offset + 2]) << 8) |
+                               (static_cast<uint32_t>(inBuf[offset + 3]));
+            offset += 4;
+            if (offset + naluLen > inBuf.size()) break;
+            outBuf.insert(outBuf.end(), kStartCode, kStartCode + 4);
+            outBuf.insert(outBuf.end(), inBuf.begin() + offset, inBuf.begin() + offset + naluLen);
+            offset += naluLen;
         }
         return;
     }
 
-    // Convert AVCC (4-byte length prefix) to Annex-B (00 00 00 01)
-    outBuf.clear();
-    outBuf.insert(outBuf.end(), kAud, kAud + 6);
-
-    if (isKeyframe && !cachedSpsPps.empty()) {
+    // Already Annex-B
+    if (isKeyframe && !HasSpsPps(inBuf.data(), inBuf.size()) && !cachedSpsPps.empty()) {
+        outBuf.clear();
         outBuf.insert(outBuf.end(), cachedSpsPps.begin(), cachedSpsPps.end());
-    }
-
-    size_t offset = 0;
-    while (offset + 4 <= inBuf.size()) {
-        uint32_t naluLen = (static_cast<uint32_t>(inBuf[offset]) << 24) |
-                           (static_cast<uint32_t>(inBuf[offset + 1]) << 16) |
-                           (static_cast<uint32_t>(inBuf[offset + 2]) << 8) |
-                           (static_cast<uint32_t>(inBuf[offset + 3]));
-        offset += 4;
-        if (offset + naluLen > inBuf.size()) {
-            break;
-        }
-        outBuf.insert(outBuf.end(), kStartCode, kStartCode + 4);
-        outBuf.insert(outBuf.end(), inBuf.begin() + offset, inBuf.begin() + offset + naluLen);
-        offset += naluLen;
-    }
-
-    if (outBuf.empty()) {
+        outBuf.insert(outBuf.end(), inBuf.begin(), inBuf.end());
+    } else {
         outBuf = inBuf;
+    }
+
+    if (!outBuf.empty() && !HasAud(outBuf.data(), outBuf.size())) {
+        outBuf.insert(outBuf.begin(), kAud, kAud + 6);
     }
 }
 
