@@ -19,6 +19,50 @@ static bool HasSpsPps(const uint8_t* data, size_t size) {
     return false;
 }
 
+// Strictly extracts ONLY SPS (type 7) and PPS (type 8) NALUs, NEVER slices (type 1/5)
+static std::vector<uint8_t> ExtractSpsPpsOnly(const uint8_t* data, size_t size) {
+    std::vector<uint8_t> spsPps;
+    if (size < 5) return spsPps;
+
+    size_t i = 0;
+    while (i + 4 < size) {
+        size_t startCodeLen = 0;
+        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 0 && data[i + 3] == 1) {
+            startCodeLen = 4;
+        } else if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1) {
+            startCodeLen = 3;
+        }
+
+        if (startCodeLen > 0) {
+            size_t naluStart = i + startCodeLen;
+            uint8_t naluType = data[naluStart] & 0x1F;
+
+            // Find next start code or end of buffer
+            size_t nextStart = size;
+            for (size_t j = naluStart; j + 3 < size; ++j) {
+                if ((data[j] == 0 && data[j + 1] == 0 && data[j + 2] == 1) ||
+                    (j + 4 < size && data[j] == 0 && data[j + 1] == 0 && data[j + 2] == 0 && data[j + 3] == 1)) {
+                    nextStart = j;
+                    break;
+                }
+            }
+
+            if (naluType == 7 || naluType == 8) { // SPS (7) or PPS (8) ONLY
+                spsPps.push_back(0);
+                spsPps.push_back(0);
+                spsPps.push_back(0);
+                spsPps.push_back(1);
+                spsPps.insert(spsPps.end(), data + naluStart, data + nextStart);
+            }
+
+            i = nextStart;
+        } else {
+            ++i;
+        }
+    }
+    return spsPps;
+}
+
 static void NormalizeToAnnexB(
     const std::vector<uint8_t>& inBuf,
     std::vector<uint8_t>& outBuf,
@@ -112,7 +156,7 @@ void DcVideoDepacketizer::ProcessDataChannelPacket(const uint8_t* data, size_t s
     if (hasInitializedSeq_) {
         int16_t diff = static_cast<int16_t>(seq - expectedSeq_);
         if (diff < -50) {
-            return; // Far in the past (already emitted), ignore
+            return;
         }
     }
 
@@ -169,10 +213,8 @@ void DcVideoDepacketizer::DrainCompletedFrames(int64_t nowUs) {
                 expectedSeq_++;
                 continue;
             } else {
-                // Frame exists but still waiting for remaining chunks.
-                // Allow up to 10ms jitter window for packet reordering.
                 if ((nowUs - it->second.firstChunkArrivalUs) < 10000) {
-                    break; // Wait for in-flight chunks
+                    break; // Wait up to 10ms for in-flight chunks
                 }
                 // Deadline exceeded: Frame declared lost.
                 pendingFramesMap_.erase(it);
@@ -183,14 +225,12 @@ void DcVideoDepacketizer::DrainCompletedFrames(int64_t nowUs) {
             }
         }
 
-        // What if expectedSeq_ is not in pending map at all?
-        // Check if a newer keyframe has arrived to immediately fast-forward
+        // Fast-forward if a newer keyframe is available
         bool foundNewerKeyframe = false;
         for (auto kit = pendingFramesMap_.begin(); kit != pendingFramesMap_.end(); ++kit) {
             if (kit->second.isComplete && kit->second.isKeyframe) {
                 int16_t diff = static_cast<int16_t>(kit->first - expectedSeq_);
                 if (diff > 0) {
-                    // Fast-forward expectedSeq_ to this fresh keyframe
                     expectedSeq_ = kit->first;
                     foundNewerKeyframe = true;
                     break;
@@ -202,12 +242,10 @@ void DcVideoDepacketizer::DrainCompletedFrames(int64_t nowUs) {
             continue;
         }
 
-        // If the map only contains future frames with gap > 1
         if (!pendingFramesMap_.empty()) {
             auto oldestIt = pendingFramesMap_.begin();
             int16_t diff = static_cast<int16_t>(oldestIt->first - expectedSeq_);
             if (diff > 0 && (nowUs - oldestIt->second.firstChunkArrivalUs) > 10000) {
-                // Skip missing gap
                 expectedSeq_ = oldestIt->first;
                 waitingForKeyframe_ = true;
                 RequestKeyframe();
@@ -242,8 +280,10 @@ void DcVideoDepacketizer::EmitFrame(IncompleteDcFrame& frame, int64_t nowUs) {
     NormalizeToAnnexB(rawAssembled, assemblyBuffer_, cachedSpsPps_, frame.isKeyframe);
 
     if (frame.isKeyframe) {
-        if (HasSpsPps(assemblyBuffer_.data(), assemblyBuffer_.size())) {
-            cachedSpsPps_.assign(assemblyBuffer_.begin(), assemblyBuffer_.end());
+        // Extract ONLY SPS & PPS NALUs into cache (NEVER slices/IDR payload!)
+        auto extracted = ExtractSpsPpsOnly(assemblyBuffer_.data(), assemblyBuffer_.size());
+        if (!extracted.empty()) {
+            cachedSpsPps_ = std::move(extracted);
         }
         waitingForKeyframe_ = false;
     }

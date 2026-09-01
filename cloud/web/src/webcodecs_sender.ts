@@ -1,12 +1,12 @@
 /**
- * WebCodecs + RTCDataChannel (UDP Unreliable) Ultra-Low Latency Sender
+ * WebCodecs + RTCDataChannel (In-Order Zero-Retransmit) Ultra-Low Latency Sender
  * Features:
- * - Robust AVCC to Annex-B (00 00 00 01) normalization for all mobile and desktop browsers
- * - SPS & PPS extraction from decoderConfig.description
- * - Periodic Intra-refresh (Keyframe every 60 frames = 2s) & Instant PLI recovery
- * - Application-level MTU chunking (<=1168B) to eliminate SCTP packet drop penalty
+ * - Dynamic Native Aspect-Ratio & Orientation Detection (Zero Stretching/Squashing)
+ * - Robust AVCC to Annex-B (00 00 00 01) normalization for all mobile and desktop hardware encoders
+ * - Isolated SPS & PPS extraction (Clean Annex-B bitstream without duplicate IDR prepending)
+ * - Periodic Intra-refresh (Keyframe every 30 frames = 1s) & Instant PLI recovery
+ * - Application-level MTU chunking (<=1168B)
  * - Adaptive Bitrate (ABR) & Delay-gradient Congestion Control feedback
- * - Flow control to guarantee zero buffer bloat
  */
 
 export interface WebCodecsSenderConfig {
@@ -147,6 +147,8 @@ export class WebCodecsSender {
   private forceKeyframeNext = true;
   private currentBitrateBps: number;
   private config: WebCodecsSenderConfig;
+  private currentEncoderW = 0;
+  private currentEncoderH = 0;
   private rttMs = 0;
   private lastPingTime = 0;
   private cachedSpsPpsAnnexB: Uint8Array | null = null;
@@ -205,7 +207,21 @@ export class WebCodecsSender {
 
     this.setupControlChannel(this.controlDc);
 
-    // 3. Initialize VideoEncoder
+    // 3. Detect initial track dimensions (Portrait / Landscape awareness)
+    const settings = track.getSettings();
+    const initialW = settings.width || this.config.width;
+    const initialH = settings.height || this.config.height;
+
+    this.initEncoder(initialW, initialH);
+
+    // 4. Ingest video frames from TrackProcessor or Video element fallback
+    this.startFrameCapture(track, videoElem);
+  }
+
+  private initEncoder(width: number, height: number) {
+    this.currentEncoderW = width;
+    this.currentEncoderH = height;
+
     const codec = "avc1.420028"; // H.264 Baseline Level 4.0
     this.encoder = new VideoEncoder({
       output: (chunk, metadata) => this.handleEncodedChunk(chunk, metadata),
@@ -216,8 +232,8 @@ export class WebCodecsSender {
 
     this.encoder.configure({
       codec: codec,
-      width: this.config.width,
-      height: this.config.height,
+      width: width,
+      height: height,
       bitrate: this.currentBitrateBps,
       framerate: this.config.fps,
       latencyMode: "realtime",
@@ -225,10 +241,26 @@ export class WebCodecsSender {
       avc: { format: "annexb" }
     });
 
-    this.logFn(`[WebCodecs] Initialized: ${this.config.width}x${this.config.height} @ ${this.config.fps}fps, ${(this.currentBitrateBps / 1e6).toFixed(1)} Mbps`);
+    this.logFn(`[WebCodecs] Initialized Native Encoder: ${width}x${height} @ ${this.config.fps}fps, ${(this.currentBitrateBps / 1e6).toFixed(1)} Mbps`);
+  }
 
-    // 4. Ingest video frames from TrackProcessor or Video element fallback
-    this.startFrameCapture(track, videoElem);
+  private reconfigureResolution(width: number, height: number) {
+    if (!this.encoder || (this.currentEncoderW === width && this.currentEncoderH === height)) return;
+    this.currentEncoderW = width;
+    this.currentEncoderH = height;
+
+    this.encoder.configure({
+      codec: "avc1.420028",
+      width: width,
+      height: height,
+      bitrate: this.currentBitrateBps,
+      framerate: this.config.fps,
+      latencyMode: "realtime",
+      hardwareAcceleration: "prefer-hardware",
+      avc: { format: "annexb" }
+    });
+    this.forceKeyframeNext = true;
+    this.logFn(`[WebCodecs] Reconfigured native resolution to ${width}x${height}`);
   }
 
   private setupControlChannel(dc: RTCDataChannel) {
@@ -261,17 +293,19 @@ export class WebCodecsSender {
   public setBitrate(newBps: number) {
     if (!this.encoder || newBps === this.currentBitrateBps) return;
     this.currentBitrateBps = Math.max(500000, Math.min(8000000, newBps));
-    this.encoder.configure({
-      codec: "avc1.420028",
-      width: this.config.width,
-      height: this.config.height,
-      bitrate: this.currentBitrateBps,
-      framerate: this.config.fps,
-      latencyMode: "realtime",
-      hardwareAcceleration: "prefer-hardware",
-      avc: { format: "annexb" }
-    });
-    this.logFn(`[WebCodecs] ABR Bitrate updated: ${(this.currentBitrateBps / 1e6).toFixed(2)} Mbps`);
+    if (this.currentEncoderW > 0 && this.currentEncoderH > 0) {
+      this.encoder.configure({
+        codec: "avc1.420028",
+        width: this.currentEncoderW,
+        height: this.currentEncoderH,
+        bitrate: this.currentBitrateBps,
+        framerate: this.config.fps,
+        latencyMode: "realtime",
+        hardwareAcceleration: "prefer-hardware",
+        avc: { format: "annexb" }
+      });
+      this.logFn(`[WebCodecs] ABR Bitrate updated: ${(this.currentBitrateBps / 1e6).toFixed(2)} Mbps`);
+    }
     if (this.onBitrateChanged) {
       this.onBitrateChanged(this.currentBitrateBps);
     }
@@ -318,16 +352,17 @@ export class WebCodecsSender {
       return;
     }
 
-    // Periodic Keyframe (every 60 frames = 2 seconds at 30fps) for fast recovery
-    this.frameCount++;
-    if (this.frameCount % 60 === 0) {
-      this.forceKeyframeNext = true;
+    // Dynamic resolution / aspect ratio adaptation
+    const frameW = frame.displayWidth;
+    const frameH = frame.displayHeight;
+    if (frameW > 0 && frameH > 0 && (this.currentEncoderW !== frameW || this.currentEncoderH !== frameH)) {
+      this.reconfigureResolution(frameW, frameH);
     }
 
-    // Flow control: if send buffer is overloaded, skip delta frames
-    if (this.videoDc && this.videoDc.bufferedAmount > 64 * 1024 && !this.forceKeyframeNext) {
-      frame.close();
-      return;
+    // Periodic Keyframe (every 30 frames = 1 second at 30fps) for fast sync
+    this.frameCount++;
+    if (this.frameCount % 30 === 0) {
+      this.forceKeyframeNext = true;
     }
 
     const isKey = this.forceKeyframeNext;
