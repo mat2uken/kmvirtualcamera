@@ -494,10 +494,10 @@ LRESULT MainWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
             int w = LOWORD(lParam);
             int h = HIWORD(lParam);
             if (hPreviewWnd_) {
-                int previewX = 360;
+                int previewX = 315;
                 int previewY = 20;
-                int previewW = (std::max)(100, w - previewX - 20);
-                int previewH = (std::max)(100, h - previewY - 20);
+                int previewW = (std::max)(100, w - previewX - 25);
+                int previewH = (std::max)(100, h - previewY - 25);
                 MoveWindow(hPreviewWnd_, previewX, previewY, previewW, previewH, TRUE);
                 d3dPreview_.Resize(previewW, previewH);
             }

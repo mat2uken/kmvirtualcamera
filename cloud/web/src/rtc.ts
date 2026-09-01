@@ -259,7 +259,7 @@ export class WebRtcSender {
       this.localStream.addTrack(newVideoTrack);
     }
 
-    // Replace track on RTCPeerConnection video sender
+    // Replace track on RTCPeerConnection video sender (for mediatrack mode)
     if (this.pc && newVideoTrack) {
       const senders = this.pc.getSenders();
       const videoSender = senders.find(
@@ -268,6 +268,11 @@ export class WebRtcSender {
       if (videoSender) {
         await videoSender.replaceTrack(newVideoTrack);
       }
+    }
+
+    // Update WebCodecs Sender with new track
+    if (this.transportMode === "webcodecs_datachannel" && this.webcodecsSender && newVideoTrack) {
+      await this.webcodecsSender.updateTrack(newVideoTrack);
     }
 
     return this.localStream;

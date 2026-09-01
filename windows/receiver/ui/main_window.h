@@ -16,7 +16,7 @@ public:
     MainWindow();
     ~MainWindow();
 
-    bool Create(HINSTANCE hInstance, int width = 1100, int height = 620);
+    bool Create(HINSTANCE hInstance, int width = 1200, int height = 760);
     void Show(int nCmdShow);
     HWND GetHwnd() const { return hWnd_; }
 

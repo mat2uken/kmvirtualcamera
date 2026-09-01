@@ -241,6 +241,27 @@ export class WebCodecsSender {
     this.startFrameCapture(track, videoElem);
   }
 
+  public async updateTrack(newTrack: MediaStreamTrack, videoElem?: HTMLVideoElement) {
+    this.logFn(`[WebCodecs] Updating active video track...`);
+    this.activeVideoTrack = newTrack;
+    if (this.activeReader) {
+      try {
+        await this.activeReader.cancel();
+      } catch {}
+      this.activeReader = null;
+    }
+    this.forceKeyframeNext = true;
+    this.sendCameraCapabilities();
+
+    const settings = newTrack.getSettings();
+    const newW = settings.width || this.config.width;
+    const newH = settings.height || this.config.height;
+    if (newW > 0 && newH > 0 && (newW !== this.currentEncoderW || newH !== this.currentEncoderH)) {
+      this.reconfigureResolution(newW, newH);
+    }
+    this.startFrameCapture(newTrack, videoElem);
+  }
+
   private initEncoder(width: number, height: number) {
     this.currentEncoderW = width;
     this.currentEncoderH = height;
@@ -390,13 +411,16 @@ export class WebCodecsSender {
     }
   }
 
+  private activeReader: any = null;
+
   private async startFrameCapture(track: MediaStreamTrack, videoElem?: HTMLVideoElement) {
     if (typeof MediaStreamTrackProcessor !== "undefined") {
       try {
         const processor = new MediaStreamTrackProcessor({ track });
         const reader = processor.readable.getReader();
+        this.activeReader = reader;
 
-        while (this.isRunning) {
+        while (this.isRunning && this.activeVideoTrack === track) {
           const { done, value } = await reader.read();
           if (done) break;
           if (value) {
