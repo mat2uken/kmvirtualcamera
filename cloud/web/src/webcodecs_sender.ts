@@ -87,20 +87,40 @@ function hasSpsNalu(data: Uint8Array): boolean {
   return false;
 }
 
+function hasAud(data: Uint8Array): boolean {
+  if (data.length < 5) return false;
+  if (data[0] === 0 && data[1] === 0 && data[2] === 0 && data[3] === 1) {
+    return (data[4] & 0x1f) === 9;
+  }
+  if (data[0] === 0 && data[1] === 0 && data[2] === 1) {
+    return (data[3] & 0x1f) === 9;
+  }
+  return false;
+}
+
 function normalizeChunkToAnnexB(chunkData: Uint8Array, spsPpsAnnexB: Uint8Array | null, isKeyframe: boolean): Uint8Array {
+  const kAud = new Uint8Array([0, 0, 0, 1, 9, 0xf0]);
+
   // 1. Check if chunkData is already Annex-B
   const isAlreadyAnnexB =
     (chunkData.length >= 4 && chunkData[0] === 0 && chunkData[1] === 0 && chunkData[2] === 0 && chunkData[3] === 1) ||
     (chunkData.length >= 3 && chunkData[0] === 0 && chunkData[1] === 0 && chunkData[2] === 1);
 
   if (isAlreadyAnnexB) {
+    let payload = chunkData;
     if (isKeyframe && spsPpsAnnexB && !hasSpsNalu(chunkData)) {
       const out = new Uint8Array(spsPpsAnnexB.length + chunkData.length);
       out.set(spsPpsAnnexB, 0);
       out.set(chunkData, spsPpsAnnexB.length);
-      return out;
+      payload = out;
     }
-    return chunkData;
+    if (!hasAud(payload)) {
+      const finalOut = new Uint8Array(kAud.length + payload.length);
+      finalOut.set(kAud, 0);
+      finalOut.set(payload, kAud.length);
+      return finalOut;
+    }
+    return payload;
   }
 
   // 2. Convert AVCC (4-byte length prefix) to Annex-B (00 00 00 01)
@@ -129,8 +149,9 @@ function normalizeChunkToAnnexB(chunkData: Uint8Array, spsPpsAnnexB: Uint8Array 
 
   if (totalLen === 0) return chunkData;
 
-  const out = new Uint8Array(totalLen);
-  let writeOffset = 0;
+  const out = new Uint8Array(kAud.length + totalLen);
+  out.set(kAud, 0);
+  let writeOffset = kAud.length;
   for (const item of naluList) {
     out.set(item, writeOffset);
     writeOffset += item.length;
@@ -240,6 +261,7 @@ export class WebCodecsSender {
       height: height,
       bitrate: this.currentBitrateBps,
       framerate: this.config.fps,
+      bitrateMode: "constant",
       latencyMode: "realtime",
       hardwareAcceleration: "prefer-hardware",
       avc: { format: "annexb" }
@@ -259,6 +281,7 @@ export class WebCodecsSender {
       height: height,
       bitrate: this.currentBitrateBps,
       framerate: this.config.fps,
+      bitrateMode: "constant",
       latencyMode: "realtime",
       hardwareAcceleration: "prefer-hardware",
       avc: { format: "annexb" }

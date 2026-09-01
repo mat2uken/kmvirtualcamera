@@ -63,12 +63,25 @@ static std::vector<uint8_t> ExtractSpsPpsOnly(const uint8_t* data, size_t size) 
     return spsPps;
 }
 
+static bool HasAud(const uint8_t* data, size_t size) {
+    if (size < 5) return false;
+    if (data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 1) {
+        return (data[4] & 0x1F) == 9;
+    }
+    if (data[0] == 0 && data[1] == 0 && data[2] == 1) {
+        return (data[3] & 0x1F) == 9;
+    }
+    return false;
+}
+
 static void NormalizeToAnnexB(
     const std::vector<uint8_t>& inBuf,
     std::vector<uint8_t>& outBuf,
     const std::vector<uint8_t>& cachedSpsPps,
     bool isKeyframe
 ) {
+    static const uint8_t kAud[6] = { 0x00, 0x00, 0x00, 0x01, 0x09, 0xF0 };
+
     if (inBuf.size() < 4) {
         outBuf = inBuf;
         return;
@@ -85,11 +98,17 @@ static void NormalizeToAnnexB(
         } else {
             outBuf = inBuf;
         }
+
+        if (!outBuf.empty() && !HasAud(outBuf.data(), outBuf.size())) {
+            outBuf.insert(outBuf.begin(), kAud, kAud + 6);
+        }
         return;
     }
 
     // Convert AVCC (4-byte length prefix) to Annex-B (00 00 00 01)
     outBuf.clear();
+    outBuf.insert(outBuf.end(), kAud, kAud + 6);
+
     if (isKeyframe && !cachedSpsPps.empty()) {
         outBuf.insert(outBuf.end(), cachedSpsPps.begin(), cachedSpsPps.end());
     }
