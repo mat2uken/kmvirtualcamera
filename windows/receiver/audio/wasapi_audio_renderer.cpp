@@ -39,8 +39,8 @@ bool WasapiAudioRenderer::Initialize(const std::wstring& endpointId) {
     waveFormat_.nAvgBytesPerSec = waveFormat_.nSamplesPerSec * waveFormat_.nBlockAlign;
     waveFormat_.cbSize = 0;
 
-    // Buffer duration: 20ms (200,000 in 100ns units) for ultra-low latency audio & tight A/V sync
-    REFERENCE_TIME bufferDuration = 200000;
+    // Buffer duration: 10ms (100,000 in 100ns units) for sub-10ms ultra-low latency audio & tight A/V sync
+    REFERENCE_TIME bufferDuration = 100000;
     hr = audioClient_->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
         0,
