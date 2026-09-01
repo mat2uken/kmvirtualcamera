@@ -235,6 +235,31 @@ bool H264Decoder::ExtractSampleNv12(IMFSample* pSample, std::vector<uint8_t>& ou
         if (FAILED(hr) || !mediaBuffer) return false;
     }
 
+    // Query current output type directly from MFT to ensure exact pitch and dimensions
+    Microsoft::WRL::ComPtr<IMFMediaType> curType;
+    if (SUCCEEDED(decoderMft_->GetOutputCurrentType(0, &curType)) && curType) {
+        UINT32 cw = 0, ch = 0;
+        if (SUCCEEDED(MFGetAttributeSize(curType.Get(), MF_MT_FRAME_SIZE, &cw, &ch)) && cw > 0 && ch > 0) {
+            actualWidth_ = static_cast<int>(cw);
+            actualHeight_ = static_cast<int>(ch);
+
+            MFVideoArea aperture{};
+            UINT32 blobSize = sizeof(MFVideoArea);
+            if (SUCCEEDED(curType->GetBlob(MF_MT_MINIMUM_DISPLAY_APERTURE, (UINT8*)&aperture, sizeof(MFVideoArea), &blobSize)) && aperture.Area.cx > 0 && aperture.Area.cy > 0) {
+                displayWidth_ = static_cast<int>(aperture.Area.cx);
+                displayHeight_ = static_cast<int>(aperture.Area.cy);
+            } else {
+                displayWidth_ = actualWidth_;
+                displayHeight_ = actualHeight_;
+                if (actualHeight_ == 1088 && actualWidth_ == 1920) displayHeight_ = 1080;
+                else if (actualHeight_ == 272 && actualWidth_ == 480) displayHeight_ = 270;
+                else if (actualHeight_ == 192 && actualWidth_ == 320) displayHeight_ = 180;
+            }
+            displayWidth_ = (displayWidth_ / 2) * 2;
+            displayHeight_ = (displayHeight_ / 2) * 2;
+        }
+    }
+
     int codedW = actualWidth_;
     int codedH = actualHeight_;
     int dispW = displayWidth_ > 0 ? displayWidth_ : codedW;
@@ -245,7 +270,7 @@ bool H264Decoder::ExtractSampleNv12(IMFSample* pSample, std::vector<uint8_t>& ou
         outNv12.resize(expectedNv12Size);
     }
 
-    // 1. Try 2D Buffer Lock (Supports IMFDXGIBuffer / Direct3D hardware surfaces)
+    // 1. Try 2D Buffer Lock (Handles hardware surface pitches e.g. 1280, 1536, 768)
     Microsoft::WRL::ComPtr<IMF2DBuffer> buffer2D;
     if (SUCCEEDED(mediaBuffer.As(&buffer2D)) && buffer2D) {
         BYTE* pScanline = nullptr;
