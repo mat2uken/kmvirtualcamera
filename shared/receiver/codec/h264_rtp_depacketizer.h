@@ -1,51 +1,36 @@
 #pragma once
-
+#include <cstddef>
 #include <cstdint>
-#include <vector>
 #include <functional>
-#include <span>
+#include <vector>
+#include "../../km/rtp_wire.h"
 
 namespace km::codec {
-
+// Single serial owner. Late/duplicate RTP packets are discarded, not reordered.
+// A gap invalidates the dependent AU chain until an intact IDR arrives.
 class H264RtpDepacketizer {
 public:
-    using FrameCallback = std::function<void(const uint8_t* nalData, size_t size, uint32_t timestamp)>;
+    using FrameCallback = std::function<void(const uint8_t*, size_t, uint32_t)>;
     using KeyframeRequestCallback = std::function<void()>;
-
-    explicit H264RtpDepacketizer(FrameCallback callback = nullptr, KeyframeRequestCallback keyframeCb = nullptr);
-
-    void SetCallback(FrameCallback callback) {
-        callback_ = std::move(callback);
-    }
-
-    void SetKeyframeRequestCallback(KeyframeRequestCallback keyframeCb) {
-        keyframeRequestCallback_ = std::move(keyframeCb);
-    }
-
+    static constexpr size_t kMaxAccessUnitBytes = 4 * 1024 * 1024;
+    explicit H264RtpDepacketizer(FrameCallback cb = {}, KeyframeRequestCallback key = {});
+    void SetCallback(FrameCallback cb) { callback_ = std::move(cb); }
+    void SetKeyframeRequestCallback(KeyframeRequestCallback cb) { keyframe_ = std::move(cb); }
     void Reset();
-
-    // Process a raw RTP packet buffer from WebRTC track
-    void ProcessRtpPacket(const uint8_t* rtpData, size_t size);
-
+    void ProcessRtpPacket(const uint8_t* bytes, size_t size);
 private:
-    void EmitAccessUnit();
-
+    void lose();
+    void emit();
+    bool appendNalu(km::wire::Bytes nal);
+    void clearAu();
     FrameCallback callback_;
-    KeyframeRequestCallback keyframeRequestCallback_;
-    std::vector<uint8_t> accessUnitBuffer_;
-    std::vector<uint8_t> fuBuffer_;
-    std::vector<uint8_t> cachedSps_;
-    std::vector<uint8_t> cachedPps_;
-    std::vector<uint8_t> reconstructedFrameBuffer_;
-    uint32_t currentTimestamp_{0};
-    uint16_t lastSequenceNumber_{0};
-    bool hasPendingTimestamp_{false};
-    bool hasLastSeq_{false};
-    bool isFuActive_{false};
-    bool frameHasLoss_{false};
-    bool isKeyframe_{false};
-    bool waitingForKeyframe_{true};
-    uint32_t waitingKeyframeCount_{0};
+    KeyframeRequestCallback keyframe_;
+    std::vector<uint8_t> au_, fu_, sps_, pps_;
+    uint32_t timestamp_ = 0, ssrc_ = 0;
+    uint16_t sequence_ = 0;
+    uint8_t fuHeader_ = 0;
+    bool haveSsrc_ = false, haveSequence_ = false, haveTimestamp_ = false;
+    bool waiting_ = true, damaged_ = false, idr_ = false, vcl_ = false;
+    bool hasSps_ = false, hasPps_ = false;
 };
-
 } // namespace km::codec

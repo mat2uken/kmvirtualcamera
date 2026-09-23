@@ -1,343 +1,154 @@
 #include "enhanced_rtcp_session.h"
 #include "bandwidth_estimator.h"
-#include <rtc/rtc.hpp>
-#include <rtc/rtp.hpp>
-#include <rtc/rtcpreceivingsession.hpp>
+#include "../../km/rtp_wire.h"
 #include <algorithm>
-#include <iostream>
 #include <chrono>
-
+#include <cmath>
+#include <cstring>
+#include <limits>
 namespace km::rtc_net {
-
-EnhancedRtcpReceivingSession::EnhancedRtcpReceivingSession() {
-    auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()
-    ).count();
-    lastRrSentMs_.store(nowMs);
-    lastRembSentMs_.store(nowMs);
-    lastTwccSentMs_.store(nowMs);
+namespace {
+int64_t nowUs() { return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+void put32(uint8_t* p, uint32_t v) { p[0] = uint8_t(v >> 24); p[1] = uint8_t(v >> 16); p[2] = uint8_t(v >> 8); p[3] = uint8_t(v); }
+rtc::message_ptr packet(size_t size, uint8_t type, uint8_t count) {
+    auto m = rtc::make_message(size, rtc::Message::Control);
+    auto* p = reinterpret_cast<uint8_t*>(m->data()); std::memset(p, 0, size);
+    p[0] = 128 | count; p[1] = type; p[2] = uint8_t((size / 4 - 1) >> 8); p[3] = uint8_t(size / 4 - 1);
+    put32(p + 4, 1); return m;
 }
-
-void EnhancedRtcpReceivingSession::SetBandwidthEstimator(BandwidthEstimator* estimator) {
-    bandwidthEstimator_ = estimator;
+void deliver(const rtc::message_callback& send, rtc::message_vector messages) {
+    if (send) for (auto& message : messages) send(message);
 }
-
-void EnhancedRtcpReceivingSession::SetTransportCcExtensionId(uint8_t id) {
-    transportCcExtId_.store(id);
-    if (id > 0) {
-        std::cout << "[EnhancedRTCP] Transport-CC enabled with extmap ID: " << static_cast<int>(id) << std::endl;
+}
+EnhancedRtcpReceivingSession::EnhancedRtcpReceivingSession(uint32_t clockRate) : clockRate_(clockRate) {
+    seen_.fill(UINT64_MAX); lastRr_ = lastRemb_ = lastTwcc_ = nowUs() / 1000;
+}
+void EnhancedRtcpReceivingSession::SetBandwidthEstimator(std::shared_ptr<BandwidthEstimator> value) {
+    std::lock_guard lock(mutex_); estimator_ = std::move(value);
+}
+void EnhancedRtcpReceivingSession::SetTransportCcExtensionId(uint8_t id) { std::lock_guard lock(mutex_); twccId_ = id; }
+void EnhancedRtcpReceivingSession::Stop() { std::lock_guard lock(mutex_); stopped_ = true; send_ = {}; estimator_.reset(); }
+void EnhancedRtcpReceivingSession::resetSource(uint32_t ssrc) {
+    ssrc_ = ssrc; started_ = false; seen_.fill(UINT64_MAX); twcc_.Reset();
+    base_ = highest_ = received_ = previousExpected_ = previousReceived_ = 0;
+    srNtp_ = 0; srArrivalMs_ = -1; jitter_ = 0;
+}
+void EnhancedRtcpReceivingSession::record(uint16_t seq, uint32_t ts, int64_t arrival) {
+    uint64_t extended = seq;
+    if (!started_) { base_ = highest_ = seq; started_ = true; lastTimestamp_ = ts; lastArrivalUs_ = arrival; }
+    else {
+        const int delta = wire::sequenceDelta(seq, uint16_t(highest_));
+        if (delta < 0 && uint64_t(-delta) > highest_) return;
+        extended = delta >= 0 ? highest_ + unsigned(delta) : highest_ - unsigned(-delta);
+        if (extended < base_ || (highest_ > extended && highest_ - extended >= seen_.size())) return;
+        if (seen_[extended % seen_.size()] == extended) return;
+        highest_ = std::max(highest_, extended);
+        const uint32_t raw = ts - lastTimestamp_;
+        const int64_t timestampDelta = raw <= INT32_MAX ? int64_t(raw) : int64_t(raw) - (int64_t(1) << 32);
+        const double transit = double(arrival - lastArrivalUs_) * double(clockRate_) / 1000000.0 - double(timestampDelta);
+        jitter_ += (std::abs(transit) - jitter_) / 16.0;
     }
+    seen_[extended % seen_.size()] = extended; ++received_;
+    lastTimestamp_ = ts; lastArrivalUs_ = arrival;
 }
-
-void EnhancedRtcpReceivingSession::incoming(rtc::message_vector &messages, const rtc::message_callback &send) {
-    {
-        std::lock_guard<std::mutex> lock(sendMutex_);
-        cachedSend_ = send;
-    }
-
-    auto nowTime = std::chrono::steady_clock::now();
-    int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(nowTime.time_since_epoch()).count();
-    int64_t nowUs = std::chrono::duration_cast<std::chrono::microseconds>(nowTime.time_since_epoch()).count();
-
-    rtc::message_vector result;
-    uint8_t twccId = transportCcExtId_.load(std::memory_order_relaxed);
-
-    for (auto& message : messages) {
-        switch (message->type) {
-        case rtc::Message::Binary: {
-            if (message->size() < sizeof(rtc::RtpHeader)) {
-                continue;
-            }
-
-            const uint8_t* rawData = reinterpret_cast<const uint8_t*>(message->data());
-            auto rtp = reinterpret_cast<const rtc::RtpHeader*>(rawData);
-
-            if (rtp->version() != 2) {
-                continue;
-            }
-
-            if (rtp->payloadType() == 200 || rtp->payloadType() == 201) {
-                continue; // RTCP multiplexed
-            }
-
-            mSsrc = rtp->ssrc();
-
-            // Process stats for RTCP Receiver Report
-            ProcessRtpStats(rawData, message->size(), nowUs);
-
-            // If TWCC is negotiated, extract transport-wide sequence number
-            if (twccId > 0) {
-                uint16_t transportSeq = 0;
-                if (TwccReceiver::ParseTransportSequence(rawData, message->size(), twccId, transportSeq)) {
-                    twccReceiver_.OnPacket(transportSeq, nowUs, static_cast<uint16_t>(message->size()));
-                }
-            }
-
-            result.push_back(std::move(message));
-            break;
+rtc::message_ptr EnhancedRtcpReceivingSession::report(int64_t now) {
+    auto m = packet(32, 201, 1); auto* p = reinterpret_cast<uint8_t*>(m->data());
+    const uint64_t expected = highest_ - base_ + 1;
+    const uint64_t intervalExpected = expected - previousExpected_, intervalReceived = received_ - previousReceived_;
+    const uint64_t lost = expected > received_ ? expected - received_ : 0;
+    const uint64_t intervalLost = intervalExpected > intervalReceived ? intervalExpected - intervalReceived : 0;
+    previousExpected_ = expected; previousReceived_ = received_;
+    put32(p + 8, ssrc_);
+    p[12] = intervalExpected ? uint8_t(std::min<uint64_t>(255, intervalLost * 256 / intervalExpected)) : 0;
+    const uint32_t clamped = uint32_t(std::min<uint64_t>(0x7fffff, lost));
+    p[13] = uint8_t(clamped >> 16); p[14] = uint8_t(clamped >> 8); p[15] = uint8_t(clamped);
+    put32(p + 16, uint32_t(highest_));
+    put32(p + 20, uint32_t(std::clamp(jitter_, 0.0, double(UINT32_MAX))));
+    put32(p + 24, uint32_t(srNtp_ >> 16));
+    const uint64_t delay = srArrivalMs_ >= 0 && now >= srArrivalMs_ ? uint64_t(now - srArrivalMs_) * 65536 / 1000 : 0;
+    put32(p + 28, uint32_t(std::min<uint64_t>(UINT32_MAX, delay))); return m;
+}
+rtc::message_ptr EnhancedRtcpReceivingSession::remb(uint32_t bitrate) const {
+    auto m = packet(24, 206, 15); auto* p = reinterpret_cast<uint8_t*>(m->data());
+    std::memcpy(p + 12, "REMB", 4); p[16] = 1;
+    uint8_t exponent = 0; while (bitrate > 0x3ffff) { bitrate >>= 1; ++exponent; }
+    p[17] = uint8_t((exponent << 2) | (bitrate >> 16)); p[18] = uint8_t(bitrate >> 8); p[19] = uint8_t(bitrate);
+    put32(p + 20, ssrc_); return m;
+}
+rtc::message_vector EnhancedRtcpReceivingSession::feedback(int64_t now) {
+    rtc::message_vector out;
+    if (!ssrc_ || stopped_) return out;
+    if (started_ && now - lastRr_ >= 500) { out.push_back(report(now)); lastRr_ = now; }
+    if (estimator_ && now - lastRemb_ >= 1000) { out.push_back(remb(estimator_->GetCurrentEstimatedBitrate())); lastRemb_ = now; }
+    if (twccId_ && (now - lastTwcc_ >= 25 || twcc_.GetPendingPacketCount() >= 16)) {
+        auto bytes = twcc_.BuildFeedbackPacket(1, ssrc_); lastTwcc_ = now;
+        if (!bytes.empty()) {
+            auto m = rtc::make_message(bytes.size(), rtc::Message::Control);
+            std::memcpy(m->data(), bytes.data(), bytes.size()); out.push_back(std::move(m));
         }
-
-        case rtc::Message::Control: {
-            if (message->size() >= sizeof(rtc::RtcpHeader)) {
-                auto header = reinterpret_cast<const rtc::RtcpHeader*>(message->data());
-                if (header->payloadType() == 200) { // Sender Report (SR)
-                    auto sr = reinterpret_cast<const rtc::RtcpSr*>(message->data());
-                    mSsrc = sr->senderSSRC();
-                    mSyncRTPTS = sr->rtpTimestamp();
-                    mSyncNTPTS = sr->ntpTimestamp();
-
-                    {
-                        std::lock_guard<std::mutex> lock(statsMutex_);
-                        lastSrNtp_ = sr->ntpTimestamp();
-                        lastSrReceivedMs_ = nowMs;
-                        hasLastSr_ = true;
+    }
+    return out;
+}
+void EnhancedRtcpReceivingSession::incoming(rtc::message_vector& messages, const rtc::message_callback& send) {
+    rtc::message_vector output, feedbackMessages;
+    {
+        std::lock_guard lock(mutex_);
+        if (stopped_) { messages.clear(); return; }
+        send_ = send; const int64_t now = nowUs();
+        for (auto& message : messages) {
+            wire::Bytes bytes{reinterpret_cast<const uint8_t*>(message->data()), message->size()};
+            if (message->type == rtc::Message::Binary) {
+                const auto rtp = wire::parseRtp(bytes); if (!rtp) continue;
+                if (ssrc_ != rtp->ssrc) resetSource(rtp->ssrc);
+                record(rtp->sequence, rtp->timestamp, now);
+                uint16_t transportSequence = 0;
+                if (twccId_ && TwccReceiver::ParseTransportSequence(bytes.data(), bytes.size(), twccId_, transportSequence))
+                    twcc_.OnPacket(transportSequence, now, uint16_t(bytes.size()));
+                output.push_back(std::move(message));
+            } else if (message->type == rtc::Message::Control) {
+                std::vector<wire::RtcpPacket> compound;
+                if (!wire::parseRtcp(bytes, compound)) continue;
+                for (const auto& part : compound) {
+                    // RR.senderSSRC describes the report sender, NOT our media source.
+                    if (part.type == 200) {
+                        const auto source = wire::be32(part.body.data() + 4);
+                        if (ssrc_ && ssrc_ != source) continue;
+                        ssrc_ = source; srNtp_ = wire::be64(part.body.data() + 8); srArrivalMs_ = now / 1000;
                     }
-                } else if (header->payloadType() == 201) { // Receiver Report
-                    auto rr = reinterpret_cast<const rtc::RtcpRr*>(message->data());
-                    mSsrc = rr->senderSSRC();
                 }
             }
-            break;
         }
-
-        default:
-            break;
-        }
+        feedbackMessages = feedback(now / 1000);
     }
-
-    messages.swap(result);
-
-    // Check if we need to send periodic feedback (TWCC / RR / REMB)
-    CheckAndSendPeriodicFeedback(send, nowMs);
+    messages.swap(output); deliver(send, std::move(feedbackMessages));
 }
-
-void EnhancedRtcpReceivingSession::ProcessRtpStats(const uint8_t* data, size_t size, int64_t nowUs) {
-    if (size < 12) return;
-
-    auto rtp = reinterpret_cast<const rtc::RtpHeader*>(data);
-    uint16_t seq = rtp->seqNumber();
-    uint32_t rtpTimestamp = rtp->timestamp();
-
-    std::lock_guard<std::mutex> lock(statsMutex_);
-
-    if (!hasFirstPacket_) {
-        hasFirstPacket_ = true;
-        baseSeq_ = seq;
-        highestSeqReceived_ = seq;
-        lastIntervalHighestSeq_ = seq;
-        seqCycles_ = 0;
-        totalPacketsReceived_ = 1;
-        lastIntervalPacketsReceived_ = 1;
-
-        lastRtpTimestamp_ = rtpTimestamp;
-        lastArrivalTimeUs_ = nowUs;
-        hasLastTimestamp_ = true;
-        interarrivalJitter_ = 0.0;
-        return;
-    }
-
-    totalPacketsReceived_++;
-    lastIntervalPacketsReceived_++;
-
-    // Sequence wrap-around handling
-    int16_t diff = static_cast<int16_t>(seq - highestSeqReceived_);
-    if (diff > 0) {
-        if (seq < highestSeqReceived_) {
-            // Wrapped 16-bit sequence space
-            seqCycles_++;
-        }
-        highestSeqReceived_ = seq;
-    }
-
-    // Interarrival Jitter calculation per RFC 3550 Section 6.4.1
-    // J(i) = J(i-1) + (|D(i-1,i)| - J(i-1)) / 16
-    // D(i,j) = (R_j - R_i) - (S_j - S_i)
-    // R_j - R_i is in 90kHz units for video: delta_us * 90 / 1000
-    if (hasLastTimestamp_) {
-        int64_t arrivalDiff90k = (nowUs - lastArrivalTimeUs_) * 90 / 1000;
-        int32_t rtpDiff = static_cast<int32_t>(rtpTimestamp - lastRtpTimestamp_);
-        int32_t d = static_cast<int32_t>(arrivalDiff90k) - rtpDiff;
-        if (d < 0) d = -d;
-
-        interarrivalJitter_ += (static_cast<double>(d) - interarrivalJitter_) / 16.0;
-    }
-
-    lastRtpTimestamp_ = rtpTimestamp;
-    lastArrivalTimeUs_ = nowUs;
-    hasLastTimestamp_ = true;
-}
-
-void EnhancedRtcpReceivingSession::SendEnhancedRR(const rtc::message_callback &send, int64_t nowMs) {
-    if (mSsrc == 0) return;
-
-    std::lock_guard<std::mutex> lock(statsMutex_);
-    if (!hasFirstPacket_) return;
-
-    // Calculate expected packets since start
-    uint32_t extendedHighestSeq = (static_cast<uint32_t>(seqCycles_) << 16) | highestSeqReceived_;
-    uint32_t totalExpected = extendedHighestSeq - baseSeq_ + 1;
-    uint32_t cumulativeLost = (totalExpected > totalPacketsReceived_)
-        ? (totalExpected - totalPacketsReceived_)
-        : 0;
-
-    // Interval fraction lost
-    uint32_t intervalExpected = 0;
-    int16_t seqDiff = static_cast<int16_t>(highestSeqReceived_ - lastIntervalHighestSeq_);
-    if (seqDiff > 0) {
-        intervalExpected = static_cast<uint32_t>(seqDiff);
-    }
-    uint32_t intervalLost = (intervalExpected > lastIntervalPacketsReceived_)
-        ? (intervalExpected - lastIntervalPacketsReceived_)
-        : 0;
-
-    uint8_t fractionLost = 0;
-    if (intervalExpected > 0) {
-        fractionLost = static_cast<uint8_t>(
-            (std::min)(255ULL, (static_cast<uint64_t>(intervalLost) * 256ULL) / intervalExpected)
-        );
-    }
-
-    // Reset interval counters
-    lastIntervalPacketsReceived_ = 0;
-    lastIntervalHighestSeq_ = highestSeqReceived_;
-
-    // Calculate DLSR (delay since last SR) in units of 1/65536 seconds
-    uint32_t dlsr = 0;
-    if (hasLastSr_ && lastSrReceivedMs_ > 0) {
-        int64_t delayMs = nowMs - lastSrReceivedMs_;
-        if (delayMs >= 0) {
-            dlsr = static_cast<uint32_t>((delayMs * 65536) / 1000);
-        }
-    }
-
-    auto message = rtc::make_message(rtc::RtcpRr::SizeWithReportBlocks(1), rtc::Message::Control);
-    auto rr = reinterpret_cast<rtc::RtcpRr*>(message->data());
-    rr->preparePacket(1, 1); // sender SSRC = 1 (receiver ID)
-
-    auto block = rr->getReportBlock(0);
-    block->preparePacket(
-        mSsrc,
-        cumulativeLost,
-        totalExpected,
-        highestSeqReceived_,
-        seqCycles_,
-        static_cast<uint32_t>(interarrivalJitter_),
-        lastSrNtp_,
-        dlsr
-    );
-    block->setPacketsLost(fractionLost, cumulativeLost);
-
-    send(message);
-}
-
-void EnhancedRtcpReceivingSession::SendTwccFeedback(const rtc::message_callback &send) {
-    if (mSsrc == 0) return;
-
-    auto fbPacket = twccReceiver_.BuildFeedbackPacket(1, mSsrc);
-    if (!fbPacket.empty()) {
-        auto message = rtc::make_message(fbPacket.size(), rtc::Message::Control);
-        std::memcpy(message->data(), fbPacket.data(), fbPacket.size());
-        send(message);
-    }
-}
-
-void EnhancedRtcpReceivingSession::CheckAndSendPeriodicFeedback(const rtc::message_callback &send, int64_t nowMs) {
-    uint8_t twccId = transportCcExtId_.load(std::memory_order_relaxed);
-
-    // 1. TWCC feedback (every 25ms or immediately upon 16-packet burst)
-    if (twccId > 0) {
-        int64_t lastTwcc = lastTwccSentMs_.load(std::memory_order_relaxed);
-        uint16_t pendingCount = twccReceiver_.GetPendingPacketCount();
-        if ((nowMs - lastTwcc >= kTwccIntervalMs && pendingCount > 0) || pendingCount >= 16) {
-            lastTwccSentMs_.store(nowMs, std::memory_order_relaxed);
-            SendTwccFeedback(send);
-        }
-    }
-
-    // 2. Enhanced Receiver Report (every 500ms)
-    int64_t lastRr = lastRrSentMs_.load(std::memory_order_relaxed);
-    if (nowMs - lastRr >= kRrIntervalMs) {
-        lastRrSentMs_.store(nowMs, std::memory_order_relaxed);
-        SendEnhancedRR(send, nowMs);
-    }
-
-    // 3. Periodic REMB (every 1000ms)
-    int64_t lastRemb = lastRembSentMs_.load(std::memory_order_relaxed);
-    if (nowMs - lastRemb >= kRembIntervalMs) {
-        lastRembSentMs_.store(nowMs, std::memory_order_relaxed);
-        if (bandwidthEstimator_) {
-            uint32_t targetBps = bandwidthEstimator_->GetCurrentEstimatedBitrate();
-            if (targetBps > 0 && mSsrc != 0) {
-                pushREMB(send, targetBps);
-            }
-        }
-    }
-}
-
 void EnhancedRtcpReceivingSession::FlushFeedback() {
-    rtc::message_callback sendCopy;
-    {
-        std::lock_guard<std::mutex> lock(sendMutex_);
-        sendCopy = cachedSend_;
-    }
-
-    if (sendCopy) {
-        auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch()
-        ).count();
-        CheckAndSendPeriodicFeedback(sendCopy, nowMs);
-    }
+    rtc::message_callback send; rtc::message_vector messages;
+    { std::lock_guard lock(mutex_); if (stopped_) return; send = send_; messages = feedback(nowUs() / 1000); }
+    deliver(send, std::move(messages));
 }
-
-bool EnhancedRtcpReceivingSession::requestBitrate(unsigned int bitrate, const rtc::message_callback &send) {
-    {
-        std::lock_guard<std::mutex> lock(sendMutex_);
-        cachedSend_ = send;
-    }
-    mRequestedBitrate.store(bitrate);
-    if (mSsrc != 0) {
-        pushREMB(send, bitrate);
-    }
-    return true;
+bool EnhancedRtcpReceivingSession::requestBitrate(unsigned int bitrate, const rtc::message_callback& send) {
+    rtc::message_vector messages;
+    { std::lock_guard lock(mutex_); if (stopped_) return false; send_ = send; if (ssrc_) messages.push_back(remb(bitrate)); }
+    deliver(send, std::move(messages)); return true;
 }
-
-bool EnhancedRtcpReceivingSession::requestKeyframe(const rtc::message_callback &send) {
+bool EnhancedRtcpReceivingSession::requestKeyframe(const rtc::message_callback& send) {
+    rtc::message_vector messages;
     {
-        std::lock_guard<std::mutex> lock(sendMutex_);
-        cachedSend_ = send;
+        std::lock_guard lock(mutex_); if (stopped_) return false; send_ = send;
+        const int64_t now = nowUs() / 1000;
+        if (ssrc_ && (lastPli_ < 0 || now - lastPli_ >= 50)) {
+            lastPli_ = now;
+            auto pli = packet(12, 206, 1); put32(reinterpret_cast<uint8_t*>(pli->data()) + 8, ssrc_); messages.push_back(pli);
+            auto fir = packet(20, 206, 4); auto* p = reinterpret_cast<uint8_t*>(fir->data());
+            put32(p + 12, ssrc_); p[16] = firSequence_++; messages.push_back(fir);
+        }
     }
-    if (mSsrc != 0) {
-        // Send PLI (PT=206, FMT=1)
-        pushPLI(send);
-
-        // Also send FIR (Full Intra Request, PT=206, FMT=4) for immediate browser keyframe generation
-        auto firMsg = rtc::make_message(sizeof(rtc::RtcpFbHeader) + sizeof(rtc::RtcpFirPart), rtc::Message::Control);
-        auto *fir = reinterpret_cast<rtc::RtcpFir *>(firMsg->data());
-        fir->header.header.prepareHeader(206, 4, static_cast<uint16_t>((sizeof(rtc::RtcpFbHeader) + sizeof(rtc::RtcpFirPart)) / 4 - 1));
-        fir->header.setPacketSenderSSRC(1);
-        fir->header.setMediaSourceSSRC(0);
-        uint32_t ssrcVal = mSsrc;
-        fir->parts[0].ssrc = ((ssrcVal & 0xFF000000u) >> 24) |
-                             ((ssrcVal & 0x00FF0000u) >> 8)  |
-                             ((ssrcVal & 0x0000FF00u) << 8)  |
-                             ((ssrcVal & 0x000000FFu) << 24);
-        fir->parts[0].seqNo = firSeqNo_.fetch_add(1, std::memory_order_relaxed);
-        fir->parts[0].dummy1 = 0;
-        fir->parts[0].dummy2 = 0;
-        send(firMsg);
-    }
-    return true;
+    deliver(send, std::move(messages)); return true;
 }
-
 void EnhancedRtcpReceivingSession::RequestKeyframeDirect() {
-    rtc::message_callback sendCopy;
-    {
-        std::lock_guard<std::mutex> lock(sendMutex_);
-        sendCopy = cachedSend_;
-    }
-    if (sendCopy) {
-        requestKeyframe(sendCopy);
-    }
+    rtc::message_callback send;
+    { std::lock_guard lock(mutex_); if (stopped_) return; send = send_; }
+    if (send) requestKeyframe(send);
 }
-
 } // namespace km::rtc_net

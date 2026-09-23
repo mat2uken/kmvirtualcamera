@@ -1,252 +1,117 @@
 #include "h264_rtp_depacketizer.h"
-#include <cstring>
-#include <iostream>
+#include <algorithm>
+#include <utility>
 
 namespace km::codec {
-
-static const uint8_t kStartSequence[4] = { 0x00, 0x00, 0x00, 0x01 };
-
-H264RtpDepacketizer::H264RtpDepacketizer(FrameCallback callback, KeyframeRequestCallback keyframeCb)
-    : callback_(std::move(callback)), keyframeRequestCallback_(std::move(keyframeCb)) {
-    accessUnitBuffer_.reserve(256 * 1024);
-    fuBuffer_.reserve(256 * 1024);
-    reconstructedFrameBuffer_.reserve(256 * 1024);
+using km::wire::Bytes;
+namespace {
+bool validNal(Bytes n) { return !n.empty() && !(n[0] & 128) && (n[0] & 31) >= 1 && (n[0] & 31) <= 23; }
+void append(std::vector<uint8_t>& dst, Bytes n) { dst.insert(dst.end(), {0,0,0,1}); dst.insert(dst.end(), n.begin(), n.end()); }
 }
-
+H264RtpDepacketizer::H264RtpDepacketizer(FrameCallback cb, KeyframeRequestCallback key)
+    : callback_(std::move(cb)), keyframe_(std::move(key)) {}
+void H264RtpDepacketizer::clearAu() {
+    au_.clear(); fu_.clear(); damaged_ = idr_ = vcl_ = hasSps_ = hasPps_ = false;
+}
 void H264RtpDepacketizer::Reset() {
-    accessUnitBuffer_.clear();
-    fuBuffer_.clear();
-    cachedSps_.clear();
-    cachedPps_.clear();
-    reconstructedFrameBuffer_.clear();
-    hasPendingTimestamp_ = false;
-    hasLastSeq_ = false;
-    isFuActive_ = false;
-    frameHasLoss_ = false;
-    isKeyframe_ = false;
-    waitingForKeyframe_ = true;
-    waitingKeyframeCount_ = 0;
+    clearAu(); sps_.clear(); pps_.clear();
+    waiting_ = true; haveSsrc_ = haveSequence_ = haveTimestamp_ = false;
 }
-
-void H264RtpDepacketizer::EmitAccessUnit() {
-    if (!accessUnitBuffer_.empty()) {
-        if (frameHasLoss_) {
-            waitingForKeyframe_ = true;
-            waitingKeyframeCount_ = 0;
-            if (keyframeRequestCallback_) {
-                keyframeRequestCallback_();
-            }
-        } else if (waitingForKeyframe_) {
-            if (isKeyframe_) {
-                // If SPS / PPS were cached but not in the IDR packet, prepend them
-                reconstructedFrameBuffer_.clear();
-                if (!cachedSps_.empty() && !cachedPps_.empty()) {
-                    // Check if SPS is already at start of accessUnitBuffer_
-                    bool hasSps = (accessUnitBuffer_.size() > 4 && (accessUnitBuffer_[4] & 0x1F) == 7);
-                    if (!hasSps) {
-                        reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), kStartSequence, kStartSequence + 4);
-                        reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), cachedSps_.begin(), cachedSps_.end());
-                        reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), kStartSequence, kStartSequence + 4);
-                        reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), cachedPps_.begin(), cachedPps_.end());
-                    }
-                }
-                reconstructedFrameBuffer_.insert(reconstructedFrameBuffer_.end(), accessUnitBuffer_.begin(), accessUnitBuffer_.end());
-
-                waitingForKeyframe_ = false;
-                waitingKeyframeCount_ = 0;
-                if (callback_) {
-                    callback_(reconstructedFrameBuffer_.data(), reconstructedFrameBuffer_.size(), currentTimestamp_);
-                }
-            } else {
-                // Periodically re-request PLI/FIR every 3 dropped frames (~100ms) until IDR arrives
-                if (++waitingKeyframeCount_ % 3 == 0) {
-                    if (keyframeRequestCallback_) {
-                        keyframeRequestCallback_();
-                    }
-                }
-            }
-        } else {
-            // Normal clean stream frame
-            if (callback_) {
-                callback_(accessUnitBuffer_.data(), accessUnitBuffer_.size(), currentTimestamp_);
-            }
-        }
-        accessUnitBuffer_.clear();
-    }
-    isKeyframe_ = false;
-    frameHasLoss_ = false;
+void H264RtpDepacketizer::lose() {
+    au_.clear(); fu_.clear(); damaged_ = true; waiting_ = true;
+    if (keyframe_) keyframe_();
 }
-
-void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* rtpData, size_t size) {
-    if (!rtpData || size < 12) {
-        return; // Minimum RTP header size is 12 bytes
-    }
-
-    uint8_t byte0 = rtpData[0];
-    uint8_t version = (byte0 >> 6) & 0x03;
-    if (version != 2) {
-        return; // Only RTP version 2 is supported
-    }
-
-    bool hasPadding = (byte0 & 0x20) != 0;
-    bool hasExtension = (byte0 & 0x10) != 0;
-    uint8_t csrcCount = byte0 & 0x0F;
-
-    uint8_t byte1 = rtpData[1];
-    bool markerBit = (byte1 & 0x80) != 0;
-
-    uint16_t seq = (static_cast<uint16_t>(rtpData[2]) << 8) | static_cast<uint16_t>(rtpData[3]);
-    if (hasLastSeq_) {
-        uint16_t diff = seq - lastSequenceNumber_;
-        if (diff > 0 && diff < 32768) {
-            if (diff > 1) {
-                // Packet loss detected in transit over network!
-                frameHasLoss_ = true;
-                isFuActive_ = false;
-                fuBuffer_.clear();
-                if (keyframeRequestCallback_) {
-                    keyframeRequestCallback_();
-                }
-            }
-            lastSequenceNumber_ = seq;
-        } else {
-            // Duplicate or late out-of-order packet (diff == 0 or diff >= 32768)
-            // Do NOT regress lastSequenceNumber_ backwards!
+bool H264RtpDepacketizer::appendNalu(Bytes n) {
+    if (!validNal(n) || n.size() > kMaxAccessUnitBytes - 4 || au_.size() > kMaxAccessUnitBytes - n.size() - 4) return false;
+    const uint8_t type = n[0] & 31;
+    if ((type == 7 || type == 8) && n.size() > 65536) return false;
+    if (type == 7) {
+        if (!std::equal(sps_.begin(), sps_.end(), n.begin(), n.end())) pps_.clear();
+        sps_.assign(n.begin(), n.end()); hasSps_ = true;
+    } else if (type == 8) { pps_.assign(n.begin(), n.end()); hasPps_ = true; }
+    idr_ |= type == 5; vcl_ |= type >= 1 && type <= 5;
+    append(au_, n); return true;
+}
+void H264RtpDepacketizer::emit() {
+    const bool good = !damaged_ && fu_.empty() && vcl_ && (!waiting_ || idr_) &&
+        (!idr_ || (!sps_.empty() && !pps_.empty()));
+    std::vector<uint8_t> output;
+    if (good) {
+        if (idr_) {
+            if (!hasSps_) append(output, sps_);
+            if (!hasPps_) append(output, pps_);
+            waiting_ = false;
         }
-    } else {
-        lastSequenceNumber_ = seq;
-        hasLastSeq_ = true;
+        if (au_.size() > kMaxAccessUnitBytes - output.size()) { output.clear(); waiting_ = true; }
+        else output.insert(output.end(), au_.begin(), au_.end());
+    } else if (vcl_ || !fu_.empty()) waiting_ = true;
+    const auto timestamp = timestamp_;
+    clearAu();
+    if (!output.empty()) { if (callback_) callback_(output.data(), output.size(), timestamp); }
+    else if (waiting_ && keyframe_) keyframe_();
+}
+void H264RtpDepacketizer::ProcessRtpPacket(const uint8_t* bytes, size_t size) {
+    if (!bytes) return;
+    const auto packet = km::wire::parseRtp({bytes, size});
+    if (!packet) { lose(); return; }
+    if (haveSsrc_ && packet->ssrc != ssrc_) Reset();
+    haveSsrc_ = true; ssrc_ = packet->ssrc;
+    bool gap = false;
+    if (haveSequence_) {
+        const int delta = km::wire::sequenceDelta(packet->sequence, sequence_);
+        if (delta <= 0) return; // never process stale payload after ignoring its sequence
+        gap = delta != 1;
     }
-
-    uint32_t timestamp = (static_cast<uint32_t>(rtpData[4]) << 24) |
-                         (static_cast<uint32_t>(rtpData[5]) << 16) |
-                         (static_cast<uint32_t>(rtpData[6]) << 8)  |
-                         static_cast<uint32_t>(rtpData[7]);
-
-    size_t headerOffset = 12 + (csrcCount * 4);
-    if (size < headerOffset) {
+    sequence_ = packet->sequence; haveSequence_ = true;
+    if (haveTimestamp_ && packet->timestamp != timestamp_) {
+        if (gap || !fu_.empty()) lose();
+        emit(); // contiguous marker-less AU boundary is accepted
+    }
+    timestamp_ = packet->timestamp; haveTimestamp_ = true;
+    if (gap) lose();
+    if (damaged_) {
+        if (packet->marker) { clearAu(); haveTimestamp_ = false; }
         return;
     }
-
-    // Parse Extension Header if present
-    if (hasExtension) {
-        if (size < headerOffset + 4) {
-            return;
+    const auto p = packet->payload;
+    if (p[0] & 128) { lose(); return; }
+    const uint8_t type = p[0] & 31;
+    bool ok = true;
+    if (type >= 1 && type <= 23) {
+        ok = fu_.empty() && appendNalu(p);
+    } else if (type == 24) {
+        std::vector<Bytes> nalus;
+        size_t offset = 1, total = 0;
+        while (offset < p.size()) {
+            if (p.size() - offset < 2) { ok = false; break; }
+            const size_t length = km::wire::be16(p.data() + offset); offset += 2;
+            if (!length || length > p.size() - offset || nalus.size() >= 1024 ||
+                !validNal(p.subspan(offset, length))) { ok = false; break; }
+            total += length + 4; nalus.push_back(p.subspan(offset, length)); offset += length;
         }
-        uint16_t extLengthWords = (static_cast<uint16_t>(rtpData[headerOffset + 2]) << 8) |
-                                   static_cast<uint16_t>(rtpData[headerOffset + 3]);
-        headerOffset += 4 + (extLengthWords * 4);
-        if (size < headerOffset) {
-            return;
-        }
-    }
-
-    // Determine payload end (accounting for padding)
-    size_t payloadEnd = size;
-    if (hasPadding && size > headerOffset) {
-        uint8_t padLen = rtpData[size - 1];
-        if (padLen <= (size - headerOffset)) {
-            payloadEnd -= padLen;
-        }
-    }
-
-    if (headerOffset >= payloadEnd) {
-        return; // Empty payload (e.g. keepalive/padding)
-    }
-
-    const uint8_t* payload = rtpData + headerOffset;
-    size_t payloadSize = payloadEnd - headerOffset;
-
-    // Check if timestamp changed, indicating a new access unit
-    if (hasPendingTimestamp_ && timestamp != currentTimestamp_) {
-        EmitAccessUnit();
-    }
-    currentTimestamp_ = timestamp;
-    hasPendingTimestamp_ = true;
-
-    uint8_t nalHeader = payload[0];
-    uint8_t nalType = nalHeader & 0x1F;
-
-    if (nalType >= 1 && nalType <= 23) {
-        // Single NAL unit packet
-        isFuActive_ = false;
-        fuBuffer_.clear();
-
-        if (nalType == 7) {
-            cachedSps_.assign(payload, payload + payloadSize);
-        } else if (nalType == 8) {
-            cachedPps_.assign(payload, payload + payloadSize);
-        } else if (nalType == 5) {
-            isKeyframe_ = true;
-        }
-
-        accessUnitBuffer_.insert(accessUnitBuffer_.end(), kStartSequence, kStartSequence + 4);
-        accessUnitBuffer_.insert(accessUnitBuffer_.end(), payload, payload + payloadSize);
-    } else if (nalType == 24) {
-        // STAP-A Aggregation Packet
-        isFuActive_ = false;
-        fuBuffer_.clear();
-
-        size_t currOffset = 1; // Skip STAP-A header
-        while (currOffset + 2 <= payloadSize) {
-            uint16_t naluSize = (static_cast<uint16_t>(payload[currOffset]) << 8) |
-                                 static_cast<uint16_t>(payload[currOffset + 1]);
-            currOffset += 2;
-
-            if (currOffset + naluSize > payloadSize) {
-                break; // Corrupted STAP-A length
-            }
-
-            uint8_t innerNalType = payload[currOffset] & 0x1F;
-            if (innerNalType == 7) {
-                cachedSps_.assign(payload + currOffset, payload + currOffset + naluSize);
-            } else if (innerNalType == 8) {
-                cachedPps_.assign(payload + currOffset, payload + currOffset + naluSize);
-            } else if (innerNalType == 5) {
-                isKeyframe_ = true;
-            }
-
-            accessUnitBuffer_.insert(accessUnitBuffer_.end(), kStartSequence, kStartSequence + 4);
-            accessUnitBuffer_.insert(accessUnitBuffer_.end(), payload + currOffset, payload + currOffset + naluSize);
-
-            currOffset += naluSize;
-        }
-    } else if (nalType == 28) {
-        // FU-A Fragmentation Unit
-        if (payloadSize >= 2) {
-            uint8_t fuIndicator = payload[0];
-            uint8_t fuHeader = payload[1];
-            bool isStart = (fuHeader & 0x80) != 0;
-            bool isEnd = (fuHeader & 0x40) != 0;
-            uint8_t originalNalType = fuHeader & 0x1F;
-            uint8_t reconstructedNalHeader = (fuIndicator & 0xE0) | originalNalType;
-
-            if (originalNalType == 5) {
-                isKeyframe_ = true;
-            }
-
-            if (isStart) {
-                isFuActive_ = true;
-                fuBuffer_.clear();
-                fuBuffer_.insert(fuBuffer_.end(), kStartSequence, kStartSequence + 4);
-                fuBuffer_.push_back(reconstructedNalHeader);
-                fuBuffer_.insert(fuBuffer_.end(), payload + 2, payload + payloadSize);
-            } else if (isFuActive_) {
-                fuBuffer_.insert(fuBuffer_.end(), payload + 2, payload + payloadSize);
-            }
-
-            if (isEnd && isFuActive_) {
-                accessUnitBuffer_.insert(accessUnitBuffer_.end(), fuBuffer_.begin(), fuBuffer_.end());
-                fuBuffer_.clear();
-                isFuActive_ = false;
+        ok = ok && fu_.empty() && !nalus.empty() && total <= kMaxAccessUnitBytes - au_.size();
+        if (ok) for (auto n : nalus) if (!appendNalu(n)) { ok = false; break; }
+    } else if (type == 28) {
+        if (p.size() < 3 || (p[1] & 32) || (p[1] & 31) == 0 || (p[1] & 31) > 23 || (p[1] & 192) == 192) ok = false;
+        else {
+            const bool first = p[1] & 128, last = p[1] & 64;
+            const uint8_t header = (p[0] & 224) | (p[1] & 31);
+            if (first) {
+                if (!fu_.empty()) ok = false;
+                else { fuHeader_ = header; fu_.push_back(header); }
+            } else if (fu_.empty() || fuHeader_ != header) ok = false;
+            if (ok) {
+                const size_t length = p.size() - 2;
+                if (length > kMaxAccessUnitBytes - 4 || fu_.size() > kMaxAccessUnitBytes - 4 - length ||
+                    au_.size() > kMaxAccessUnitBytes - 4 - length - fu_.size()) ok = false;
+                else {
+                    fu_.insert(fu_.end(), p.begin() + 2, p.end());
+                    if (last) { ok = appendNalu(fu_); fu_.clear(); }
+                }
             }
         }
-    }
-
-    // If marker bit is set, the complete video frame access unit is ready
-    if (markerBit) {
-        EmitAccessUnit();
-    }
+    } else ok = false; // interleaved mode (STAP-B/MTAP/FU-B) is not negotiated
+    if (!ok) lose();
+    if (packet->marker) { emit(); haveTimestamp_ = false; }
 }
-
 } // namespace km::codec

@@ -1,94 +1,41 @@
 #pragma once
-
 #include <rtc/rtc.hpp>
 #include <rtc/rtcpreceivingsession.hpp>
-#include <rtc/rtp.hpp>
-#include <cstdint>
+#include <array>
+#include <memory>
 #include <mutex>
-#include <atomic>
-#include <chrono>
 #include "twcc_receiver.h"
-
 namespace km::rtc_net {
-
-class BandwidthEstimator;  // forward declaration
-
-/// Enhanced RTCP Receiving Session that provides:
-/// 1. Accurate Receiver Reports with real loss/jitter/sequence data
-/// 2. Periodic REMB sending based on BandwidthEstimator
-/// 3. TWCC feedback generation for browser GCC
-/// 4. Cached send callback for timer-based periodic feedback
+class BandwidthEstimator;
 class EnhancedRtcpReceivingSession : public rtc::RtcpReceivingSession {
 public:
-    EnhancedRtcpReceivingSession();
-    ~EnhancedRtcpReceivingSession() override = default;
-
-    void incoming(rtc::message_vector &messages, const rtc::message_callback &send) override;
-    bool requestBitrate(unsigned int bitrate, const rtc::message_callback &send) override;
-    bool requestKeyframe(const rtc::message_callback &send) override;
-
-    /// Request immediate IDR keyframe (sends PLI + FIR) directly via cached transport callback
+    explicit EnhancedRtcpReceivingSession(uint32_t clockRate = 90000);
+    void incoming(rtc::message_vector& messages, const rtc::message_callback& send) override;
+    bool requestBitrate(unsigned int bitrate, const rtc::message_callback& send) override;
+    bool requestKeyframe(const rtc::message_callback& send) override;
     void RequestKeyframeDirect();
-
-    /// Connect the bandwidth estimator for REMB values
-    void SetBandwidthEstimator(BandwidthEstimator* estimator);
-
-    /// Set transport-cc extension ID from SDP negotiation. 0 = TWCC disabled.
+    void SetBandwidthEstimator(std::shared_ptr<BandwidthEstimator> estimator);
     void SetTransportCcExtensionId(uint8_t id);
-
-    /// Called from external timer thread to flush periodic feedback (TWCC, RR, REMB)
     void FlushFeedback();
-
+    void Stop();
 private:
-    void ProcessRtpStats(const uint8_t* data, size_t size, int64_t nowUs);
-    void SendEnhancedRR(const rtc::message_callback &send, int64_t nowMs);
-    void SendTwccFeedback(const rtc::message_callback &send);
-    void CheckAndSendPeriodicFeedback(const rtc::message_callback &send, int64_t nowMs);
-
-    // Send callback cache for timer-based sending
-    std::mutex sendMutex_;
-    rtc::message_callback cachedSend_;
-
-    // RTP statistics for Receiver Report
-    std::mutex statsMutex_;
-    uint32_t totalPacketsReceived_ = 0;
-    uint16_t highestSeqReceived_ = 0;
-    uint16_t seqCycles_ = 0;  // number of seq wrap-arounds
-    uint16_t baseSeq_ = 0;
-    bool hasFirstPacket_ = false;
-
-    // Fraction lost calculation (interval-based)
-    uint32_t lastIntervalPacketsReceived_ = 0;
-    uint32_t lastIntervalExpectedPackets_ = 0;
-    uint16_t lastIntervalHighestSeq_ = 0;
-
-    // Jitter calculation (RFC 3550 Section 6.4.1)
-    uint32_t lastRtpTimestamp_ = 0;
-    int64_t lastArrivalTimeUs_ = 0;
-    double interarrivalJitter_ = 0.0;  // in RTP timestamp units (90kHz)
-    bool hasLastTimestamp_ = false;
-
-    // SR timing for DLSR calculation
-    uint64_t lastSrNtp_ = 0;
-    int64_t lastSrReceivedMs_ = 0;
-    bool hasLastSr_ = false;
-
-    // TWCC
-    TwccReceiver twccReceiver_;
-    std::atomic<uint8_t> transportCcExtId_{0};
-
-    // Bandwidth estimator
-    BandwidthEstimator* bandwidthEstimator_ = nullptr;
-
-    // Periodic send timing
-    std::atomic<int64_t> lastRrSentMs_{0};
-    std::atomic<int64_t> lastRembSentMs_{0};
-    std::atomic<int64_t> lastTwccSentMs_{0};
-    std::atomic<uint8_t> firSeqNo_{0};
-
-    static constexpr int64_t kRrIntervalMs = 500;
-    static constexpr int64_t kRembIntervalMs = 1000;
-    static constexpr int64_t kTwccIntervalMs = 25; // 25ms (40Hz) ultra-low-latency feedback
+    void resetSource(uint32_t ssrc);
+    void record(uint16_t sequence, uint32_t timestamp, int64_t nowUs);
+    rtc::message_ptr report(int64_t nowMs);
+    rtc::message_ptr remb(uint32_t bitrate) const;
+    rtc::message_vector feedback(int64_t nowMs);
+    std::mutex mutex_;
+    bool stopped_ = false, started_ = false;
+    rtc::message_callback send_;
+    std::shared_ptr<BandwidthEstimator> estimator_;
+    TwccReceiver twcc_;
+    uint8_t twccId_ = 0, firSequence_ = 0;
+    uint32_t ssrc_ = 0, lastTimestamp_ = 0, clockRate_ = 90000;
+    uint64_t base_ = 0, highest_ = 0, received_ = 0, previousExpected_ = 0, previousReceived_ = 0;
+    std::array<uint64_t, 2048> seen_;
+    int64_t lastArrivalUs_ = 0;
+    double jitter_ = 0;
+    uint64_t srNtp_ = 0;
+    int64_t srArrivalMs_ = -1, lastRr_ = 0, lastRemb_ = 0, lastTwcc_ = 0, lastPli_ = -1;
 };
-
 } // namespace km::rtc_net
