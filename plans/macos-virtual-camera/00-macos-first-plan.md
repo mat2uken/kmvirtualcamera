@@ -80,6 +80,21 @@ M4-aはM1–M3と並行して着手できる。M4-bはWindows端末がなけれ�
 
 **完了条件**: 通常設定のMacで署名済みExtensionが列挙され、一般アプリが動く生成映像をcaptureできる。導入・列挙・captureの証拠を分け、環境・署名識別子・実行SHAを[記録様式](verification.md)に残す。SIP無効化を導入手順にしない。
 
+### M2 結果記録（2026-09-24、HEAD `cddf05b`＋M2未コミット差分）
+
+| 作業 | 結果 | 根拠 |
+|---|---|---|
+| W5-1 部品実装 | 成功 | `macos/camera-extension/` に provider/device/source_stream/ids を実装。`xcodebuild -scheme KMVirtualCamera -configuration Debug` → **BUILD SUCCEEDED**（警告0）。`sh scripts/test_macos_foundation.sh` → CTest 5/5 |
+| W5-2 format固定・consumer計数 | 成功 | 1280×720 / 30fps / `420v` / host clockに固定。Photo Boothのセッション再起動で `stopStream (consumers=0)` → `startStream (consumers=1)` を観測。2 consumer時はframeworkが `add streaming client` で吸収しsource再startなし＝送出無停止 |
+| W5-3 生成映像30fps送出 | 成功 | 7セグメントカウンタ＋三角波形状を絶対host時刻で `sendSampleBuffer:discontinuity:hostTimeInNanoseconds:` により送出。`w5-4-frame-timing.txt`: 150フレーム=5.000秒ちょうど（30.000fps）、PTS単調、初回Unknown後 flags=0（drop 0） |
+| W5-4 実機試験 | 成功 | `/Applications` 配置→有効化要求→`approval_required`→ユーザー承認→`systemextensionsctl` **[activated enabled]**（0.1.0/4）。列挙: host 6台 / system_profiler / AVFoundation / Photo Booth・QuickTimeの一覧に表示。capture: Photo BoothとQuickTimeが生成映像を表示しカウンタ・矩形が実時間で変化。2 app並行でも継続 |
+
+- **実行SHA/環境**: HEAD `cddf05b`（7コミット先行・未push）＋M2未コミット差分。macOS 26.7 (25G229) / Apple Silicon、Xcode 26.6 (17F113) / SDK 26.5、deployment target 12.3。デバイス `id=00006034-001401141462001C`、`-allowProvisioningUpdates -allowProvisioningDeviceRegistration`。
+- **署名・識別子**: DEVELOPMENT_TEAM `K7VNGA9K78`（開発用仮値、製品値ではない）。device `c1b67446-47cf-4d2e-9c5d-76a56127f3de` / stream `ab8614be-9eff-45bb-9c47-4ee598fe128f`（`macos/camera-extension/ids.h` で固定）。`codesign --verify --deep --strict /Applications/KMVirtualCamera.app` 通过。承認は「システム設定 > 一般 > ログイン項目と拡張機能」で実施、SIP変更なし。
+- **試験中に直した不具合**: (1) sysextdは埋め込み `.systemextension` ディレクトリ名＝CFBundleIdentifierを要求し、不一致では `bundle identifier and service path did not match` で「Extensionが見つからない」になる → `macos/project.yml` のExtension `PRODUCT_NAME` をバンドル識別子に修正（実行ファイル名は `EXECUTABLE_NAME` で維持）。(2) `CMSampleBufferCreateForImageBuffer` が `-12743`（`kCMSampleBufferError_InvalidMediaFormat`）で全フレーム失敗しプレビュー黒画面 → ピクセルバッファのBT.709 attachmentとFormatDescription拡張の不一致が原因。FormatDescriptionにもBT.709拡張を付与して送出回復（Swift再現実験で確認: attachment有り＋拡張無しなら同エラー）。(3) Extension版数更新跨ぎで長時間起動したhostのCMIO列挙が5台のまま → host再起動で6台（試験運用上の注意、製品不具合ではない）。旧版1–3は `terminated waiting to uninstall on reboot`（再起動で削除される）。
+- **証跡**（`work/records/`、gitignore対象）: `w5-4-activation-evidence.txt`（有効化状態・6台列挙・署名確認）、`w5-4-activated-device-list.png`（host 6台表示）、`w5-4-photobooth-generated-frame1/2.png`（Photo Booth表示・カウンタ変化）、`w5-4-quicktime-live-frame1/2.png`（QuickTime 316468→316534 ≒ +66フレーム/2秒）、`w5-4-two-consumers-quicktime-photobooth.png`（2 app並行）、`w5-4-frame-timing.txt`（30fps送出ログ）。
+- **未実施・判断待ち**: 長時間（30分）、遅延・queue深さ・CPUの許容値測定は段階8へ。送出時ログ（150フレーム毎のNSLog）は試験用のまま。到達点A（段階5完了）達成。
+
 ## M3: 段階6 — sink、producer認証、host投入
 
 詳細は[段階6の文書](06-sink-publisher.md)。作業単位:

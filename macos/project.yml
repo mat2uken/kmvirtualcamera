@@ -10,6 +10,7 @@ options:
 settings:
   base:
     MACOSX_DEPLOYMENT_TARGET: "12.3"
+    CLANG_CXX_LANGUAGE_STANDARD: "c++20"
     DEVELOPMENT_TEAM: K7VNGA9K78
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
@@ -52,9 +53,16 @@ targets:
       buildTargets: KMVirtualCameraExtension
     sources:
       - path: camera-extension/main.mm
+      - path: camera-extension/provider.mm
+      - path: camera-extension/device.mm
+      - path: camera-extension/source_stream.mm
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mat2uken.kmvirtualcamera.camera-extension
+        # sysextd requires the .systemextension directory name to equal
+        # CFBundleIdentifier ("bundle identifier and service path did not match").
+        PRODUCT_NAME: com.mat2uken.kmvirtualcamera.camera-extension
+        EXECUTABLE_NAME: KMVirtualCameraExtension
         INFOPLIST_FILE: camera-extension/Info.plist
         CODE_SIGN_ENTITLEMENTS: config/CameraExtension.entitlements
         GENERATE_INFOPLIST_FILE: NO

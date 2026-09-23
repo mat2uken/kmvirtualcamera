@@ -10,15 +10,18 @@
 		1603FC5989AC8BBF36AA6F6C /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 58B81D792C46776E9C06E2AE /* main.mm */; };
 		37B1917626B2620EBD423A68 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5194BF88B2B676009952065E /* CoreMedia.framework */; };
 		400E03DEBC36B3DB7E2EB095 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = A4BBD5813A550E31C965DCAF /* main.mm */; };
+		45719EC710A76BF3DA1F8F40 /* device.mm in Sources */ = {isa = PBXBuildFile; fileRef = 49FB6EB0C2BE046728DB940B /* device.mm */; };
 		51C068E48BC2D517B14435F0 /* SystemExtensions.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CBF8698D2EBE82C464E5D05 /* SystemExtensions.framework */; };
 		587DAAB1DC0D7779EA9DF9C2 /* app_delegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 576349DB23E6060DB872F396 /* app_delegate.mm */; };
 		6A89551BFF6654C04ACB6C11 /* KMVirtualCameraExtension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 564C24781D1B77DFFC33A70C /* KMVirtualCameraExtension.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6EEF6D817EF173F46BF69925 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC6773DB3B0D146EBFB79592 /* CoreMediaIO.framework */; };
+		70CFD7836DC21804B35CF94A /* source_stream.mm in Sources */ = {isa = PBXBuildFile; fileRef = 443A9DD474550416A0DAD20E /* source_stream.mm */; };
 		78B509430C4905B27341F22B /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC131682FCA6BC0310A19882 /* CoreVideo.framework */; };
 		997076B1A10C695CEA9C778E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A2E241C71F01A6E59CE6818 /* Foundation.framework */; };
 		E1A2899AC04A7A88C36C590E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A2E241C71F01A6E59CE6818 /* Foundation.framework */; };
 		E3069CF4DDD3BBBB049B2386 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC6773DB3B0D146EBFB79592 /* CoreMediaIO.framework */; };
 		F76FB1F422788608FF10099F /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 29C3DE69941AE691ABC090F2 /* AppKit.framework */; };
+		FE8525DF059FE258AEC9893A /* provider.mm in Sources */ = {isa = PBXBuildFile; fileRef = D193AA594F02FF067887A703 /* provider.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +51,8 @@
 /* Begin PBXFileReference section */
 		29C3DE69941AE691ABC090F2 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		2A2E241C71F01A6E59CE6818 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		443A9DD474550416A0DAD20E /* source_stream.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = source_stream.mm; sourceTree = "<group>"; };
+		49FB6EB0C2BE046728DB940B /* device.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = device.mm; sourceTree = "<group>"; };
 		5194BF88B2B676009952065E /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		564C24781D1B77DFFC33A70C /* KMVirtualCameraExtension.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = KMVirtualCameraExtension.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
 		576349DB23E6060DB872F396 /* app_delegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = app_delegate.mm; sourceTree = "<group>"; };
@@ -55,6 +60,7 @@
 		7CBF8698D2EBE82C464E5D05 /* SystemExtensions.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemExtensions.framework; path = System/Library/Frameworks/SystemExtensions.framework; sourceTree = SDKROOT; };
 		8007E79E37AFECEBBC86CDA5 /* KMVirtualCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KMVirtualCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A4BBD5813A550E31C965DCAF /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		D193AA594F02FF067887A703 /* provider.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = provider.mm; sourceTree = "<group>"; };
 		DC6773DB3B0D146EBFB79592 /* CoreMediaIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMediaIO.framework; path = System/Library/Frameworks/CoreMediaIO.framework; sourceTree = SDKROOT; };
 		FC131682FCA6BC0310A19882 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -97,7 +103,10 @@
 		404E02A59F9EA36F0C4D1C54 /* camera-extension */ = {
 			isa = PBXGroup;
 			children = (
+				49FB6EB0C2BE046728DB940B /* device.mm */,
 				A4BBD5813A550E31C965DCAF /* main.mm */,
+				D193AA594F02FF067887A703 /* provider.mm */,
+				443A9DD474550416A0DAD20E /* source_stream.mm */,
 			);
 			path = "camera-extension";
 			sourceTree = "<group>";
@@ -262,7 +271,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				45719EC710A76BF3DA1F8F40 /* device.mm in Sources */,
 				400E03DEBC36B3DB7E2EB095 /* main.mm in Sources */,
+				FE8525DF059FE258AEC9893A /* provider.mm in Sources */,
+				70CFD7836DC21804B35CF94A /* source_stream.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -291,6 +303,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = config/CameraExtension.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				EXECUTABLE_NAME = KMVirtualCameraExtension;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../shared";
 				INFOPLIST_FILE = "camera-extension/Info.plist";
@@ -301,6 +314,7 @@
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
 				OTHER_LDFLAGS = "$(inherited) -lkm_camera_relay -lkm_macos_buffers";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.mat2uken.kmvirtualcamera.camera-extension";
+				PRODUCT_NAME = "com.mat2uken.kmvirtualcamera.camera-extension";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -311,7 +325,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -398,7 +412,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -477,6 +491,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = config/CameraExtension.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				EXECUTABLE_NAME = KMVirtualCameraExtension;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../shared";
 				INFOPLIST_FILE = "camera-extension/Info.plist";
@@ -487,6 +502,7 @@
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
 				OTHER_LDFLAGS = "$(inherited) -lkm_camera_relay -lkm_macos_buffers";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.mat2uken.kmvirtualcamera.camera-extension";
+				PRODUCT_NAME = "com.mat2uken.kmvirtualcamera.camera-extension";
 				SDKROOT = macosx;
 			};
 			name = Release;
