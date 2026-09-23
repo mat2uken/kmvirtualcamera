@@ -1,86 +1,68 @@
 #pragma once
-
-#include <string>
-#include <vector>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <atomic>
+#include <string>
+#include <thread>
+#include <vector>
 #include "../signaling/signaling_models.h"
-
 #include "../codec/h264_rtp_depacketizer.h"
 #include "../codec/dc_video_depacketizer.h"
 #include "bandwidth_estimator.h"
 #include "enhanced_rtcp_session.h"
-
-// Forward declarations if libdatachannel is compiled conditionally or dynamically
-namespace rtc {
-    class PeerConnection;
-    class Track;
-    class DataChannel;
-}
-
+#include "../../../shared/km/callback_gate.h"
+#include "../../../shared/km/timing.h"
+#include "../../../shared/receiver/audio/opus_rtp_decoder.h"
+namespace rtc { class PeerConnection; class Track; class DataChannel; }
 namespace km::rtc_net {
-
-enum class PeerState {
-    New,
-    Connecting,
-    Connected,
-    Disconnected,
-    Failed,
-    Closed
-};
-
-using VideoFrameCallback = std::function<void(const uint8_t* data, size_t size, int width, int height, int64_t timestampUs)>;
-using AudioPcmCallback = std::function<void(const int16_t* pcm, size_t samples, int channels, int sampleRate)>;
-using StateChangeCallback = std::function<void(PeerState state)>;
-
+enum class PeerState { New, Connecting, Connected, Disconnected, Failed, Closed };
+// Both transports now supply unwrapped media time in microseconds, not host time.
+using VideoFrameCallback = std::function<void(const uint8_t*, size_t, int, int, int64_t)>;
+// size_t is the total number of interleaved int16_t elements.
+using AudioPcmCallback = std::function<void(const int16_t*, size_t, int, int)>;
+using StateChangeCallback = std::function<void(PeerState)>;
 class PeerConnectionManager {
 public:
     PeerConnectionManager();
     ~PeerConnectionManager();
-
-    bool Initialize(
-        const signaling::RtcConfiguration& config,
-        StateChangeCallback stateCb,
-        VideoFrameCallback videoCb,
-        AudioPcmCallback audioCb
-    );
-
-    // Applies remote Offer SDP, generates Answer, and waits for Non-Trickle ICE gathering complete
-    bool ProcessOfferAndGenerateAnswer(const std::string& offerSdp, std::string& outAnswerSdp);
-
-    void RequestBitrate(uint32_t bitrateBps);
+    bool Initialize(const signaling::RtcConfiguration&, StateChangeCallback, VideoFrameCallback, AudioPcmCallback);
+    bool ProcessOfferAndGenerateAnswer(const std::string& offerSdp, std::string& answer);
+    void RequestBitrate(uint32_t bitrate);
+    void RequestKeyframe();
     uint32_t GetEstimatedBitrate() const;
     uint32_t GetMeasuredThroughput() const;
     float GetLossRatio() const;
-
     void SendControlMessage(const std::string& json);
-    void SetControlMessageCallback(std::function<void(const std::string& json)> cb) { controlCallback_ = std::move(cb); }
-
+    void SetControlMessageCallback(std::function<void(const std::string&)> callback);
+    void CancelPending();
+    // Control thread only, never from a callback. Callbacks must post lifecycle work.
     void Close();
-
 private:
-    std::mutex rtcMutex_;
+    void CloseInternal();
+    void SendKeyframeRequest();
+    mutable std::recursive_mutex rtcMutex_;
+    std::mutex lifecycleMutex_;
+    std::shared_ptr<km::CallbackGate> gate_;
+    std::jthread timer_;
     std::shared_ptr<rtc::PeerConnection> pc_;
     std::vector<std::shared_ptr<rtc::Track>> allTracks_;
-    std::shared_ptr<rtc::Track> videoTrack_;
-    std::shared_ptr<rtc::Track> audioTrack_;
-    std::shared_ptr<EnhancedRtcpReceivingSession> videoRtcpSession_;
+    std::shared_ptr<rtc::Track> videoTrack_, audioTrack_;
+    std::shared_ptr<EnhancedRtcpReceivingSession> videoRtcpSession_, audioRtcpSession_;
+    std::shared_ptr<rtc::DataChannel> videoDc_, controlDc_;
+    std::shared_ptr<BandwidthEstimator> bandwidthEstimator_;
     codec::H264RtpDepacketizer h264Depacketizer_;
     codec::DcVideoDepacketizer dcVideoDepacketizer_;
-    BandwidthEstimator bandwidthEstimator_;
-
-    std::shared_ptr<rtc::DataChannel> videoDc_;
-    std::shared_ptr<rtc::DataChannel> controlDc_;
-
+    audio::OpusRtpDecoder opusDecoder_;
+    km::TimestampUnwrapper32 rtpTime_, dcTime_;
+    uint32_t videoSsrc_ = 0;
+    bool haveVideoSsrc_ = false, dataChannelVideo_ = false, needKeyframe_ = true;
+    int64_t lastKeyframeRequestUs_ = -1;
     StateChangeCallback stateCallback_;
     VideoFrameCallback videoCallback_;
     AudioPcmCallback audioCallback_;
-    std::function<void(const std::string& json)> controlCallback_;
-    std::atomic<bool> isGatheringComplete_{false};
-    std::atomic<uint8_t> transportCcExtId_{0};
-    std::atomic<bool> isDataChannelVideoActive_{false};
+    std::function<void(const std::string&)> controlCallback_;
+    std::atomic<bool> gatheringComplete_{false}, cancelled_{false};
+    std::atomic<uint64_t> sessionSerial_{0};
 };
-
 } // namespace km::rtc_net

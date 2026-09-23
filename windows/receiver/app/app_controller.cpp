@@ -1,465 +1,240 @@
 #include "app_controller.h"
-#include <chrono>
-#include <fstream>
-#include <algorithm>
+#include "../../../shared/km/timing.h"
+#include "../../../shared/km/json.h"
 #include <avrt.h>
-
-#pragma comment(lib, "avrt.lib")
-
-#pragma pack(push, 1)
-struct BmpFileHeader {
-    uint16_t bfType{ 0x4D42 };
-    uint32_t bfSize{ 0 };
-    uint16_t bfReserved1{ 0 };
-    uint16_t bfReserved2{ 0 };
-    uint32_t bfOffBits{ 54 };
-};
-struct BmpInfoHeader {
-    uint32_t biSize{ 40 };
-    int32_t biWidth{ 0 };
-    int32_t biHeight{ 0 };
-    uint16_t biPlanes{ 1 };
-    uint16_t biBitCount{ 24 };
-    uint32_t biCompression{ 0 };
-    uint32_t biSizeImage{ 0 };
-    int32_t biXPelsPerMeter{ 0 };
-    int32_t biYPelsPerMeter{ 0 };
-    uint32_t biClrUsed{ 0 };
-    uint32_t biClrImportant{ 0 };
-};
-#pragma pack(pop)
-
-static void SaveNv12ToBmp(const uint8_t* nv12, int width, int height, const std::string& filepath) {
-    if (!nv12 || width <= 0 || height <= 0) return;
-
-    int rowStride = (width * 3 + 3) & ~3;
-    uint32_t imageSize = rowStride * height;
-
-    BmpFileHeader fileHeader{};
-    fileHeader.bfSize = sizeof(BmpFileHeader) + sizeof(BmpInfoHeader) + imageSize;
-
-    BmpInfoHeader infoHeader{};
-    infoHeader.biWidth = width;
-    infoHeader.biHeight = -height; // Top-down
-    infoHeader.biSizeImage = imageSize;
-
-    std::vector<uint8_t> rgbBuf(imageSize, 0);
-    const uint8_t* yPlane = nv12;
-    const uint8_t* uvPlane = nv12 + (width * height);
-
-    for (int y = 0; y < height; ++y) {
-        uint8_t* row = rgbBuf.data() + (y * rowStride);
-        for (int x = 0; x < width; ++x) {
-            int yVal = yPlane[y * width + x] - 16;
-            int uvIdx = ((y / 2) * width) + ((x / 2) * 2);
-            int uVal = uvPlane[uvIdx] - 128;
-            int vVal = uvPlane[uvIdx + 1] - 128;
-
-            int c = yVal < 0 ? 0 : yVal;
-            int r = std::clamp((298 * c + 409 * vVal + 128) >> 8, 0, 255);
-            int g = std::clamp((298 * c - 100 * uVal - 208 * vVal + 128) >> 8, 0, 255);
-            int b = std::clamp((298 * c + 516 * uVal + 128) >> 8, 0, 255);
-
-            row[x * 3 + 0] = static_cast<uint8_t>(b);
-            row[x * 3 + 1] = static_cast<uint8_t>(g);
-            row[x * 3 + 2] = static_cast<uint8_t>(r);
-        }
-    }
-
-    std::ofstream ofs(filepath, std::ios::binary);
-    if (ofs.is_open()) {
-        ofs.write(reinterpret_cast<const char*>(&fileHeader), sizeof(fileHeader));
-        ofs.write(reinterpret_cast<const char*>(&infoHeader), sizeof(infoHeader));
-        ofs.write(reinterpret_cast<const char*>(rgbBuf.data()), imageSize);
-    }
-}
-
+#include <algorithm>
+#include <chrono>
+#include <iostream>
 namespace km::app {
-
-AppController::AppController() {
-    hVideoFrameReadyEvent_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+namespace {
+uint64_t monoNs() { return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 }
-
-AppController::~AppController() {
-    Shutdown();
-    if (hVideoFrameReadyEvent_) {
-        CloseHandle(hVideoFrameReadyEvent_);
-        hVideoFrameReadyEvent_ = nullptr;
+AppController::AppController() { videoReady_ = CreateEventW(nullptr, FALSE, FALSE, nullptr); }
+AppController::~AppController() { Shutdown(); if (videoReady_) CloseHandle(videoReady_); }
+void AppController::PostUi(uint64_t generation, std::function<void()> fn) {
+    if (!acceptingUi_) return;
+    if (queuedUi_.fetch_add(1) >= 128) { --queuedUi_; return; }
+    auto work = std::make_unique<UiWork>(UiWork{generation, std::move(fn)});
+    if (PostMessageW(uiDispatchWindow_, kUiWorkMessage, 0, reinterpret_cast<LPARAM>(work.get()))) work.release();
+    else --queuedUi_;
+}
+LRESULT CALLBACK AppController::UiDispatchProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == WM_NCCREATE) {
+        const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lparam);
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+        return TRUE;
     }
+    auto* owner = reinterpret_cast<AppController*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == kUiWorkMessage && owner) {
+        std::unique_ptr<UiWork> work(reinterpret_cast<UiWork*>(lparam)); --owner->queuedUi_;
+        if (owner->acceptingUi_ && (work->generation == 0 || work->generation == owner->videoQueue_.generation())) {
+            try { work->run(); } catch (const std::exception&) { std::cerr << "[UI] Posted update failed\n"; }
+        }
+        return 0;
+    }
+    return DefWindowProcW(window, message, wparam, lparam);
 }
-
-bool AppController::Initialize(HINSTANCE hInstance, std::wstring baseUrl) {
-    baseUrl_ = baseUrl;
-    httpClient_ = std::make_unique<signaling::WinHttpClient>(baseUrl_);
+bool AppController::Initialize(HINSTANCE instance, std::wstring baseUrl) {
+    if (!videoReady_ || shuttingDown_) return false;
+    uiThread_ = GetCurrentThreadId(); MSG ignored{}; PeekMessageW(&ignored, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+    httpClient_ = std::make_unique<signaling::WinHttpClient>(std::move(baseUrl));
     rtcManager_ = std::make_unique<rtc_net::PeerConnectionManager>();
-
-    isVideoWorkerRunning_ = true;
-    videoWorkerThread_ = std::thread(&AppController::VideoWorkerProc, this);
-
-    // 1. Enumerate Audio endpoints
+    mainWindow_ = std::make_unique<ui::MainWindow>(); if (!mainWindow_->Create(instance)) return false;
+    WNDCLASSW dispatchClass{};
+    dispatchClass.hInstance = instance; dispatchClass.lpfnWndProc = &AppController::UiDispatchProc;
+    dispatchClass.lpszClassName = L"KMVirtualCamera.UiDispatch";
+    if (!RegisterClassW(&dispatchClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
+    uiDispatchWindow_ = CreateWindowExW(0, dispatchClass.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, this);
+    if (!uiDispatchWindow_) return false;
+    acceptingUi_ = true;
     audioDevices_ = audioEnumerator_.EnumerateRenderDevices();
-    selectedAudioIndex_ = 0;
-    for (size_t i = 0; i < audioDevices_.size(); ++i) {
-        if (audioDevices_[i].isCableInput) {
-            selectedAudioIndex_ = static_cast<int>(i);
-            break;
-        }
-    }
-
-    if (!audioDevices_.empty()) {
-        audioRenderer_.Initialize(audioDevices_[selectedAudioIndex_].id);
-        audioRenderer_.Start();
-    }
-
-    // 2. Start Named Pipe & Shared Memory Publisher
+    int selected = 0;
+    for (size_t i = 0; i < audioDevices_.size(); ++i) if (audioDevices_[i].isCableInput) { selected = int(i); break; }
+    if (!audioDevices_.empty() && audioRenderer_.Initialize(audioDevices_[size_t(selected)].id)) audioRenderer_.Start();
+    mainWindow_->SetAudioDevices(audioDevices_, selected);
+    mainWindow_->SetOnAudioDeviceChanged([this](int index) {
+        if (index >= 0 && size_t(index) < audioDevices_.size() && audioRenderer_.Initialize(audioDevices_[size_t(index)].id)) audioRenderer_.Start();
+    });
     pipePublisher_.Start();
-    h264Decoder_.Initialize(1280, 720, pipePublisher_.GetD3D11Device());
-
-    bool vcamRegistered = vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered();
-    bool vcamActive = vcamRegistered;
-    if (!vcamRegistered) {
-        vcamActive = vcamRegistrar_.StartVirtualCamera(L"WebRTC Bridge Virtual Camera");
-    }
-
-    // 3. Create Main Window
-    mainWindow_ = std::make_unique<ui::MainWindow>();
-    if (!mainWindow_->Create(hInstance)) {
-        return false;
-    }
-
-    mainWindow_->SetVirtualCameraStatus(vcamActive);
-    mainWindow_->SetVirtualCameraRegistered(vcamRegistered);
-    mainWindow_->SetAudioDevices(audioDevices_, selectedAudioIndex_);
-    mainWindow_->SetOnAudioDeviceChanged([this](int idx) {
-        if (idx >= 0 && idx < static_cast<int>(audioDevices_.size())) {
-            selectedAudioIndex_ = idx;
-            audioRenderer_.Initialize(audioDevices_[idx].id);
-            audioRenderer_.Start();
-        }
+    const bool registered = vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered();
+    mainWindow_->SetVirtualCameraRegistered(registered);
+    mainWindow_->SetVirtualCameraStatus(vcamRegistrar_.StartVirtualCamera(L"WebRTC Bridge Virtual Camera"));
+    mainWindow_->SetOnToggleVirtualCamera([this] {
+        if (vcamRegistrar_.IsRunning()) { vcamRegistrar_.StopVirtualCamera(); mainWindow_->SetVirtualCameraStatus(false); }
+        else mainWindow_->SetVirtualCameraStatus(vcamRegistrar_.StartVirtualCamera(L"WebRTC Bridge Virtual Camera"));
     });
-
-    mainWindow_->SetOnToggleVirtualCamera([this]() {
-        if (vcamRegistrar_.IsRunning()) {
-            vcamRegistrar_.StopVirtualCamera();
-            mainWindow_->SetVirtualCameraStatus(false);
-        } else {
-            bool ok = vcamRegistrar_.StartVirtualCamera(L"WebRTC Bridge Virtual Camera");
-            mainWindow_->SetVirtualCameraStatus(ok);
-        }
+    mainWindow_->SetOnRegisterVirtualCamera([this] {
+        const bool ok = vcam::VirtualCameraRegistrar::RegisterVirtualCameraWithElevation(mainWindow_->GetHwnd());
+        const bool registeredNow = vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered();
+        mainWindow_->SetVirtualCameraRegistered(registeredNow);
+        if (registeredNow) mainWindow_->SetVirtualCameraStatus(vcamRegistrar_.StartVirtualCamera());
+        MessageBoxW(mainWindow_->GetHwnd(), registeredNow ? L"仮想カメラを登録しました。" : ok ? L"登録状態を確認してください。" : L"登録が中止されたか失敗しました。", L"仮想カメラ登録", MB_OK);
     });
-
-    mainWindow_->SetOnRegisterVirtualCamera([this]() {
-        bool ok = vcam::VirtualCameraRegistrar::RegisterVirtualCameraWithElevation(mainWindow_->GetHwnd());
-        bool isReg = vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered();
-        mainWindow_->SetVirtualCameraRegistered(isReg);
-        if (isReg) {
-            vcamRegistrar_.StartVirtualCamera(L"WebRTC Bridge Virtual Camera");
-            mainWindow_->SetVirtualCameraStatus(true);
-            MessageBoxW(mainWindow_->GetHwnd(),
-                L"仮想カメラのシステム登録が完了しました。\nWindows「カメラ」アプリや OS 設定から「WebRTC Bridge Virtual Camera」をご利用いただけます。",
-                L"仮想カメラ登録完了", MB_OK | MB_ICONINFORMATION);
-        } else if (!ok) {
-            MessageBoxW(mainWindow_->GetHwnd(),
-                L"仮想カメラの登録がキャンセルされたか、エラーが発生しました。",
-                L"登録結果", MB_OK | MB_ICONWARNING);
-        }
-    });
-
-    mainWindow_->SetOnCheckCameras([this]() {
+    mainWindow_->SetOnCheckCameras([this] {
         auto cameras = vcam::VirtualCameraRegistrar::EnumerateSystemCameras();
-        bool isReg = vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered();
-        mainWindow_->SetVirtualCameraRegistered(isReg);
-
-        std::wstring msg = L"【Windows 認識カメラ一覧 (計 " + std::to_wstring(cameras.size()) + L" 台)】\n\n";
-        if (cameras.empty()) {
-            msg += L"(カメラデバイスが見つかりませんでした)\n";
-        } else {
-            for (size_t i = 0; i < cameras.size(); ++i) {
-                msg += std::to_wstring(i + 1) + L". " + cameras[i].friendlyName;
-                if (cameras[i].isVirtualCamera) {
-                    msg += L" [KM仮想カメラ: 認識中]";
-                }
-                msg += L"\n";
-            }
-        }
-
-        msg += L"\n----------------------------------------\n";
-        msg += L"仮想カメラ状態: " + std::wstring(isReg ? L"システム登録済み (正常)" : L"未登録 (「システム登録 (UAC)」ボタンを押してください)");
-
-        MessageBoxW(mainWindow_->GetHwnd(), msg.c_str(), L"カメラデバイス認識状況", MB_OK | MB_ICONINFORMATION);
+        std::wstring text = L"カメラ一覧\n";
+        for (const auto& camera : cameras) text += camera.friendlyName + (camera.isVirtualCamera ? L" [KM仮想カメラ]\n" : L"\n");
+        mainWindow_->SetVirtualCameraRegistered(vcam::VirtualCameraRegistrar::IsVirtualCameraRegistered());
+        MessageBoxW(mainWindow_->GetHwnd(), text.c_str(), L"カメラ一覧", MB_OK);
     });
-
-    mainWindow_->SetOnNewSession([this]() {
-        StartNewSignalingSession();
-    });
-
-    mainWindow_->SetOnRotationChanged([this](int deg) {
-        rotationDegrees_.store(deg);
-    });
-
-    mainWindow_->SetOnToggleTestPattern([this]() {
-        bool current = isTestPatternMode_.load();
-        isTestPatternMode_.store(!current);
-        mainWindow_->SetTestPatternStatus(!current);
-    });
-
-    mainWindow_->SetOnTorchToggle([this](bool enable) {
-        if (rtcManager_) {
-            std::string json = "{\"type\":\"remote_control\",\"cmd\":\"torch\",\"enabled\":" + std::string(enable ? "true" : "false") + "}";
-            rtcManager_->SendControlMessage(json);
-        }
-    });
-
-    mainWindow_->SetOnZoomChange([this](float zoom) {
-        if (rtcManager_) {
-            std::string json = "{\"type\":\"remote_control\",\"cmd\":\"zoom\",\"value\":" + std::to_string(zoom) + "}";
-            rtcManager_->SendControlMessage(json);
-        }
-    });
-
-    mainWindow_->SetOnSwitchCamera([this]() {
-        if (rtcManager_) {
-            std::string json = "{\"type\":\"remote_control\",\"cmd\":\"switch_camera\"}";
-            rtcManager_->SendControlMessage(json);
-        }
-    });
-
-    isTestPatternWorkerRunning_ = true;
-    testPatternThread_ = std::thread(&AppController::TestPatternWorkerProc, this);
-
-    mainWindow_->Show(SW_SHOWNORMAL);
-
-    // 4. Start Signaling Session
-    StartNewSignalingSession();
-    return true;
+    mainWindow_->SetOnNewSession([this] { StartNewSignalingSession(); });
+    mainWindow_->SetOnRotationChanged([this](int degrees) { rotationDegrees_ = degrees; });
+    mainWindow_->SetOnToggleTestPattern([this] { testPatternMode_ = !testPatternMode_.load(); mainWindow_->SetTestPatternStatus(testPatternMode_); });
+    mainWindow_->SetOnTorchToggle([this](bool enabled) { rtcManager_->SendControlMessage(std::string("{\"type\":\"remote_control\",\"cmd\":\"torch\",\"enabled\":") + (enabled ? "true}" : "false}")); });
+    mainWindow_->SetOnZoomChange([this](float zoom) { rtcManager_->SendControlMessage("{\"type\":\"remote_control\",\"cmd\":\"zoom\",\"value\":" + std::to_string(zoom) + "}"); });
+    mainWindow_->SetOnSwitchCamera([this] { rtcManager_->SendControlMessage("{\"type\":\"remote_control\",\"cmd\":\"switch_camera\"}"); });
+    isVideoWorkerRunning_ = isOutputRunning_ = true;
+    videoThread_ = std::thread(&AppController::VideoWorkerProc, this);
+    outputThread_ = std::thread(&AppController::TestPatternWorkerProc, this);
+    mainWindow_->Show(SW_SHOWNORMAL); StartNewSignalingSession(); return true;
 }
-
 void AppController::StartNewSignalingSession() {
-    if (isSignalingRunning_.exchange(false)) {
-        if (signalingThread_.joinable()) {
-            signalingThread_.join();
-        }
-    }
-
-    h264Decoder_.Shutdown();
-
-    if (rtcManager_) {
-        rtcManager_->Close();
-    }
-
-    isSignalingRunning_ = true;
-    signalingThread_ = std::thread(&AppController::SignalingWorkerProc, this);
+    if (shuttingDown_) return;
+    isSignalingRunning_ = false; httpClient_->Cancel(); rtcManager_->CancelPending();
+    if (signalingThread_.joinable()) signalingThread_.join();
+    rtcManager_->Close(); // closes the callback gate before reusing the receiver
+    const uint64_t generation = videoQueue_.reset(); audioRenderer_.Flush();
+    { std::lock_guard lock(frameMutex_); latestNv12_.reset(); latestArrivalNs_ = 0; }
+    SetEvent(videoReady_); isSignalingRunning_ = true;
+    signalingThread_ = std::thread(&AppController::SignalingWorkerProc, this, generation);
 }
-
-void AppController::SignalingWorkerProc() {
-    mainWindow_->SetStatusText(L"セッション作成中 (Cloudflare HTTPS API)...");
-    std::string baseUrlNarrow;
-    for (wchar_t c : baseUrl_) { baseUrlNarrow += static_cast<char>(c); }
-    std::cout << "[Signaling] Creating session on " << baseUrlNarrow << "..." << std::endl;
-
-    auto sessionOpt = httpClient_->CreateSession("windows-receiver");
-    if (!sessionOpt.has_value() || !isSignalingRunning_) {
-        mainWindow_->SetStatusText(L"セッション作成失敗。URLと接続を確認してください。");
-        std::cout << "[Signaling] ERROR: Failed to create session." << std::endl;
-        return;
-    }
-
-    auto session = sessionOpt.value();
-    mainWindow_->SetJoinUrl(session.joinUrl);
-    mainWindow_->SetStatusText(L"QRコードをスマホで読み取り「送信開始」を押してください");
-    std::cout << "[Signaling] Session ready. SessionID=" << session.sessionId << ", JoinUrl=" << session.joinUrl << std::endl;
-
-    // Poll for Offer SDP
-    auto startTime = std::chrono::steady_clock::now();
-    uint32_t intervalMs = session.poll.initialIntervalMs;
-
-    while (isSignalingRunning_) {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count();
-        if (elapsed > static_cast<int64_t>(session.poll.timeoutMs)) {
-            mainWindow_->SetStatusText(L"タイムアウトしました。「新しいセッション」を押して再試行してください。");
-            std::cout << "[Signaling] Timeout waiting for Offer after " << elapsed << " ms." << std::endl;
-            return;
-        }
-
-        auto offerOpt = httpClient_->PollOffer(session.sessionId, session.receiverToken);
-        if (offerOpt.has_value()) {
-            mainWindow_->SetStatusText(L"Offer受信。WebRTC Answer生成中 (libdatachannel)...");
-            std::cout << "[Signaling] Offer received (" << offerOpt->sdp.length() << " chars). Initializing WebRTC..." << std::endl;
-
-            h264Decoder_.Initialize(1280, 720);
-
-            bool ok = rtcManager_->Initialize(
-                session.rtcConfiguration,
-                [this](rtc_net::PeerState state) {
-                    if (state == rtc_net::PeerState::Connected) {
-                        std::cout << "[WebRTC] PeerState: Connected! Video/Audio streaming active." << std::endl;
-                        mainWindow_->SetStatusText(L"WebRTC接続完了 (映像・音声受信中)");
-                        vcamRegistrar_.StartVirtualCamera();
-                        mainWindow_->SetVirtualCameraStatus(true);
-                    } else if (state == rtc_net::PeerState::Disconnected || state == rtc_net::PeerState::Failed) {
-                        std::cout << "[WebRTC] PeerState: Disconnected/Failed." << std::endl;
-                        mainWindow_->SetStatusText(L"WebRTC切断");
-                    }
-                },
-                [this](const uint8_t* data, size_t size, int width, int height, int64_t tsUs) {
-                    if (!data || size == 0 || !isVideoWorkerRunning_) return;
-                    lockFreeVideoQueue_.Push(data, size, tsUs);
-                    SetEvent(hVideoFrameReadyEvent_);
-                },
-                [this](const int16_t* pcm, size_t samples, int channels, int sampleRate) {
-                    audioRenderer_.RenderPcm16(std::span<const int16_t>(pcm, samples * channels), channels);
-                }
-            );
-
-            if (!ok) {
-                mainWindow_->SetStatusText(L"WebRTC初期化失敗");
-                std::cout << "[WebRTC] ERROR: rtcManager_->Initialize failed." << std::endl;
+void AppController::SignalingWorkerProc(uint64_t generation) {
+    auto status = [this, generation](std::wstring text) { PostUi(generation, [this, text = std::move(text)] { mainWindow_->SetStatusText(text); }); };
+    try {
+        status(L"セッション作成中..."); auto session = httpClient_->CreateSession("windows-receiver");
+        if (!session || !isSignalingRunning_) { status(L"セッション作成に失敗しました。URLと接続を確認してください。"); return; }
+        PostUi(generation, [this, url = session->joinUrl] { mainWindow_->SetJoinUrl(url); });
+        status(L"QRコードを読み取り、ブラウザで送信を開始してください。");
+        const auto begin = std::chrono::steady_clock::now(); uint32_t interval = session->poll.initialIntervalMs;
+        while (isSignalingRunning_) {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
+            if (elapsed >= session->poll.timeoutMs) { status(L"接続待機がタイムアウトしました。"); return; }
+            auto offer = httpClient_->PollOffer(session->sessionId, session->receiverToken);
+            if (offer && isSignalingRunning_) {
+                if (!rtcManager_->Initialize(session->rtcConfiguration,
+                    [this, generation](rtc_net::PeerState state) {
+                        if (state == rtc_net::PeerState::Disconnected || state == rtc_net::PeerState::Failed || state == rtc_net::PeerState::Closed) {
+                            videoQueue_.invalidate(); audioRenderer_.Flush();
+                        }
+                        PostUi(generation, [this, state] {
+                            if (state == rtc_net::PeerState::Connected) {
+                                mainWindow_->SetStatusText(L"WebRTC接続完了。受信を開始しました。");
+                                mainWindow_->SetVirtualCameraStatus(vcamRegistrar_.StartVirtualCamera());
+                            } else if (state == rtc_net::PeerState::Disconnected || state == rtc_net::PeerState::Failed) mainWindow_->SetStatusText(L"WebRTC接続が切断されました。");
+                        });
+                    },
+                    [this, generation](const uint8_t* data, size_t size, int, int, int64_t timestampUs) {
+                        if (!data || !isVideoWorkerRunning_) return;
+                        if (!videoQueue_.push({data, size}, timestampUs, generation)) rtcManager_->RequestKeyframe();
+                        SetEvent(videoReady_);
+                    },
+                    [this](const int16_t* pcm, size_t elements, int channels, int rate) {
+                        if (pcm && rate == 48000 && (channels == 1 || channels == 2) && elements % size_t(channels) == 0)
+                            audioRenderer_.RenderPcm16({pcm, elements}, channels); // element count, NOT elements*channels
+                    })) { status(L"WebRTC初期化失敗。ICE/TURN設定とビルドの対応範囲を確認してください。"); return; }
+                rtcManager_->SetControlMessageCallback([this, generation](const std::string& text) {
+                    try {
+                        const auto root = km::json::parse(text);
+                        if (root.at("type").string() != "camera_caps") return;
+                        const auto* torch = root.find("supportsTorch");
+                        const bool enabled = torch && torch->kind == km::json::Value::Kind::Bool && torch->text == "true";
+                        const auto* facingValue = root.find("facingMode");
+                        const std::string facing = facingValue && facingValue->string() == "user" ? "user" : "environment";
+                        PostUi(generation, [this, enabled, facing] { mainWindow_->UpdateCameraCapabilities(enabled, 1, 5, 1, facing); });
+                    } catch (const std::exception&) {}
+                });
+                std::string answer; status(L"WebRTC Answerを生成しています...");
+                if (!rtcManager_->ProcessOfferAndGenerateAnswer(offer->sdp, answer) || !isSignalingRunning_) return;
+                if (!httpClient_->PutAnswer(session->sessionId, session->receiverToken, answer)) status(L"Answer送信に失敗しました。");
                 return;
             }
-
-            rtcManager_->SetControlMessageCallback([this](const std::string& json) {
-                if (json.find("\"camera_caps\"") != std::string::npos) {
-                    bool supportsTorch = (json.find("\"supportsTorch\":true") != std::string::npos);
-                    std::string facing = (json.find("\"facingMode\":\"user\"") != std::string::npos) ? "user" : "environment";
-                    if (mainWindow_) {
-                        mainWindow_->UpdateCameraCapabilities(supportsTorch, 1.0f, 5.0f, 1.0f, facing);
-                    }
-                }
-            });
-
-            std::string answerSdp;
-            std::cout << "[WebRTC] Generating Answer SDP and gathering ICE candidates..." << std::endl;
-            if (!rtcManager_->ProcessOfferAndGenerateAnswer(offerOpt->sdp, answerSdp) || !isSignalingRunning_) {
-                mainWindow_->SetStatusText(L"Answer生成またはICE収集に失敗しました。");
-                std::cout << "[WebRTC] ERROR: ProcessOfferAndGenerateAnswer failed." << std::endl;
-                return;
-            }
-
-            mainWindow_->SetStatusText(L"Answer送信中...");
-            std::cout << "[Signaling] Sending Answer SDP (" << answerSdp.length() << " chars) to server..." << std::endl;
-            if (!httpClient_->PutAnswer(session.sessionId, session.receiverToken, answerSdp)) {
-                mainWindow_->SetStatusText(L"Answer送信に失敗しました。");
-                std::cout << "[Signaling] ERROR: PutAnswer failed." << std::endl;
-                return;
-            }
-
-            mainWindow_->SetStatusText(L"接続待機中...");
-            std::cout << "[Signaling] Answer sent successfully. Waiting for ICE/DTLS handshake..." << std::endl;
-            break;
+            if (elapsed > session->poll.backoffAfterMs) interval = std::min(interval + 500, session->poll.maxIntervalMs);
+            for (uint32_t slept = 0; slept < interval && isSignalingRunning_; slept += 20) std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
-
-        if (elapsed > static_cast<int64_t>(session.poll.backoffAfterMs)) {
-            intervalMs = (std::min)(intervalMs + 500, session.poll.maxIntervalMs);
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
-    }
+    } catch (const std::exception&) { status(L"シグナリング処理に失敗しました。"); }
 }
-
 void AppController::VideoWorkerProc() {
-    DWORD taskIndex = 0;
-    HANDLE hAvrt = AvSetMmThreadCharacteristicsW(L"Capture", &taskIndex);
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-
-    std::vector<uint8_t> localH264Buffer;
-    codec::GpuDecodedFrame gpuFrame{};
-    std::vector<uint8_t> localDecodedBuffer;
-    std::vector<uint8_t> localNv12Buffer(protocol::kPayloadBytes);
-    localH264Buffer.reserve(256 * 1024);
-
-    while (isVideoWorkerRunning_) {
-        WaitForSingleObject(hVideoFrameReadyEvent_, 100);
-        if (!isVideoWorkerRunning_) break;
-
-        // Drain all available frames from lock-free queue
-        int64_t tsUs = 0;
-
-        while (lockFreeVideoQueue_.Pop(localH264Buffer, tsUs)) {
-            int decW = 0, decH = 0;
-            if (h264Decoder_.DecodeAccessUnit(localH264Buffer.data(), localH264Buffer.size(), tsUs, localDecodedBuffer, decW, decH)) {
-                lastDecodedFrameTick_.store(GetTickCount64(), std::memory_order_relaxed);
-                int rot = rotationDegrees_.load(std::memory_order_relaxed);
-
-                nv12Converter_.ConvertNv12ToNv12Letterbox(
-                    localDecodedBuffer.data(), decW,
-                    decW, decH,
-                    localNv12Buffer.data(),
-                    1280, 720,
-                    rot
-                );
-
-                uint64_t count = frameCount_.fetch_add(1, std::memory_order_relaxed) + 1;
-                int64_t monotonicTsUs = static_cast<int64_t>(count) * 16666LL;
-
-                if (!isTestPatternMode_.load(std::memory_order_relaxed)) {
-                    pipePublisher_.PublishFrame(localNv12Buffer.data(), protocol::kPayloadBytes, monotonicTsUs);
-                    mainWindow_->RenderPreviewFrame(localNv12Buffer);
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(com)) { PostUi(0, [this] { mainWindow_->SetStatusText(L"映像処理スレッドの初期化に失敗しました。"); }); return; }
+    DWORD task = 0; HANDLE priority = AvSetMmThreadCharacteristicsW(L"Capture", &task);
+    {
+        codec::H264Decoder decoder; media::Nv12Converter converter; // decoder is owned ONLY by this thread
+        uint64_t activeGeneration = 0, activeReset = 0; unsigned noOutput = 0;
+        std::vector<uint8_t> decoded; km::QueuedAccessUnit unit;
+        while (isVideoWorkerRunning_) {
+            WaitForSingleObject(videoReady_, 100);
+            while (isVideoWorkerRunning_ && videoQueue_.pop(unit)) {
+                if (!videoQueue_.current(unit)) continue;
+                if (activeGeneration != unit.generation || activeReset != unit.resetSerial) {
+                    decoder.Shutdown();
+                    if (!decoder.Initialize(1280, 720, pipePublisher_.GetD3D11Device())) {
+                        videoQueue_.invalidate(); rtcManager_->RequestKeyframe(); continue;
+                    }
+                    activeGeneration = unit.generation; activeReset = unit.resetSerial; noOutput = 0;
                 }
-
-                if (count == 10 || count == 60 || count % 300 == 0) {
-                    std::cout << "[VideoPipeline] Stream active: " << count << " frames decoded (" << decW << "x" << decH << " -> 1280x720)" << std::endl;
+                int width = 0, height = 0;
+                if (!decoder.DecodeAccessUnit(unit.bytes.data(), unit.bytes.size(), unit.timestampUs, decoded, width, height)) {
+                    if (++noOutput >= 60) { videoQueue_.invalidate(); rtcManager_->RequestKeyframe(); noOutput = 0; }
+                    continue; // NEED_MORE_INPUT is not automatically a decoder failure
                 }
+                noOutput = 0;
+                if (width <= 0 || height <= 0 || width > 8192 || height > 8192 || (width & 1) || (height & 1) || decoded.size() < size_t(width) * size_t(height) * 3 / 2) {
+                    videoQueue_.invalidate(); rtcManager_->RequestKeyframe(); continue;
+                }
+                auto output = std::make_shared<std::vector<uint8_t>>(protocol::kPayloadBytes);
+                converter.ConvertNv12ToNv12Letterbox(decoded.data(), width, width, height, output->data(), 1280, 720, rotationDegrees_);
+                if (!videoQueue_.current(unit)) continue;
+                std::lock_guard lock(frameMutex_);
+                latestNv12_ = std::move(output); latestArrivalNs_ = monoNs();
+                latestIdentity_.generation = unit.generation; latestIdentity_.resetSerial = unit.resetSerial;
             }
         }
+        decoder.Shutdown(); // all COM/media resources are released on their owner thread
     }
-
-    if (hAvrt) {
-        AvRevertMmThreadCharacteristics(hAvrt);
-    }
+    if (priority) AvRevertMmThreadCharacteristics(priority);
+    CoUninitialize();
 }
-
 void AppController::TestPatternWorkerProc() {
-    std::vector<uint8_t> testNv12(protocol::kPayloadBytes);
-    uint64_t frameIdx = 0;
-    while (isTestPatternWorkerRunning_) {
-        ULONGLONG now = GetTickCount64();
-        ULONGLONG lastDecoded = lastDecodedFrameTick_.load(std::memory_order_relaxed);
-        bool testMode = isTestPatternMode_.load(std::memory_order_relaxed);
-        bool hasLiveStream = (now - lastDecoded < 1000);
-
-        if (testMode || !hasLiveStream) {
-            int64_t tsUs = static_cast<int64_t>(now * 1000);
-            testPatternGen_.GenerateFrame(testNv12, frameIdx++, tsUs);
-            if (testMode) {
-                mainWindow_->RenderPreviewFrame(testNv12);
-            }
-            pipePublisher_.PublishFrame(testNv12.data(), protocol::kPayloadBytes, tsUs);
+    media::TestPatternGenerator pattern; std::vector<uint8_t> idle(protocol::kPayloadBytes); uint64_t index = 0;
+    km::RationalPacer pacer(30, 1, monoNs());
+    while (isOutputRunning_) {
+        uint64_t deadline = pacer.next(), now = monoNs();
+        if (now > deadline && now - deadline > 500000000) { pacer = km::RationalPacer(30, 1, now); deadline = pacer.next(); }
+        else while (now > deadline && now - deadline >= 33333334) deadline = pacer.next(); // skip missed slots, never burst catch-up
+        const auto wake = std::chrono::steady_clock::time_point(std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::nanoseconds(deadline)));
+        { std::unique_lock lock(outputWaitMutex_); outputWake_.wait_until(lock, wake, [this] { return !isOutputRunning_; }); }
+        if (!isOutputRunning_) break;
+        now = monoNs(); std::shared_ptr<const std::vector<uint8_t>> frame;
+        { std::lock_guard lock(frameMutex_);
+            if (!testPatternMode_ && latestNv12_ && now >= latestArrivalNs_ && now - latestArrivalNs_ <= 1000000000 && videoQueue_.current(latestIdentity_)) frame = latestNv12_;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(33)); // 30fps
+        const int64_t timestampUs = int64_t(deadline / 1000);
+        if (!frame) pattern.GenerateFrame(idle, index, timestampUs);
+        const auto& pixels = frame ? *frame : idle;
+        pipePublisher_.PublishFrame(pixels.data(), protocol::kPayloadBytes, timestampUs);
+        mainWindow_->RenderPreviewFrame(pixels); ++index;
     }
 }
-
 void AppController::RunMessageLoop() {
-    MSG msg{};
-    while (GetMessageW(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+    MSG message{};
+    while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+        TranslateMessage(&message); DispatchMessageW(&message);
     }
 }
-
 void AppController::Shutdown() {
-    isSignalingRunning_ = false;
-    if (signalingThread_.joinable()) {
-        signalingThread_.join();
+    if (shuttingDown_.exchange(true)) return;
+    acceptingUi_ = false; isSignalingRunning_ = false;
+    if (httpClient_) httpClient_->Cancel(); if (rtcManager_) rtcManager_->CancelPending();
+    if (signalingThread_.joinable()) signalingThread_.join();
+    if (rtcManager_) rtcManager_->Close(); // barrier first; no new media reaches the queues
+    videoQueue_.reset(); isVideoWorkerRunning_ = false; if (videoReady_) SetEvent(videoReady_);
+    if (videoThread_.joinable()) videoThread_.join();
+    isOutputRunning_ = false; outputWake_.notify_all(); if (outputThread_.joinable()) outputThread_.join();
+    audioRenderer_.Stop(); vcamRegistrar_.StopVirtualCamera(); pipePublisher_.Stop();
+    MSG message{};
+    while (uiDispatchWindow_ && uiThread_ == GetCurrentThreadId() && PeekMessageW(&message, uiDispatchWindow_, kUiWorkMessage, kUiWorkMessage, PM_REMOVE)) {
+        delete reinterpret_cast<UiWork*>(message.lParam); --queuedUi_;
     }
-
-    isVideoWorkerRunning_ = false;
-    SetEvent(hVideoFrameReadyEvent_);
-    if (videoWorkerThread_.joinable()) {
-        videoWorkerThread_.join();
-    }
-
-    isTestPatternWorkerRunning_ = false;
-    if (testPatternThread_.joinable()) {
-        testPatternThread_.join();
-    }
-
-    vcamRegistrar_.StopVirtualCamera();
-    pipePublisher_.Stop();
-    audioRenderer_.Stop();
-
-    if (rtcManager_) {
-        rtcManager_->Close();
-    }
+    if (uiDispatchWindow_) { DestroyWindow(uiDispatchWindow_); uiDispatchWindow_ = nullptr; }
 }
-
 } // namespace km::app

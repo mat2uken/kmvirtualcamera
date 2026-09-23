@@ -1,258 +1,112 @@
 #include "win_http_client.h"
-#include <vector>
-#include <sstream>
+#include <windows.h>
+#include <winhttp.h>
 #include <algorithm>
-
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <stdexcept>
 namespace km::signaling {
-
-static std::string ExtractJsonString(const std::string& json, const std::string& key) {
-    std::string pattern = "\"" + key + "\":\"";
-    size_t pos = json.find(pattern);
-    if (pos == std::string::npos) {
-        pattern = "\"" + key + "\": \"";
-        pos = json.find(pattern);
-        if (pos == std::string::npos) return "";
-    }
-    pos += pattern.length();
-    std::string result;
-    bool escape = false;
-    for (size_t i = pos; i < json.length(); ++i) {
-        char c = json[i];
-        if (escape) {
-            if (c == 'n') result += '\n';
-            else if (c == 'r') result += '\r';
-            else if (c == 't') result += '\t';
-            else if (c == '"') result += '"';
-            else if (c == '\\') result += '\\';
-            else result += c;
-            escape = false;
-        } else if (c == '\\') {
-            escape = true;
-        } else if (c == '"') {
-            break;
-        } else {
-            result += c;
-        }
-    }
-    return result;
+namespace {
+std::wstring wide(std::string_view value) {
+    if (value.empty()) return {};
+    const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), int(value.size()), nullptr, 0);
+    if (!length) throw std::invalid_argument("invalid UTF-8 URL/header");
+    std::wstring result(size_t(length), L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), int(value.size()), result.data(), length); return result;
 }
-
-static uint32_t ExtractJsonNumber(const std::string& json, const std::string& key, uint32_t defaultVal = 0) {
-    std::string pattern = "\"" + key + "\":";
-    size_t pos = json.find(pattern);
-    if (pos == std::string::npos) return defaultVal;
-    pos += pattern.length();
-    while (pos < json.length() && (json[pos] == ' ' || json[pos] == '\t')) pos++;
-    size_t end = pos;
-    while (end < json.length() && (isdigit(static_cast<unsigned char>(json[end])))) end++;
-    if (end > pos) {
+std::string utf8(std::wstring_view value) {
+    if (value.empty()) return {};
+    const int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), int(value.size()), nullptr, 0, nullptr, nullptr);
+    if (!length) throw std::invalid_argument("invalid UTF-16 URL");
+    std::string result(size_t(length), '\0');
+    WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), int(value.size()), result.data(), length, nullptr, nullptr); return result;
+}
+struct InternetClose { void operator()(void* handle) const { if (handle) WinHttpCloseHandle(handle); } };
+using Internet = std::unique_ptr<void, InternetClose>;
+class WinHttpTransport final : public km::IHttpTransport {
+public:
+    WinHttpTransport() : session_(WinHttpOpen(L"KMVirtualCamera/0.2", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0)) {
+        if (!session_) throw std::runtime_error("WinHttpOpen failed");
+    }
+    void cancel() override { ++cancellation_; }
+    km::HttpResponse perform(const km::HttpRequest& input) override {
+        km::HttpResponse out;
+        const uint64_t epoch = cancellation_.load();
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(input.timeoutMs);
+        auto check = [&] {
+            if (epoch != cancellation_.load()) throw std::runtime_error("HTTP request cancelled");
+            if (std::chrono::steady_clock::now() >= deadline) throw std::runtime_error("HTTP deadline exceeded");
+        };
         try {
-            return static_cast<uint32_t>(std::stoul(json.substr(pos, end - pos)));
-        } catch (...) {}
-    }
-    return defaultVal;
-}
-
-static std::string EscapeJson(const std::string& s) {
-    std::string res;
-    for (char c : s) {
-        if (c == '"') res += "\\\"";
-        else if (c == '\\') res += "\\\\";
-        else if (c == '\b') res += "\\b";
-        else if (c == '\f') res += "\\f";
-        else if (c == '\n') res += "\\n";
-        else if (c == '\r') res += "\\r";
-        else if (c == '\t') res += "\\t";
-        else res += c;
-    }
-    return res;
-}
-
-WinHttpClient::WinHttpClient(std::wstring baseUrl) {
-    // Sanitize baseUrl (remove whitespace and quotes)
-    size_t start = baseUrl.find_first_not_of(L" \t\r\n\"'");
-    if (start != std::wstring::npos) {
-        size_t end = baseUrl.find_last_not_of(L" \t\r\n\"'");
-        baseUrl = baseUrl.substr(start, end - start + 1);
-    }
-
-    URL_COMPONENTS urlComp{};
-    urlComp.dwStructSize = sizeof(urlComp);
-    urlComp.dwHostNameLength = static_cast<DWORD>(-1);
-    urlComp.dwUrlPathLength = static_cast<DWORD>(-1);
-    urlComp.dwSchemeLength = static_cast<DWORD>(-1);
-
-    if (WinHttpCrackUrl(baseUrl.c_str(), static_cast<DWORD>(baseUrl.length()), 0, &urlComp)) {
-        host_ = std::wstring(urlComp.lpszHostName, urlComp.dwHostNameLength);
-        port_ = urlComp.nPort;
-        isHttps_ = (urlComp.nScheme == INTERNET_SCHEME_HTTPS);
-    } else {
-        host_ = L"127.0.0.1";
-        port_ = 8787;
-        isHttps_ = false;
-    }
-
-    hSession_ = WinHttpOpen(
-        L"KMVirtualCamera-Receiver/1.0",
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-        WINHTTP_NO_PROXY_NAME,
-        WINHTTP_NO_PROXY_BYPASS,
-        0
-    );
-
-    if (hSession_) {
-        // Set timeouts: resolve 5s, connect 5s, send 10s, receive 10s
-        WinHttpSetTimeouts(hSession_, 5000, 5000, 10000, 10000);
-    }
-}
-
-WinHttpClient::~WinHttpClient() {
-    if (hSession_) {
-        WinHttpCloseHandle(hSession_);
-        hSession_ = nullptr;
-    }
-}
-
-HttpResponse WinHttpClient::Request(
-    const std::wstring& verb,
-    const std::wstring& path,
-    const std::string& bearerToken,
-    const std::string& jsonBody
-) {
-    HttpResponse response{};
-    if (!hSession_) return response;
-
-    HINTERNET hConnect = WinHttpConnect(hSession_, host_.c_str(), port_, 0);
-    if (!hConnect) return response;
-
-    DWORD flags = isHttps_ ? WINHTTP_FLAG_SECURE : 0;
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, verb.c_str(), path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
-    if (!hRequest) {
-        WinHttpCloseHandle(hConnect);
-        return response;
-    }
-
-    std::wstring headers = L"User-Agent: KMVirtualCamera/1.0\r\n";
-    if (!bearerToken.empty()) {
-        headers += L"Authorization: Bearer ";
-        headers += std::wstring(bearerToken.begin(), bearerToken.end());
-        headers += L"\r\n";
-    }
-    if (!jsonBody.empty()) {
-        headers += L"Content-Type: application/json\r\n";
-    }
-
-    BOOL ok = WinHttpSendRequest(
-        hRequest,
-        headers.c_str(),
-        static_cast<DWORD>(headers.length()),
-        jsonBody.empty() ? nullptr : const_cast<char*>(jsonBody.data()),
-        static_cast<DWORD>(jsonBody.length()),
-        static_cast<DWORD>(jsonBody.length()),
-        0
-    );
-
-    if (ok && WinHttpReceiveResponse(hRequest, nullptr)) {
-        DWORD statusCode = 0;
-        DWORD size = sizeof(statusCode);
-        WinHttpQueryHeaders(
-            hRequest,
-            WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-            WINHTTP_HEADER_NAME_BY_INDEX,
-            &statusCode,
-            &size,
-            WINHTTP_NO_HEADER_INDEX
-        );
-        response.statusCode = statusCode;
-
-        wchar_t retryBuf[32] = {};
-        DWORD retryLen = sizeof(retryBuf);
-        if (WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_CUSTOM, L"Retry-After", retryBuf, &retryLen, WINHTTP_NO_HEADER_INDEX)) {
-            std::wstring wRetry(retryBuf, retryLen / sizeof(wchar_t));
-            response.retryAfter = std::string(wRetry.begin(), wRetry.end());
-        }
-
-        // Read response body
-        std::vector<char> buffer;
-        DWORD bytesAvailable = 0;
-        while (WinHttpQueryDataAvailable(hRequest, &bytesAvailable) && bytesAvailable > 0) {
-            std::vector<char> temp(bytesAvailable);
-            DWORD bytesRead = 0;
-            if (WinHttpReadData(hRequest, temp.data(), bytesAvailable, &bytesRead) && bytesRead > 0) {
-                buffer.insert(buffer.end(), temp.begin(), temp.begin() + bytesRead);
+            if (!input.timeoutMs || input.body.size() > 1024 * 1024 || input.url.size() > 8192 || input.url.find('#') != std::string::npos)
+                throw std::invalid_argument("invalid HTTP request limits or URL");
+            auto url = wide(input.url); URL_COMPONENTS c{}; c.dwStructSize = sizeof(c);
+            c.dwHostNameLength = c.dwUrlPathLength = c.dwExtraInfoLength = c.dwUserNameLength = c.dwPasswordLength = DWORD(-1);
+            if (!WinHttpCrackUrl(url.c_str(), DWORD(url.size()), 0, &c) || c.dwUserNameLength || c.dwPasswordLength)
+                throw std::invalid_argument("invalid signaling URL");
+            std::wstring host(c.lpszHostName, c.dwHostNameLength);
+            const bool secure = c.nScheme == INTERNET_SCHEME_HTTPS;
+            const bool loopback = host == L"localhost" || host == L"127.0.0.1" || host == L"::1" || host == L"[::1]";
+            if (!secure && !(c.nScheme == INTERNET_SCHEME_HTTP && loopback)) throw std::runtime_error("signaling requires HTTPS (except explicit loopback development)");
+            std::wstring path = c.dwUrlPathLength ? std::wstring(c.lpszUrlPath, c.dwUrlPathLength) : L"/";
+            if (c.dwExtraInfoLength) path.append(c.lpszExtraInfo, c.dwExtraInfoLength);
+            check(); Internet connection(WinHttpConnect(session_.get(), host.c_str(), c.nPort, 0));
+            if (!connection) throw std::runtime_error("HTTP connection failed");
+            auto method = wide(input.method);
+            Internet request(WinHttpOpenRequest(connection.get(), method.c_str(), path.c_str(), nullptr,
+                WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, secure ? WINHTTP_FLAG_SECURE : 0));
+            if (!request) throw std::runtime_error("HTTP request creation failed");
+            const int stageTimeout = int(std::min<uint32_t>(2000, input.timeoutMs));
+            if (!WinHttpSetTimeouts(request.get(), stageTimeout, stageTimeout, stageTimeout, stageTimeout))
+                throw std::runtime_error("HTTP timeout configuration failed");
+            DWORD redirects = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+            if (!WinHttpSetOption(request.get(), WINHTTP_OPTION_REDIRECT_POLICY, &redirects, sizeof(redirects)))
+                throw std::runtime_error("HTTP redirect policy failed");
+            std::wstring headers;
+            for (const auto& [name, value] : input.headers) {
+                if (name.empty() || name.find_first_of(": \t") != std::string::npos || !safeHeader(name) || !safeHeader(value))
+                    throw std::invalid_argument("invalid HTTP header");
+                headers += wide(name) + L": " + wide(value) + L"\r\n";
             }
-        }
-        response.body = std::string(buffer.begin(), buffer.end());
+            check();
+            if (!WinHttpSendRequest(request.get(), headers.c_str(), DWORD(headers.size()),
+                input.body.empty() ? nullptr : const_cast<char*>(input.body.data()), DWORD(input.body.size()), DWORD(input.body.size()), 0) ||
+                !WinHttpReceiveResponse(request.get(), nullptr)) throw std::runtime_error("HTTP send/receive failed");
+            check(); DWORD status = 0, length = sizeof(status);
+            if (!WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                WINHTTP_HEADER_NAME_BY_INDEX, &status, &length, WINHTTP_NO_HEADER_INDEX)) throw std::runtime_error("HTTP status missing");
+            DWORD declared = 0; length = sizeof(declared);
+            if (WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+                WINHTTP_HEADER_NAME_BY_INDEX, &declared, &length, WINHTTP_NO_HEADER_INDEX) && declared > input.maxResponseBytes)
+                throw std::runtime_error("HTTP response too large");
+            std::array<char, 8192> buffer{};
+            for (;;) {
+                check(); DWORD count = 0;
+                if (!WinHttpReadData(request.get(), buffer.data(), DWORD(buffer.size()), &count)) throw std::runtime_error("HTTP response read failed");
+                if (!count) break;
+                if (count > input.maxResponseBytes - out.body.size()) throw std::runtime_error("HTTP response too large");
+                out.body.append(buffer.data(), count);
+            }
+            check(); out.status = int(status);
+        } catch (const std::exception& e) { out.status = 0; out.body.clear(); out.error = e.what(); }
+        return out;
     }
-
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    return response;
+private:
+    Internet session_; std::atomic<uint64_t> cancellation_{0};
+};
 }
-
-std::optional<CreateSessionResponse> WinHttpClient::CreateSession(const std::string& clientName) {
-    std::string jsonBody = "{\"client\":{\"name\":\"" + clientName + "\",\"version\":\"0.1.0\"}}";
-    auto resp = Request(L"POST", L"/v1/sessions", "", jsonBody);
-    if (resp.statusCode != 201 || resp.body.empty()) {
-        return std::nullopt;
-    }
-
-    CreateSessionResponse r{};
-    r.sessionId = ExtractJsonString(resp.body, "sessionId");
-    r.receiverToken = ExtractJsonString(resp.body, "receiverToken");
-    r.joinUrl = ExtractJsonString(resp.body, "joinUrl");
-    r.expiresAt = ExtractJsonString(resp.body, "expiresAt");
-
-    r.poll.initialIntervalMs = ExtractJsonNumber(resp.body, "initialIntervalMs", 1000);
-    r.poll.backoffAfterMs = ExtractJsonNumber(resp.body, "backoffAfterMs", 15000);
-    r.poll.maxIntervalMs = ExtractJsonNumber(resp.body, "maxIntervalMs", 2000);
-    r.poll.timeoutMs = ExtractJsonNumber(resp.body, "timeoutMs", 60000);
-
-    // Default Cloudflare STUN server if not parsed
-    IceServer s{};
-    s.urls.push_back("stun:stun.cloudflare.com:3478");
-    r.rtcConfiguration.iceServers.push_back(s);
-
-    if (r.sessionId.empty() || r.receiverToken.empty() || r.joinUrl.empty()) {
-        return std::nullopt;
-    }
-
-    if (isHttps_ && r.joinUrl.find("127.0.0.1") != std::string::npos) {
-        std::string publicHost(host_.begin(), host_.end());
-        size_t pos = r.joinUrl.find("/send/");
-        if (pos != std::string::npos) {
-            r.joinUrl = "https://" + publicHost + r.joinUrl.substr(pos);
-        }
-    }
-    return r;
+WinHttpClient::WinHttpClient(std::wstring base) {
+    const auto first = base.find_first_not_of(L" \t\r\n\"'");
+    if (first == std::wstring::npos) throw std::invalid_argument("empty signaling URL");
+    const auto last = base.find_last_not_of(L" \t\r\n\"'"); base = base.substr(first, last - first + 1);
+    transport_ = std::make_unique<WinHttpTransport>(); client_ = std::make_unique<SessionClient>(*transport_, utf8(base));
 }
-
-std::optional<OfferDescription> WinHttpClient::PollOffer(const std::string& sessionId, const std::string& receiverToken) {
-    std::wstring path = L"/v1/sessions/" + std::wstring(sessionId.begin(), sessionId.end()) + L"/offer";
-    auto resp = Request(L"GET", path, receiverToken);
-
-    if (resp.statusCode == 200 && !resp.body.empty()) {
-        OfferDescription offer{};
-        offer.type = ExtractJsonString(resp.body, "type");
-        offer.sdp = ExtractJsonString(resp.body, "sdp");
-        if (!offer.sdp.empty()) {
-            return offer;
-        }
-    }
-    return std::nullopt;
-}
-
-bool WinHttpClient::PutAnswer(const std::string& sessionId, const std::string& receiverToken, const std::string& sdp) {
-    std::wstring path = L"/v1/sessions/" + std::wstring(sessionId.begin(), sessionId.end()) + L"/answer";
-    std::string jsonBody = "{\"type\":\"answer\",\"sdp\":\"" + EscapeJson(sdp) + "\"}";
-    auto resp = Request(L"PUT", path, receiverToken, jsonBody);
-    return (resp.statusCode == 204);
-}
-
-bool WinHttpClient::DeleteSession(const std::string& sessionId, const std::string& token) {
-    std::wstring path = L"/v1/sessions/" + std::wstring(sessionId.begin(), sessionId.end());
-    auto resp = Request(L"DELETE", path, token);
-    return (resp.statusCode == 204);
-}
-
+WinHttpClient::~WinHttpClient() = default;
+std::optional<CreateSessionResponse> WinHttpClient::CreateSession(const std::string& name) { return client_->CreateSession(name); }
+std::optional<OfferDescription> WinHttpClient::PollOffer(const std::string& id, const std::string& token) { return client_->PollOffer(id, token); }
+bool WinHttpClient::PutAnswer(const std::string& id, const std::string& token, const std::string& sdp) { return client_->PutAnswer(id, token, sdp); }
+bool WinHttpClient::DeleteSession(const std::string& id, const std::string& token) { return client_->DeleteSession(id, token); }
+void WinHttpClient::Cancel() { transport_->cancel(); }
 } // namespace km::signaling

@@ -1,343 +1,254 @@
 #include "peer_connection_manager.h"
+#include "../../../shared/km/bounded_video_queue.h"
+#include "../../../shared/km/json.h"
+#include "../../../shared/receiver/signaling/session_codec.h"
 #include <rtc/rtc.hpp>
-#include <rtc/h264rtpdepacketizer.hpp>
-#include <rtc/rtcpreceivingsession.hpp>
+#include <algorithm>
 #include <chrono>
-#include <thread>
+#include <cctype>
 #include <iostream>
-#include <sstream>
-
-static uint8_t ParseTransportCcExtensionIdFromSdp(const std::string& sdp) {
-    std::istringstream stream(sdp);
-    std::string line;
-    while (std::getline(stream, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.rfind("a=extmap:", 0) == 0) {
-            if (line.find("transport-wide-cc-extensions") != std::string::npos ||
-                line.find("transport-cc") != std::string::npos ||
-                line.find("transport-wide-cc-02") != std::string::npos) {
-                size_t idStart = 9; // strlen("a=extmap:")
-                size_t idEnd = line.find_first_of("/ \t", idStart);
-                if (idEnd != std::string::npos) {
-                    try {
-                        int id = std::stoi(line.substr(idStart, idEnd - idStart));
-                        if (id > 0 && id <= 14) {
-                            return static_cast<uint8_t>(id);
-                        }
-                    } catch (...) {}
-                }
-            }
-        }
-    }
-    return 0;
-}
-
+#include <utility>
+#ifndef KM_TURN_TCP_TLS
+#define KM_TURN_TCP_TLS 0
+#endif
+#ifndef KM_ENABLE_OPUS
+#define KM_ENABLE_OPUS 0
+#endif
 namespace km::rtc_net {
-
-PeerConnectionManager::PeerConnectionManager() = default;
-
-PeerConnectionManager::~PeerConnectionManager() {
-    Close();
+namespace {
+int64_t nowUs() { return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+std::string lower(std::string s) { for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c))); return s; }
+template<class F> auto guarded(std::weak_ptr<km::CallbackGate> weak, F callback) {
+    return [weak, callback = std::move(callback)](auto&&... args) {
+        auto gate = weak.lock(); if (!gate) return;
+        auto lease = gate->enter(); if (!lease) return;
+        try { callback(std::forward<decltype(args)>(args)...); }
+        catch (const std::exception&) { std::cerr << "[RTC] Callback failed; media/control input rejected\n"; }
+    };
 }
-
-bool PeerConnectionManager::Initialize(
-    const signaling::RtcConfiguration& config,
-    StateChangeCallback stateCb,
-    VideoFrameCallback videoCb,
-    AudioPcmCallback audioCb
-) {
-    std::lock_guard<std::mutex> lock(rtcMutex_);
-    Close();
-
-    static bool sLoggerInit = false;
-    if (!sLoggerInit) {
-        sLoggerInit = true;
-        rtc::InitLogger(rtc::LogLevel::Debug, [](rtc::LogLevel level, std::string message) {
-            std::cout << "[libdatachannel] " << message << std::endl;
-        });
-    }
-
-    stateCallback_ = stateCb;
-    videoCallback_ = videoCb;
-    audioCallback_ = audioCb;
-    isGatheringComplete_ = false;
-
-    rtc::Configuration rtcConfig;
-    for (const auto& s : config.iceServers) {
-        for (const auto& stunUrl : s.urls) {
-            if (stunUrl.rfind("stun:", 0) == 0) {
-                std::string hostPort = stunUrl.substr(5);
-                auto colon = hostPort.find(':');
-                if (colon != std::string::npos) {
-                    std::string host = hostPort.substr(0, colon);
-                    uint16_t port = static_cast<uint16_t>(std::stoi(hostPort.substr(colon + 1)));
-                    rtcConfig.iceServers.emplace_back(host, port);
-                } else {
-                    rtcConfig.iceServers.emplace_back(hostPort, 3478);
-                }
-            }
-        }
-    }
-
-    // Add redundant global STUN servers
-    rtcConfig.iceServers.emplace_back("stun.l.google.com", 19302);
-    rtcConfig.iceServers.emplace_back("stun1.l.google.com", 19302);
-    rtcConfig.iceServers.emplace_back("stun2.l.google.com", 19302);
-    rtcConfig.iceServers.emplace_back("stun3.l.google.com", 19302);
-    rtcConfig.iceServers.emplace_back("stun4.l.google.com", 19302);
-
+}
+PeerConnectionManager::PeerConnectionManager() : bandwidthEstimator_(std::make_shared<BandwidthEstimator>()) {}
+PeerConnectionManager::~PeerConnectionManager() { Close(); }
+bool PeerConnectionManager::Initialize(const signaling::RtcConfiguration& config, StateChangeCallback state, VideoFrameCallback video, AudioPcmCallback audio) {
+    std::lock_guard lifecycle(lifecycleMutex_);
+    CloseInternal();
     try {
-        pc_ = std::make_shared<rtc::PeerConnection>(rtcConfig);
-
-        pc_->onStateChange([this](rtc::PeerConnection::State state) {
-            if (stateCallback_) {
-                switch (state) {
-                    case rtc::PeerConnection::State::New:
-                        stateCallback_(PeerState::New);
-                        break;
-                    case rtc::PeerConnection::State::Connecting:
-                        stateCallback_(PeerState::Connecting);
-                        break;
-                    case rtc::PeerConnection::State::Connected:
-                        stateCallback_(PeerState::Connected);
-                        break;
-                    case rtc::PeerConnection::State::Disconnected:
-                        stateCallback_(PeerState::Disconnected);
-                        break;
-                    case rtc::PeerConnection::State::Failed:
-                        stateCallback_(PeerState::Failed);
-                        break;
-                    case rtc::PeerConnection::State::Closed:
-                        stateCallback_(PeerState::Closed);
-                        break;
+        std::lock_guard lock(rtcMutex_);
+        rtc::Configuration native;
+        native.maxMessageSize = 1024 * 1024;
+        if (config.iceTransportPolicy != "all" && config.iceTransportPolicy != "relay") throw std::invalid_argument("unsupported ICE policy");
+        native.iceTransportPolicy = config.iceTransportPolicy == "relay" ? rtc::TransportPolicy::Relay : rtc::TransportPolicy::All;
+        bool usableTurn = false;
+        for (const auto& server : config.iceServers) for (const auto& url : server.urls) {
+            if (!signaling::supportedIceUrl(url)) throw std::invalid_argument("unsupported ICE URL");
+            rtc::IceServer ice(url); // library URL parser handles IPv6, ports and transport
+            if (ice.type == rtc::IceServer::Type::Turn) {
+                ice.username = server.username; ice.password = server.credential;
+                if (ice.username.empty() || ice.password.empty()) throw std::invalid_argument("missing TURN credentials");
+                if (!KM_TURN_TCP_TLS && ice.relayType != rtc::IceServer::RelayType::TurnUdp) {
+                    std::cerr << "[RTC] TURN TCP/TLS skipped: this build uses libjuice. Use a UDP TURN endpoint or a matching libnice build.\n";
+                    continue;
                 }
+                usableTurn = true;
             }
+            native.iceServers.push_back(std::move(ice));
+        }
+        if (config.iceTransportPolicy == "relay" && !usableTurn) throw std::invalid_argument("relay policy has no supported TURN endpoint");
+        cancelled_ = false; gatheringComplete_ = false;
+        stateCallback_ = std::move(state); videoCallback_ = std::move(video); audioCallback_ = std::move(audio);
+        bandwidthEstimator_ = std::make_shared<BandwidthEstimator>();
+        gate_ = std::make_shared<km::CallbackGate>(); const std::weak_ptr<km::CallbackGate> weak = gate_;
+        pc_ = std::make_shared<rtc::PeerConnection>(native);
+        pc_->onStateChange(guarded(weak, [this](rtc::PeerConnection::State s) {
+            std::lock_guard lock(rtcMutex_);
+            PeerState value = PeerState::New;
+            switch (s) {
+            case rtc::PeerConnection::State::New: value = PeerState::New; break;
+            case rtc::PeerConnection::State::Connecting: value = PeerState::Connecting; break;
+            case rtc::PeerConnection::State::Connected: value = PeerState::Connected; break;
+            case rtc::PeerConnection::State::Disconnected: value = PeerState::Disconnected; break;
+            case rtc::PeerConnection::State::Failed: value = PeerState::Failed; break;
+            case rtc::PeerConnection::State::Closed: value = PeerState::Closed; break;
+            }
+            if (stateCallback_) stateCallback_(value);
+        }));
+        pc_->onGatheringStateChange(guarded(weak, [this](rtc::PeerConnection::GatheringState s) {
+            gatheringComplete_ = s == rtc::PeerConnection::GatheringState::Complete;
+        }));
+        h264Depacketizer_.SetCallback([this](const uint8_t* data, size_t size, uint32_t ticks) {
+            if (dataChannelVideo_) return;
+            if (km::BoundedVideoQueue::configuredIdr({data, size})) needKeyframe_ = false;
+            const auto timestampUs = km::TicksToMicroseconds(rtpTime_.unwrap(ticks), 90000);
+            if (videoCallback_) videoCallback_(data, size, 1280, 720, timestampUs);
         });
-
-        pc_->onGatheringStateChange([this](rtc::PeerConnection::GatheringState state) {
-            if (state == rtc::PeerConnection::GatheringState::Complete) {
-                isGatheringComplete_ = true;
-            }
+        h264Depacketizer_.SetKeyframeRequestCallback([this] {
+            bandwidthEstimator_->OnLossEventDetected(); needKeyframe_ = true; SendKeyframeRequest();
         });
-
-        bandwidthEstimator_.Reset();
-        h264Depacketizer_.Reset();
-        isDataChannelVideoActive_.store(false, std::memory_order_relaxed);
-
-        h264Depacketizer_.SetCallback([this](const uint8_t* nalData, size_t size, uint32_t ts) {
-            if (isDataChannelVideoActive_.load(std::memory_order_relaxed)) {
-                return; // Ignore RTP video when DataChannel video stream is active!
-            }
-            if (videoCallback_ && size > 0) {
-                videoCallback_(nalData, size, 1280, 720, static_cast<int64_t>(ts));
-            }
+        dcVideoDepacketizer_.SetCallback([this](const uint8_t* data, size_t size, int64_t raw) {
+            dataChannelVideo_ = true;
+            if (km::BoundedVideoQueue::configuredIdr({data, size})) needKeyframe_ = false;
+            const auto timestampUs = dcTime_.unwrap(uint32_t(raw));
+            if (videoCallback_) videoCallback_(data, size, 1280, 720, timestampUs);
         });
-        h264Depacketizer_.SetKeyframeRequestCallback([this]() {
-            if (isDataChannelVideoActive_.load(std::memory_order_relaxed)) return;
-            bandwidthEstimator_.OnLossEventDetected();
-            if (videoRtcpSession_) {
-                videoRtcpSession_->RequestKeyframeDirect();
-            }
-            if (videoTrack_) {
-                videoTrack_->requestKeyframe();
-                uint32_t reduced = bandwidthEstimator_.GetCurrentEstimatedBitrate();
-                videoTrack_->requestBitrate(reduced);
-            }
+        dcVideoDepacketizer_.SetControlSendCallback([this](const std::string& text) {
+            if (controlDc_ && controlDc_->isOpen()) controlDc_->send(text);
         });
-
-        // Initialize WebCodecs DataChannel Depacketizer & Congestion Controller
-        dcVideoDepacketizer_.Reset();
-        dcVideoDepacketizer_.SetCallback([this](const uint8_t* nalData, size_t size, int64_t ts) {
-            isDataChannelVideoActive_.store(true, std::memory_order_relaxed);
-            if (videoCallback_ && size > 0) {
-                videoCallback_(nalData, size, 1280, 720, ts);
-            }
-        });
-        dcVideoDepacketizer_.SetControlSendCallback([this](const std::string& jsonMsg) {
-            if (controlDc_ && controlDc_->isOpen()) {
-                controlDc_->send(jsonMsg);
-            }
-        });
-
-        pc_->onDataChannel([this](std::shared_ptr<rtc::DataChannel> dc) {
-            std::string label = dc->label();
-            std::cout << "[DataChannel] Received incoming channel: " << label << std::endl;
-
-            if (label == km::dc_protocol::kDataChannelVideo) {
-                videoDc_ = dc;
-                videoDc_->onMessage([this](rtc::message_variant msg) {
-                    if (std::holds_alternative<rtc::binary>(msg)) {
-                        const auto& bin = std::get<rtc::binary>(msg);
-                        dcVideoDepacketizer_.ProcessDataChannelPacket(reinterpret_cast<const uint8_t*>(bin.data()), bin.size());
-                    }
-                });
-            } else if (label == km::dc_protocol::kDataChannelControl) {
-                controlDc_ = dc;
-                controlDc_->onMessage([this](rtc::message_variant msg) {
-                    if (std::holds_alternative<std::string>(msg)) {
-                        const auto& text = std::get<std::string>(msg);
-                        if (text.find("\"ping\"") != std::string::npos) {
-                            if (controlDc_ && controlDc_->isOpen()) {
-                                controlDc_->send("{\"type\":\"pong\"}");
-                            }
-                        }
-                        if (controlCallback_) {
-                            controlCallback_(text);
-                        }
-                    }
-                });
-            }
-        });
-
-        pc_->onTrack([this](std::shared_ptr<rtc::Track> track) {
+        pc_->onDataChannel(guarded(weak, [this, weak](std::shared_ptr<rtc::DataChannel> channel) {
+            std::lock_guard lock(rtcMutex_);
+            if (channel->label() == km::dc_protocol::kDataChannelVideo) {
+                if (videoDc_) { channel->close(); return; }
+                videoDc_ = channel;
+                channel->onMessage(guarded(weak, [this](rtc::message_variant message) {
+                    std::lock_guard lock(rtcMutex_);
+                    if (auto* bytes = std::get_if<rtc::binary>(&message)) dcVideoDepacketizer_.ProcessDataChannelPacket(reinterpret_cast<const uint8_t*>(bytes->data()), bytes->size());
+                }));
+                channel->onClosed(guarded(weak, [this] {
+                    std::lock_guard lock(rtcMutex_); dataChannelVideo_ = false; videoDc_.reset(); dcVideoDepacketizer_.Reset(); dcTime_.reset();
+                    h264Depacketizer_.Reset(); rtpTime_.reset(); needKeyframe_ = true;
+                }));
+            } else if (channel->label() == km::dc_protocol::kDataChannelControl) {
+                if (controlDc_) { channel->close(); return; }
+                controlDc_ = channel;
+                channel->onMessage(guarded(weak, [this](rtc::message_variant message) {
+                    std::lock_guard lock(rtcMutex_);
+                    auto* text = std::get_if<std::string>(&message); if (!text || text->size() > 65536) return;
+                    const auto root = km::json::parse(*text);
+                    if (const auto* type = root.find("type"); type && type->string() == "ping" && controlDc_ && controlDc_->isOpen()) controlDc_->send("{\"type\":\"pong\"}");
+                    if (controlCallback_) controlCallback_(*text);
+                }));
+            } else channel->close();
+        }));
+        pc_->onTrack(guarded(weak, [this, weak](std::shared_ptr<rtc::Track> track) {
+            std::lock_guard lock(rtcMutex_); auto media = track->description();
+            if (allTracks_.size() >= 2) { track->close(); return; }
+            if (media.type() == "video") {
+                if (videoTrack_) { track->close(); return; }
+                std::vector<uint8_t> payloadTypes;
+                for (int pt : media.payloadTypes()) {
+                    const auto* map = media.rtpMap(pt);
+                    if (map && lower(map->format) == "h264" && map->clockRate == 90000 && pt >= 0 && pt <= 127) payloadTypes.push_back(uint8_t(pt));
+                }
+                if (payloadTypes.empty()) { track->close(); return; }
+                videoTrack_ = track; videoRtcpSession_ = std::make_shared<EnhancedRtcpReceivingSession>();
+                videoRtcpSession_->SetBandwidthEstimator(bandwidthEstimator_);
+                for (int id : media.extIds()) {
+                    auto* ext = media.extMap(id);
+                    if (id > 0 && id <= 14 && ext && ext->uri.find("transport-wide-cc") != std::string::npos) videoRtcpSession_->SetTransportCcExtensionId(uint8_t(id));
+                }
+                track->setMediaHandler(videoRtcpSession_);
+                track->onMessage(guarded(weak, [this, payloadTypes](rtc::message_variant message) {
+                    std::lock_guard lock(rtcMutex_);
+                    auto* bytes = std::get_if<rtc::binary>(&message); if (!bytes) return;
+                    const km::wire::Bytes wire{reinterpret_cast<const uint8_t*>(bytes->data()), bytes->size()};
+                    const auto packet = km::wire::parseRtp(wire);
+                    if (!packet || std::find(payloadTypes.begin(), payloadTypes.end(), packet->payloadType) == payloadTypes.end()) return;
+                    if (!haveVideoSsrc_ || videoSsrc_ != packet->ssrc) { rtpTime_.reset(); videoSsrc_ = packet->ssrc; haveVideoSsrc_ = true; }
+                    const auto now = nowUs() / 1000;
+                    bandwidthEstimator_->OnRtpPacketReceived(bytes->size(), packet->sequence, now);
+                    if (!dataChannelVideo_) h264Depacketizer_.ProcessRtpPacket(wire.data(), wire.size());
+                    uint32_t target = 0;
+                    if (bandwidthEstimator_->EvaluateEstimation(now, target) && videoTrack_) videoTrack_->requestBitrate(target);
+                }));
+            } else if (media.type() == "audio") {
+                if (audioTrack_) { track->close(); return; }
+                int opusPt = -1;
+                for (int pt : media.payloadTypes()) {
+                    const auto* map = media.rtpMap(pt);
+                    if (map && lower(map->format) == "opus" && map->clockRate == 48000 && pt >= 0 && pt <= 127) { opusPt = pt; break; }
+                }
+                if (opusPt < 0 || !opusDecoder_.Configure(uint8_t(opusPt), [this](const int16_t* pcm, size_t elements, int channels, int rate) {
+                    if (audioCallback_) audioCallback_(pcm, elements, channels, rate);
+                })) { std::cerr << "[RTC] Opus audio unavailable; audio track rejected\n"; track->close(); return; }
+                audioTrack_ = track; audioRtcpSession_ = std::make_shared<EnhancedRtcpReceivingSession>(48000);
+                track->setMediaHandler(audioRtcpSession_);
+                track->onMessage(guarded(weak, [this](rtc::message_variant message) {
+                    std::lock_guard lock(rtcMutex_);
+                    if (auto* bytes = std::get_if<rtc::binary>(&message)) opusDecoder_.Receive({reinterpret_cast<const uint8_t*>(bytes->data()), bytes->size()}, nowUs());
+                }));
+            } else { track->close(); return; }
             allTracks_.push_back(track);
-
-            auto media = track->description();
-            std::string typeStr = media.type();
-            std::string descStr = media.description();
-
-            if (typeStr == "video" || descStr.find("video") != std::string::npos || descStr.find("H264") != std::string::npos || descStr.find("h264") != std::string::npos) {
-                videoTrack_ = track;
-
-                // Attach Enhanced RTCP session for accurate RR, REMB timer, and TWCC feedback
-                videoRtcpSession_ = std::make_shared<EnhancedRtcpReceivingSession>();
-                videoRtcpSession_->SetBandwidthEstimator(&bandwidthEstimator_);
-                videoRtcpSession_->SetTransportCcExtensionId(transportCcExtId_.load(std::memory_order_relaxed));
-                videoTrack_->setMediaHandler(videoRtcpSession_);
-
-                videoTrack_->onMessage([this](rtc::message_variant msg) {
-                    if (std::holds_alternative<rtc::binary>(msg)) {
-                        const auto& bin = std::get<rtc::binary>(msg);
-                        auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::steady_clock::now().time_since_epoch()
-                        ).count();
-
-                        if (bin.size() >= 12) {
-                            const uint8_t* p = reinterpret_cast<const uint8_t*>(bin.data());
-                            uint16_t seq = (static_cast<uint16_t>(p[2]) << 8) | p[3];
-                            bandwidthEstimator_.OnRtpPacketReceived(bin.size(), seq, nowMs);
-                        }
-
-                        h264Depacketizer_.ProcessRtpPacket(reinterpret_cast<const uint8_t*>(bin.data()), bin.size());
-
-                        uint32_t targetBps = 0;
-                        if (bandwidthEstimator_.EvaluateEstimation(nowMs, targetBps)) {
-                            if (videoTrack_) {
-                                videoTrack_->requestBitrate(targetBps);
-                            }
-                        }
-                    }
-                });
-
-                videoTrack_->requestKeyframe();
-                videoTrack_->requestBitrate(bandwidthEstimator_.GetCurrentEstimatedBitrate());
-            } else if (typeStr == "audio" || descStr.find("audio") != std::string::npos || descStr.find("opus") != std::string::npos) {
-                audioTrack_ = track;
-                audioTrack_->setMediaHandler(std::make_shared<rtc::RtcpReceivingSession>());
-                audioTrack_->onFrame([this](rtc::binary frame, rtc::FrameInfo info) {
-                    if (audioCallback_ && !frame.empty()) {
-                        audioCallback_(reinterpret_cast<const int16_t*>(frame.data()), frame.size() / 2, 2, 48000);
-                    }
-                });
+        }));
+        timer_ = std::jthread([this, weak](std::stop_token stop) {
+            while (!stop.stop_requested()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                auto gate = weak.lock(); if (!gate) break;
+                auto lease = gate->enter(); if (!lease) break;
+                try {
+                    std::lock_guard lock(rtcMutex_);
+                    dcVideoDepacketizer_.OnTimerTick(); opusDecoder_.Tick(nowUs());
+                    if (videoRtcpSession_) videoRtcpSession_->FlushFeedback();
+                    if (audioRtcpSession_) audioRtcpSession_->FlushFeedback();
+                    if (needKeyframe_) SendKeyframeRequest();
+                } catch (const std::exception&) { std::cerr << "[RTC] Timer processing failed\n"; }
             }
         });
-
         return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to initialize libdatachannel PeerConnection: " << e.what() << std::endl;
-        return false;
-    }
+    } catch (const std::exception&) { CloseInternal(); return false; }
 }
-
-bool PeerConnectionManager::ProcessOfferAndGenerateAnswer(const std::string& offerSdp, std::string& outAnswerSdp) {
-    std::lock_guard<std::mutex> lock(rtcMutex_);
-    if (!pc_) return false;
-
+bool PeerConnectionManager::ProcessOfferAndGenerateAnswer(const std::string& sdp, std::string& answer) {
+    answer.clear(); std::shared_ptr<rtc::PeerConnection> peer; uint64_t serial = 0;
+    { std::lock_guard lock(rtcMutex_); peer = pc_; serial = sessionSerial_.load(); gatheringComplete_ = false; }
+    if (!peer || cancelled_ || sdp.empty() || sdp.size() > 512 * 1024) return false;
     try {
-        isGatheringComplete_ = false;
-
-        // Parse transport-cc extension ID from Offer SDP
-        uint8_t extId = ParseTransportCcExtensionIdFromSdp(offerSdp);
-        transportCcExtId_.store(extId, std::memory_order_relaxed);
-        if (extId > 0) {
-            std::cout << "[WebRTC] Negotiated TWCC extension ID: " << static_cast<int>(extId) << std::endl;
-            if (videoRtcpSession_) {
-                videoRtcpSession_->SetTransportCcExtensionId(extId);
+        rtc::Description offer(sdp, rtc::Description::Type::Offer, rtc::Description::Role::Active);
+        for (int i = 0; i < offer.mediaCount(); ++i) {
+            auto entry = offer.media(i);
+            if (auto* m = std::get_if<rtc::Description::Media*>(&entry)) {
+                auto* media = *m;
+                for (int pt : media->payloadTypes()) {
+                    const auto* map = media->rtpMap(pt);
+                    const bool keep = map && ((media->type() == "video" && lower(map->format) == "h264" && map->clockRate == 90000) ||
+                        (KM_ENABLE_OPUS && media->type() == "audio" && lower(map->format) == "opus" && map->clockRate == 48000));
+                    if (!keep) media->removeRtpMap(pt);
+                }
+                if (media->payloadTypes().empty()) media->markRemoved();
             }
         }
-
-        // Apply Offer SDP directly (preserving transport-cc for browser GCC)
-        pc_->setRemoteDescription(rtc::Description(offerSdp, rtc::Description::Type::Offer, rtc::Description::Role::Active));
-        if (pc_->gatheringState() == rtc::PeerConnection::GatheringState::Complete) {
-            isGatheringComplete_ = true;
+        peer->setRemoteDescription(offer);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!gatheringComplete_ && peer->gatheringState() != rtc::PeerConnection::GatheringState::Complete) {
+            if (cancelled_ || serial != sessionSerial_ || std::chrono::steady_clock::now() >= deadline) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
-
-        // Wait for ICE gathering to complete (Non-Trickle ICE)
-        auto startTime = std::chrono::steady_clock::now();
-        while (!isGatheringComplete_) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count();
-            if (elapsed > 10000) {
-                break; // Timeout fallback
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-
-        auto localDesc = pc_->localDescription();
-        if (!localDesc.has_value()) {
-            return false;
-        }
-
-        outAnswerSdp = std::string(localDesc.value());
-        return !outAnswerSdp.empty();
-    } catch (const std::exception& e) {
-        std::cerr << "Error during Offer/Answer negotiation: " << e.what() << std::endl;
-        return false;
+        if (cancelled_ || serial != sessionSerial_) return false;
+        auto local = peer->localDescription(); if (!local) return false; answer = std::string(*local); return !answer.empty();
+    } catch (const std::exception&) { return false; }
+}
+void PeerConnectionManager::SendKeyframeRequest() {
+    const auto now = nowUs(); if (lastKeyframeRequestUs_ >= 0 && now - lastKeyframeRequestUs_ < 50000) return;
+    lastKeyframeRequestUs_ = now;
+    try {
+        if (dataChannelVideo_ || videoDc_) { if (controlDc_ && controlDc_->isOpen()) controlDc_->send("{\"type\":\"pli\"}"); }
+        else if (videoRtcpSession_) videoRtcpSession_->RequestKeyframeDirect();
+    } catch (const std::exception&) { /* timer retries until a configured IDR arrives */ }
+}
+void PeerConnectionManager::RequestKeyframe() { std::lock_guard lock(rtcMutex_); needKeyframe_ = true; SendKeyframeRequest(); }
+void PeerConnectionManager::RequestBitrate(uint32_t bitrate) { std::lock_guard lock(rtcMutex_); if (videoTrack_) videoTrack_->requestBitrate(bitrate); }
+uint32_t PeerConnectionManager::GetEstimatedBitrate() const { std::lock_guard lock(rtcMutex_); return bandwidthEstimator_->GetCurrentEstimatedBitrate(); }
+uint32_t PeerConnectionManager::GetMeasuredThroughput() const { std::lock_guard lock(rtcMutex_); return bandwidthEstimator_->GetMeasuredThroughputBps(); }
+float PeerConnectionManager::GetLossRatio() const { std::lock_guard lock(rtcMutex_); return bandwidthEstimator_->GetCurrentLossRatio(); }
+void PeerConnectionManager::SendControlMessage(const std::string& text) {
+    if (text.size() > 65536) return; std::lock_guard lock(rtcMutex_);
+    try { if (controlDc_ && controlDc_->isOpen()) controlDc_->send(text); } catch (const std::exception&) {}
+}
+void PeerConnectionManager::SetControlMessageCallback(std::function<void(const std::string&)> callback) { std::lock_guard lock(rtcMutex_); controlCallback_ = std::move(callback); }
+void PeerConnectionManager::CancelPending() { cancelled_ = true; }
+void PeerConnectionManager::Close() { std::lock_guard lifecycle(lifecycleMutex_); CloseInternal(); }
+void PeerConnectionManager::CloseInternal() {
+    cancelled_ = true; ++sessionSerial_;
+    if (gate_) gate_->closeAndWait(); // no rtcMutex held while waiting for callbacks
+    if (timer_.joinable()) { timer_.request_stop(); timer_.join(); }
+    std::shared_ptr<rtc::PeerConnection> peer;
+    {
+        std::lock_guard lock(rtcMutex_);
+        if (videoRtcpSession_) videoRtcpSession_->Stop();
+        if (audioRtcpSession_) audioRtcpSession_->Stop();
+        peer = std::move(pc_); videoDc_.reset(); controlDc_.reset(); allTracks_.clear();
+        videoTrack_.reset(); audioTrack_.reset(); videoRtcpSession_.reset(); audioRtcpSession_.reset();
+        h264Depacketizer_.Reset(); dcVideoDepacketizer_.Reset(); opusDecoder_.Reset(); rtpTime_.reset(); dcTime_.reset();
+        dataChannelVideo_ = haveVideoSsrc_ = false; needKeyframe_ = true; lastKeyframeRequestUs_ = -1;
+        stateCallback_ = {}; videoCallback_ = {}; audioCallback_ = {}; controlCallback_ = {}; gate_.reset();
     }
+    if (peer) { try { peer->close(); } catch (const std::exception&) {} }
 }
-
-void PeerConnectionManager::RequestBitrate(uint32_t bitrateBps) {
-    if (videoTrack_) {
-        videoTrack_->requestBitrate(bitrateBps);
-    }
-}
-
-uint32_t PeerConnectionManager::GetEstimatedBitrate() const {
-    return bandwidthEstimator_.GetCurrentEstimatedBitrate();
-}
-
-uint32_t PeerConnectionManager::GetMeasuredThroughput() const {
-    return bandwidthEstimator_.GetMeasuredThroughputBps();
-}
-
-float PeerConnectionManager::GetLossRatio() const {
-    return bandwidthEstimator_.GetCurrentLossRatio();
-}
-
-void PeerConnectionManager::SendControlMessage(const std::string& json) {
-    std::lock_guard<std::mutex> lock(rtcMutex_);
-    if (controlDc_ && controlDc_->isOpen()) {
-        try {
-            controlDc_->send(json);
-        } catch (...) {}
-    }
-}
-
-void PeerConnectionManager::Close() {
-    if (pc_) {
-        try {
-            pc_->close();
-        } catch (...) {}
-        pc_.reset();
-    }
-    videoDc_.reset();
-    controlDc_.reset();
-    allTracks_.clear();
-    videoRtcpSession_.reset();
-    videoTrack_.reset();
-    audioTrack_.reset();
-    h264Depacketizer_.Reset();
-    dcVideoDepacketizer_.Reset();
-    bandwidthEstimator_.Reset();
-}
-
 } // namespace km::rtc_net
