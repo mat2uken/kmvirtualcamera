@@ -1,0 +1,527 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1603FC5989AC8BBF36AA6F6C /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 58B81D792C46776E9C06E2AE /* main.mm */; };
+		37B1917626B2620EBD423A68 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5194BF88B2B676009952065E /* CoreMedia.framework */; };
+		400E03DEBC36B3DB7E2EB095 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = A4BBD5813A550E31C965DCAF /* main.mm */; };
+		51C068E48BC2D517B14435F0 /* SystemExtensions.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CBF8698D2EBE82C464E5D05 /* SystemExtensions.framework */; };
+		587DAAB1DC0D7779EA9DF9C2 /* app_delegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 576349DB23E6060DB872F396 /* app_delegate.mm */; };
+		6A89551BFF6654C04ACB6C11 /* KMVirtualCameraExtension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 564C24781D1B77DFFC33A70C /* KMVirtualCameraExtension.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		6EEF6D817EF173F46BF69925 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC6773DB3B0D146EBFB79592 /* CoreMediaIO.framework */; };
+		78B509430C4905B27341F22B /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC131682FCA6BC0310A19882 /* CoreVideo.framework */; };
+		997076B1A10C695CEA9C778E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A2E241C71F01A6E59CE6818 /* Foundation.framework */; };
+		E1A2899AC04A7A88C36C590E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A2E241C71F01A6E59CE6818 /* Foundation.framework */; };
+		E3069CF4DDD3BBBB049B2386 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC6773DB3B0D146EBFB79592 /* CoreMediaIO.framework */; };
+		F76FB1F422788608FF10099F /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 29C3DE69941AE691ABC090F2 /* AppKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CA96E25EA7A98938DA88B3C0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 61278E3A327E3979A703135E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DF664DB340388586A2F4CB04;
+			remoteInfo = KMVirtualCameraExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5C4E792AB2A9C5C2874BABE5 /* Embed System Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(SYSTEM_EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				6A89551BFF6654C04ACB6C11 /* KMVirtualCameraExtension.systemextension in Embed System Extensions */,
+			);
+			name = "Embed System Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		29C3DE69941AE691ABC090F2 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		2A2E241C71F01A6E59CE6818 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		5194BF88B2B676009952065E /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		564C24781D1B77DFFC33A70C /* KMVirtualCameraExtension.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = KMVirtualCameraExtension.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
+		576349DB23E6060DB872F396 /* app_delegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = app_delegate.mm; sourceTree = "<group>"; };
+		58B81D792C46776E9C06E2AE /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		7CBF8698D2EBE82C464E5D05 /* SystemExtensions.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemExtensions.framework; path = System/Library/Frameworks/SystemExtensions.framework; sourceTree = SDKROOT; };
+		8007E79E37AFECEBBC86CDA5 /* KMVirtualCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KMVirtualCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A4BBD5813A550E31C965DCAF /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		DC6773DB3B0D146EBFB79592 /* CoreMediaIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMediaIO.framework; path = System/Library/Frameworks/CoreMediaIO.framework; sourceTree = SDKROOT; };
+		FC131682FCA6BC0310A19882 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6CC05A4AF027882066475BA3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E1A2899AC04A7A88C36C590E /* Foundation.framework in Frameworks */,
+				6EEF6D817EF173F46BF69925 /* CoreMediaIO.framework in Frameworks */,
+				37B1917626B2620EBD423A68 /* CoreMedia.framework in Frameworks */,
+				78B509430C4905B27341F22B /* CoreVideo.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E81BA8F69EE23D900DA3B4B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F76FB1F422788608FF10099F /* AppKit.framework in Frameworks */,
+				997076B1A10C695CEA9C778E /* Foundation.framework in Frameworks */,
+				E3069CF4DDD3BBBB049B2386 /* CoreMediaIO.framework in Frameworks */,
+				51C068E48BC2D517B14435F0 /* SystemExtensions.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1486187C94698F1249199FDB /* host */ = {
+			isa = PBXGroup;
+			children = (
+				576349DB23E6060DB872F396 /* app_delegate.mm */,
+				58B81D792C46776E9C06E2AE /* main.mm */,
+			);
+			path = host;
+			sourceTree = "<group>";
+		};
+		404E02A59F9EA36F0C4D1C54 /* camera-extension */ = {
+			isa = PBXGroup;
+			children = (
+				A4BBD5813A550E31C965DCAF /* main.mm */,
+			);
+			path = "camera-extension";
+			sourceTree = "<group>";
+		};
+		7A195908B032C1B8111E53CB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				29C3DE69941AE691ABC090F2 /* AppKit.framework */,
+				5194BF88B2B676009952065E /* CoreMedia.framework */,
+				DC6773DB3B0D146EBFB79592 /* CoreMediaIO.framework */,
+				FC131682FCA6BC0310A19882 /* CoreVideo.framework */,
+				2A2E241C71F01A6E59CE6818 /* Foundation.framework */,
+				7CBF8698D2EBE82C464E5D05 /* SystemExtensions.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BA619BF546ED614AD422AB7F = {
+			isa = PBXGroup;
+			children = (
+				404E02A59F9EA36F0C4D1C54 /* camera-extension */,
+				1486187C94698F1249199FDB /* host */,
+				7A195908B032C1B8111E53CB /* Frameworks */,
+				DD11A02EBFFA263D713E96B7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DD11A02EBFFA263D713E96B7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8007E79E37AFECEBBC86CDA5 /* KMVirtualCamera.app */,
+				564C24781D1B77DFFC33A70C /* KMVirtualCameraExtension.systemextension */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4DA134819BEACEF805599DFB /* KMVirtualCamera */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 65F4994ACA244CA1027A1ADB /* Build configuration list for PBXNativeTarget "KMVirtualCamera" */;
+			buildPhases = (
+				9BD2AC63D54D964BF3A82629 /* Build km_macos static libraries */,
+				BD919220442A3FBC2722F0EB /* Sources */,
+				7E81BA8F69EE23D900DA3B4B /* Frameworks */,
+				5C4E792AB2A9C5C2874BABE5 /* Embed System Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				36740BB952DED3FF3480990A /* PBXTargetDependency */,
+			);
+			name = KMVirtualCamera;
+			packageProductDependencies = (
+			);
+			productName = KMVirtualCamera;
+			productReference = 8007E79E37AFECEBBC86CDA5 /* KMVirtualCamera.app */;
+			productType = "com.apple.product-type.application";
+		};
+		DF664DB340388586A2F4CB04 /* KMVirtualCameraExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A258D952ECD6B30D0CF45AB /* Build configuration list for PBXNativeTarget "KMVirtualCameraExtension" */;
+			buildPhases = (
+				DE8BD71F8290C638678632A7 /* Build km_macos static libraries */,
+				23949E190E52DAD7807AA167 /* Sources */,
+				6CC05A4AF027882066475BA3 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KMVirtualCameraExtension;
+			packageProductDependencies = (
+			);
+			productName = KMVirtualCameraExtension;
+			productReference = 564C24781D1B77DFFC33A70C /* KMVirtualCameraExtension.systemextension */;
+			productType = "com.apple.product-type.system-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		61278E3A327E3979A703135E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					4DA134819BEACEF805599DFB = {
+						DevelopmentTeam = K7VNGA9K78;
+						ProvisioningStyle = Automatic;
+					};
+					DF664DB340388586A2F4CB04 = {
+						DevelopmentTeam = K7VNGA9K78;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 0D1D8D0641EEFF77925CCC5C /* Build configuration list for PBXProject "KMVirtualCamera" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BA619BF546ED614AD422AB7F;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = DD11A02EBFFA263D713E96B7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4DA134819BEACEF805599DFB /* KMVirtualCamera */,
+				DF664DB340388586A2F4CB04 /* KMVirtualCameraExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		9BD2AC63D54D964BF3A82629 /* Build km_macos static libraries */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build km_macos static libraries";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/../scripts/build_macos_xcode_deps.sh\"";
+		};
+		DE8BD71F8290C638678632A7 /* Build km_macos static libraries */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build km_macos static libraries";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/../scripts/build_macos_xcode_deps.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		23949E190E52DAD7807AA167 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				400E03DEBC36B3DB7E2EB095 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BD919220442A3FBC2722F0EB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				587DAAB1DC0D7779EA9DF9C2 /* app_delegate.mm in Sources */,
+				1603FC5989AC8BBF36AA6F6C /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		36740BB952DED3FF3480990A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DF664DB340388586A2F4CB04 /* KMVirtualCameraExtension */;
+			targetProxy = CA96E25EA7A98938DA88B3C0 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1A11572D5B1EC7F0E38D91B4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = config/CameraExtension.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../shared";
+				INFOPLIST_FILE = "camera-extension/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
+				OTHER_LDFLAGS = "$(inherited) -lkm_camera_relay -lkm_macos_buffers";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.mat2uken.kmvirtualcamera.camera-extension";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		2239FC2CB2CC0BF8010BEFD3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = K7VNGA9K78;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.3;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2861B93131953AE9C868A90F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = config/Host.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../shared";
+				INFOPLIST_FILE = host/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
+				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager";
+				PRODUCT_BUNDLE_IDENTIFIER = com.mat2uken.kmvirtualcamera;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		52C68E33CE1ABFF6BE998D9B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = K7VNGA9K78;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.3;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		9F51F2099BAC9300C8A72518 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = config/Host.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../shared";
+				INFOPLIST_FILE = host/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
+				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager";
+				PRODUCT_BUNDLE_IDENTIFIER = com.mat2uken.kmvirtualcamera;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		DBE95E39AAECB9348BA8110D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = config/CameraExtension.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../shared";
+				INFOPLIST_FILE = "camera-extension/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
+				OTHER_LDFLAGS = "$(inherited) -lkm_camera_relay -lkm_macos_buffers";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.mat2uken.kmvirtualcamera.camera-extension";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0D1D8D0641EEFF77925CCC5C /* Build configuration list for PBXProject "KMVirtualCamera" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2239FC2CB2CC0BF8010BEFD3 /* Debug */,
+				52C68E33CE1ABFF6BE998D9B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1A258D952ECD6B30D0CF45AB /* Build configuration list for PBXNativeTarget "KMVirtualCameraExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A11572D5B1EC7F0E38D91B4 /* Debug */,
+				DBE95E39AAECB9348BA8110D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		65F4994ACA244CA1027A1ADB /* Build configuration list for PBXNativeTarget "KMVirtualCamera" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2861B93131953AE9C868A90F /* Debug */,
+				9F51F2099BAC9300C8A72518 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 61278E3A327E3979A703135E /* Project object */;
+}

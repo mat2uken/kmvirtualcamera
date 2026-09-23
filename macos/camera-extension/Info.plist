@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDevelopmentRegion</key><string>ja</string>
+  <key>CFBundleDisplayName</key><string>KM Virtual Camera</string>
+  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+  <key>CFBundlePackageType</key><string>SYSX</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>12.3</string>
+  <key>CMIOExtension</key>
+  <dict>
+    <key>CMIOExtensionMachServiceName</key>
+    <string>$(TeamIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  </dict>
+  <key>NSSystemExtensionUsageDescription</key>
+  <string>仮想カメラを提供するため、カメラ拡張機能を追加・更新します。</string>
+</dict></plist>

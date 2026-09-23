@@ -1,0 +1,72 @@
+# Xcode project spec for the AppKit host and the Camera Extension.
+# Generate with: sh scripts/generate_xcode_project.sh
+# DEVELOPMENT_TEAM below is a temporary development value, NOT a product setting.
+name: KMVirtualCamera
+options:
+  bundleIdPrefix: com.mat2uken.kmvirtualcamera
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "12.3"
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "12.3"
+    DEVELOPMENT_TEAM: K7VNGA9K78
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CLANG_ENABLE_OBJC_ARC: YES
+targets:
+  KMVirtualCamera:
+    type: application
+    platform: macOS
+    scheme:
+      buildTargets: KMVirtualCamera
+    sources:
+      - path: host/main.mm
+      - path: host/app_delegate.mm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mat2uken.kmvirtualcamera
+        INFOPLIST_FILE: host/Info.plist
+        CODE_SIGN_ENTITLEMENTS: config/Host.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        LIBRARY_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../build/macos-foundation/macos"
+        OTHER_LDFLAGS: "$(inherited) -lkm_extension_manager"
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../shared"
+    preBuildScripts:
+      - name: Build km_macos static libraries
+        script: '"${SRCROOT}/../scripts/build_macos_xcode_deps.sh"'
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - target: KMVirtualCameraExtension
+        embed: true
+      - sdk: AppKit.framework
+      - sdk: Foundation.framework
+      - sdk: CoreMediaIO.framework
+      - sdk: SystemExtensions.framework
+
+  KMVirtualCameraExtension:
+    type: system-extension
+    platform: macOS
+    scheme:
+      buildTargets: KMVirtualCameraExtension
+    sources:
+      - path: camera-extension/main.mm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mat2uken.kmvirtualcamera.camera-extension
+        INFOPLIST_FILE: camera-extension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: config/CameraExtension.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        LIBRARY_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../build/macos-foundation/macos"
+        OTHER_LDFLAGS: "$(inherited) -lkm_camera_relay -lkm_macos_buffers"
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../shared"
+    preBuildScripts:
+      - name: Build km_macos static libraries
+        script: '"${SRCROOT}/../scripts/build_macos_xcode_deps.sh"'
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - sdk: Foundation.framework
+      - sdk: CoreMediaIO.framework
+      - sdk: CoreMedia.framework
+      - sdk: CoreVideo.framework

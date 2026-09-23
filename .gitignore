@@ -35,6 +35,9 @@ test_screenshots/
 .vscode/
 .idea/
 
+# macOS Xcode Build Outputs
+macos/DerivedData/
+
 # OS Files
 Thumbs.db
 Desktop.ini
