@@ -1,0 +1,37 @@
+name: Review foundation
+on:
+  push:
+    branches: [feature/macos-coremediaio-foundation]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Common contracts and sanitizers
+        env:
+          CC: clang
+          CXX: clang++
+        run: sh scripts/test_foundation.sh -DKM_ENABLE_SANITIZERS=ON -DKM_ENABLE_OPUS=ON
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix cloud
+      - run: sh scripts/test_browser_protocol.sh
+      - run: npm run --prefix cloud build
+  windows-compile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S windows -B build/windows -DKM_ENABLE_OPUS=ON
+      - run: cmake --build build/windows --config Release --target Receiver test_h264_depacketizer test_receiver_startup test_webrtc_dtls
+      - run: ctest --test-dir build/windows -C Release --output-on-failure -R H264DepacketizerTest
+  macos-components:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/test_macos_foundation.sh
