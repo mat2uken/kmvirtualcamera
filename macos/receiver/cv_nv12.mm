@@ -61,11 +61,34 @@ PixelBuffer Normalize720p(CVPixelBufferRef input, int rotation, std::string& err
         error = "Unsupported frame dimensions";
         return {};
     }
-    // Do not silently ignore source geometry; add clean-aperture/SAR handling before production.
-    if (CVBufferGetAttachment(input, kCVImageBufferCleanApertureKey, nullptr) ||
-        CVBufferGetAttachment(input, kCVImageBufferPixelAspectRatioKey, nullptr)) {
-        error = "Clean-aperture/pixel-aspect normalization is not implemented";
+    // Reject only non-identity source geometry. VideoToolbox attaches an identity
+    // pixel-aspect (1:1) to decoded frames, so a bare presence check would stop video.
+    if (CFTypeRef aperture = CVBufferGetAttachment(input, kCVImageBufferCleanApertureKey, nullptr)) {
+        error = "Clean-aperture normalization is not implemented: " + [&] {
+            CFStringRef desc = CFCopyDescription(aperture);
+            char buffer[256];
+            const bool ok = desc && CFStringGetCString(desc, buffer, sizeof(buffer), kCFStringEncodingUTF8);
+            if (desc) CFRelease(desc);
+            return ok ? std::string(buffer) : std::string("(unknown)");
+        }();
         return {};
+    }
+    if (CFTypeRef aspect = CVBufferGetAttachment(input, kCVImageBufferPixelAspectRatioKey, nullptr)) {
+        CFDictionaryRef dict = (CFDictionaryRef)aspect;
+        auto number = [&](CFStringRef key) -> int {
+            CFTypeRef value = CFDictionaryGetValue(dict, key);
+            if (!value || CFGetTypeID(value) != CFNumberGetTypeID()) return -1;
+            int out = -1;
+            CFNumberGetValue((CFNumberRef)value, kCFNumberIntType, &out);
+            return out;
+        };
+        const int horizontal = number(kCVImageBufferPixelAspectRatioHorizontalSpacingKey);
+        const int vertical = number(kCVImageBufferPixelAspectRatioVerticalSpacingKey);
+        if (horizontal != 1 || vertical != 1) {
+            error = "Non-square pixel aspect (" + std::to_string(horizontal) + ":" +
+                    std::to_string(vertical) + ") is not implemented";
+            return {};
+        }
     }
     if (rotation == 0 && CVPixelBufferGetWidth(input) == 1280 && CVPixelBufferGetHeight(input) == 720)
         return PixelBuffer::retain(input);
