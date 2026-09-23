@@ -1,17 +1,13 @@
-# macOS対応の実装基盤
+# macOS対応と共通受信基盤
 
-`feature/macos-coremediaio-foundation` の入口です。これは完成したmacOS受信アプリではありません。
-共通C++処理の抽出・DataChannel再構成の修正・macOSネイティブ部品・継続実装の資料を含みます。
+対象branch: `feature/macos-coremediaio-foundation`。
+R01–R13追加修正の適用基準: `f7c7eb3777a00924e8498fb2ca1d0d277b1b5951`。
 
-最初に [現在の実装・検証状態](docs/macos/07_STATUS_AND_HANDOFF.md) を確認してください。
-設計全体は [資料一覧](docs/macos/README.md)、次の実装指示は [Codex引き継ぎプロンプト](docs/macos/CODEX_CONTINUE_PROMPT.md) にあります。
+- [状態・実際の検証記録](docs/macos/07_STATUS_AND_HANDOFF.md)
+- [R01–R13への追加修正](docs/macos/09_REVIEW_FIXES.md)
+- [更新後の実装計画](docs/macos/05_IMPLEMENTATION_PLAN.md)
+- [次の担当者へのプロンプト](docs/macos/CODEX_CONTINUE_PROMPT.md)
 
-```sh
-sh scripts/test_foundation.sh
-# 以下はmacOS実機上だけで実行。カメラの登録・署名はしません。
-sh scripts/test_macos_foundation.sh
-```
-
-Windowsの既存ビルド入口 `windows/CMakeLists.txt` とクラウド／ブラウザ送信側は維持しています。
-ただしWindowsのDataChannel再構成は共通の修正版を参照するため、動作変更があります。
-Windowsアプリ全体の再ビルド・E2E試験を省略してmainへマージしないでください。
+共通試験は `sh scripts/test_foundation.sh`、browser protocol試験は `sh scripts/test_browser_protocol.sh`。
+Mac上の部品ビルドは `sh scripts/test_macos_foundation.sh`。このコマンドは仮想カメラの登録を行いません。
+署名済みhost/Camera Extension、host-side sinkなどは継続実装が必要です。

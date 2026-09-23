@@ -1,69 +1,59 @@
-# 07 現在の状態と引き継ぎ
+# 07 状態と引き継ぎ（R01–R13追加修正版）
 
-作成日: 2026-09-23。
-ブランチ: `feature/macos-coremediaio-foundation`。
-基準main: `1f22e7423748a1de6469e40ef5516a29d9b19fa8`。
-共通コードの初回コミット: `22380cd7e9cbe88bf5b1eedf3c47f07f7828b094`。
+作成日: 2026-09-23。適用基準は `f7c7eb3777a00924e8498fb2ca1d0d277b1b5951`。
+macOSアプリ完成版ではなく、共通受信とWindows側の問題修正を追加した実装土台です。
 
-**macOS移植完了ではありません。Mac実機で次の実装を続けるための、コードと設計資料の土台です。**
+## 今回の実装
 
-## 追加・変更したもの
+R01–R13の対策コードを追加しました。詳細は [09_REVIEW_FIXES.md](09_REVIEW_FIXES.md)。
+パケット検証、JSON/HTTP処理、Opus復号、bounded queueを変更しました。
+decoder操作の単一owner、pacing、timer、callback終了待ちも追加しました。
+ブラウザではAU上限と旧世代の結果の破棄を実装しました。
 
-| 区分 | 内容 | 状態 |
-|---|---|---|
-| 共通media | DataChannel再構成をbounded/validatedへ変更、既定dump廃止 | コード追加・Linux単体検証済み |
-| 共通helpers | H.264変換、clock unwrap、有理数pacing、latest decoded frame、NV12基準処理 | コード追加・Linux単体検証済み |
-| RTC抽出 | RTP、TWCC、RTCP、帯域推定、signaling modelをsharedへ移動 | 既存blobと同内容。追加の安全性修正／全体ビルドは未実施 |
-| Windows互換 | 旧パスをsharedへの転送ファイル化 | DCの直接compile試験済み。Windows全体は未検証 |
-| 共通境界 | EncodedVideoFrame / IVideoPipeline / IHttpTransport | 宣言・契約。全adapterの接続は未実装 |
-| macOS codec | VideoToolboxDecoder、PixelBuffer、420v正規化 | 実装コードあり。SDKコンパイル・実機は未検証 |
-| macOS camera | KMFrameRelay、KMExtensionManager | 実装部品あり。Provider/Device/Streamsとホストアプリは未実装 |
-| build | root CMake、MacライブラリとCLI、shell試験入口 | 共通CMake検証済み。Mac CMake実行は未実施 |
-| 資料 | 監査、設計、契約、統合、計画、試験、決定、継続prompt | 本ディレクトリ |
+## パッケージ作成時の試験
 
-## 実際に実行した試験
+Linuxの作業環境で、下記のソースを直接コンパイル/実行しました。
+新しいテストを実行したことと、完全なリポジトリのCMakeビルドが成功したことを混同しないでください。
 
-本タスクのLinux環境で以下の実行結果を確認しました。GitHub Actionsを実行したという記録ではありません。
+| 試験 | 結果 |
+|---|---|
+| `test_review.cpp` + H264 RTP reassembler / Clang / ASan+UBSan | Passed。固定seedの不正datagram 50,000件を含む |
+| 同上 / GCC / Release | Passed |
+| `test_session.cpp` / Clang / ASan+UBSan | Passed。mock HTTP/JSON/ICE/escape/応答上限 |
+| `test_opus.cpp` + OpusRtpDecoder / Clang / ASan+UBSan | Passed。Linuxにインストール済みの実libopus.so.0へリンク |
+| browser sender/helper / `tsc --strict` | Passed |
+| `tests/browser/test_packetizer.cjs` / Node 22 | Passed。255境界、oversize send0回、失敗、IDR/世代 |
 
-```text
-GCC 14.2.0 / Release:
-  common_contracts        Passed
-  datachannel_regression  Passed
-  100% tests passed, 0 tests failed out of 2
+パッケージ作成時のOpus試験はLinuxのシステムライブラリを使いました。
+GitHub Actions workflowを同梱していますが、CI成功は確認していません。
 
-Clang 17.0.0 / Debug / AddressSanitizer + UndefinedBehaviorSanitizer:
-  common_contracts        Passed
-  datachannel_regression  Passed
-  100% tests passed, 0 tests failed out of 2
+## Macでの適用と再確認
 
-GCC direct compile of windows/receiver/codec/dc_video_depacketizer.cpp
-  + tests/shared/test_dc.cpp:
-  datachannel_regression: all checks passed, malformed corpus=20000
-```
+Apple Silicon Mac、Xcode 26.6、macOS SDK 26.5で、基準コミット`f7c7eb3`へ修正を適用しました。
+`sh scripts/test_foundation.sh`はCTest 4/4、Opus有効構成は5/5、ASan/UBSan構成は4/4で成功しました。
+Opus有効構成では、CMakeが取得したlibopus 1.6.1をビルドしています。
 
-MacのメディアCLIはテスト入口を作成しただけで、成功ログはありません。
-WindowsのCOM登録、仮想カメラcapture、WebRTC通信、クラウド／ブラウザE2Eも今回実行していません。
+`npm ci --prefix cloud`、`sh scripts/test_browser_protocol.sh`、`npm run --prefix cloud build`も成功しました。
+最初の型検査でWebCodecsの`SharedArrayBuffer`型を扱えない箇所を検出したため、
+設定情報の読み取りを修正し、SPS/PPSを取得できる回帰試験を追加して再実行しました。
+ソース、共通試験、ブラウザ試験の結果であり、OSへのカメラ登録や実映像の確認ではありません。
 
-## まだ存在しないもの
+## 未検証
 
-署名済みMacアプリ、Xcodeプロジェクト、Provider/Device/StreamSource、アプリ側sink publisher、producer認証、
-NSURLSession adapter、完全な共通ReceiverEngine、Macプレビュー/UI統合、音声デコード・仮想マイクは未実装です。
-現状のCLIを起動してもシステムにカメラは追加されません。
+WindowsではSDK全体ビルド、WinHTTPの実TLSとキャンセル、WASAPI出力、仮想カメラE2Eを未確認です。
+libdatachannelをリンクしたRTC経路、TURN relay、実ブラウザの送信も未確認です。
+MacではObjective-C++部品のSDKビルド、署名、実機動作を未確認です。
+今回の修正でMacの仮想カメラがインストールできるようになったわけではありません。
 
-## 残る制限・重要な作業
+## 依然として未実装のmacOS機能
 
-- 監査R01..R04: RTP/RTCPの長さ検証、音声の圧縮データ→PCM誤扱いは未修正です。本番／main統合前に解消してください。
-- macOSの正規化はgeometry attachmentを一律拒否します。恒等clean aperture/SARも含め、実映像で確認して改善が必要です。
-- VideoToolboxDecoderはAUごとにwaitする検証用構成です。非同期パイプライン・bounded outstanding・stop世代は追加が必要です。
-- relayのproducer検証、source参照数、timer駆動、消費通知の完全なflow controlは外部owner側の実装と試験が必要です。
-- 時刻helperを追加しても、既存のRTP90kHz／DC microseconds／count×16666の混在はまだ置換されていません。
-- 音声やTURNを含む従来READMEの機能説明を、今回のコードの検証済み機能と読み替えないでください。
+署名済みhost app、Xcodeプロジェクト、Provider/Device/StreamSource、host-side sink publisherは未実装です。
+producer認証、NSURLSession adapter、完全なReceiverEngine/UI統合、仮想マイクも未実装です。
+VideoToolbox部品は初回のAU単位wait構成であり、bounded非同期パイプラインへの拡張が必要です。
 
-## 次の担当者が最初に行うこと
+## 次の担当者
 
-1. [CODEX_CONTINUE_PROMPT](CODEX_CONTINUE_PROMPT.md) と [コード監査](01_CODE_AUDIT.md) を読む。
-2. 共通テストを再実行し、Macで `sh scripts/test_macos_foundation.sh` を実行する。
-3. SDKの実エラーを修正し、生成映像のsigned Camera Extensionを先に成立させる。
-4. 次にhost→sink→sourceを通し、その後共通RTC/sessionと接続する。
-
-この順序と具体的な変更先・完了条件は [05](05_IMPLEMENTATION_PLAN.md) にあります。
+[CODEX_CONTINUE_PROMPT.md](CODEX_CONTINUE_PROMPT.md) を開始点とし、まずWindows/native依存の
+コンパイルエラーを解消・記録してください。その後、Mac部品のビルド → 署名した生成映像カメラ →
+host→sink→source → RTC受信接続と進めます。
+対策コードを「全試験に通過した既存仕様」と見なして追加修正を避けないでください。
