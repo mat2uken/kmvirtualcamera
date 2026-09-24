@@ -43,4 +43,13 @@ if(KM_BUILD_TESTS)
     target_compile_options(km_macos_pipeline_test PRIVATE -fobjc-arc -Wall -Wextra)
     target_link_libraries(km_macos_pipeline_test PRIVATE km_macos_pipeline Threads::Threads)
     add_test(NAME macos_video_pipeline COMMAND km_macos_pipeline_test)
+    # Join-QR round trip: the Windows UI's generator -> bitmap -> Vision decode.
+    # Independent decoder, no scanner hardware and no fixture images.
+    add_executable(km_macos_qr_test
+        tests/qr_roundtrip_test.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/../windows/third_party/qr/qrcodegen.cpp)
+    target_compile_options(km_macos_qr_test PRIVATE -fobjc-arc -Wall -Wextra)
+    target_link_libraries(km_macos_qr_test PRIVATE
+        "-framework Vision" "-framework CoreGraphics" "-framework Foundation")
+    add_test(NAME macos_qr_roundtrip COMMAND km_macos_qr_test)
 endif()
