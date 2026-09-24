@@ -31,15 +31,20 @@
 #pragma mark - CMIOExtensionProviderSource
 
 - (BOOL)connectClient:(CMIOExtensionClient*)client error:(NSError* _Nullable*)outError {
-    (void)client;
     (void)outError;
-    // Stage 5 accepts every client. Producer authentication (stage 6, W6-2) checks
-    // the sink consumer separately at stream start.
+    NSString* signingID = nil;
+    if (@available(macOS 13.0, *)) signingID = client.signingID;
+    // Record every identity the SDK actually exposes (W6-2 evidence). None of
+    // these alone authorizes the producer - producer_auth.mm performs the
+    // OS-checked verification when the sink stream is started.
+    NSLog(@"KMProvider: connect client pid=%d signingID=%@ clientID=%@",
+          client.pid, signingID ?: @"(n/a)", client.clientID);
     return YES;
 }
 
 - (void)disconnectClient:(CMIOExtensionClient*)client {
-    (void)client;
+    // W6-2: a producer disconnect clears the relay producer (and its stale frames).
+    [_deviceSource clientDisconnected:client];
 }
 
 - (NSSet<CMIOExtensionProperty>*)availableProperties {

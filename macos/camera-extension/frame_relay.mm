@@ -10,6 +10,8 @@
     dispatch_queue_t _queue;
     km::mac::PixelBuffer _latest, _black;
     uint64_t _generation, _arrival, _sequence, _notified;
+    uint64_t _consumeCount, _sendCount;
+    NSInteger _errorStreak;
     BOOL _consuming, _active, _haveNotified;
     std::optional<uint64_t> _lastOutput;
     CMIOExtensionStreamDiscontinuityFlags _discontinuity;
@@ -28,8 +30,12 @@
 }
 - (void)setAuthorizedProducer:(CMIOExtensionClient*)client {
     ++_generation; _producer = client; _latest = {}; _arrival = 0;
-    _haveNotified = NO; _consuming = NO;
+    _haveNotified = NO; _consuming = NO; _errorStreak = 0;
     _discontinuity = static_cast<CMIOExtensionStreamDiscontinuityFlags>(0);
+    NSLog(@"KMFrameRelay: producer %s (gen=%llu)", client ? "set" : "cleared", _generation);
+}
+- (BOOL)hasAuthorizedProducer {
+    return _producer != nil;
 }
 - (void)setSourceActive:(BOOL)active { _active = active; }
 - (void)consumeOne {
@@ -50,7 +56,29 @@
             KMFrameRelay* owner = weakSelf;
             if (!owner || owner->_generation != generation) return;
             owner->_consuming = NO;
-            if (error) { [owner setAuthorizedProducer:nil]; return; }
+            if (error) {
+                // W6-5: an error ends this consume. The producer is dropped only
+                // after a sustained streak - a short empty-queue burst while the
+                // host starts feeding must not kill the connection.
+                ++owner->_errorStreak;
+                NSLog(@"KMFrameRelay: consume error seq=%llu gen=%llu streak=%ld domain=%@ code=%ld",
+                      sequence, generation, static_cast<long>(owner->_errorStreak),
+                      error.domain, static_cast<long>(error.code));
+                if (owner->_errorStreak >= 10) {
+                    NSLog(@"KMFrameRelay: dropping producer after %ld consecutive errors",
+                          static_cast<long>(owner->_errorStreak));
+                    [owner setAuthorizedProducer:nil];
+                }
+                return;
+            }
+            owner->_errorStreak = 0;
+            ++owner->_consumeCount;
+            if (owner->_consumeCount <= 3 || owner->_consumeCount % 30 == 0) {
+                NSLog(@"KMFrameRelay: consume n=%llu seq=%llu gen=%llu more=%d disc=%u hostNs=%llu",
+                      owner->_consumeCount, sequence, generation, hasMore,
+                      static_cast<unsigned>(discontinuity),
+                      ns >= 0 ? static_cast<unsigned long long>(ns) : 0ull);
+            }
             if (image && ns >= 0 && CVPixelBufferGetWidth(image.get()) == 1280 &&
                 CVPixelBufferGetHeight(image.get()) == 720 &&
                 CVPixelBufferGetPixelFormatType(image.get()) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
@@ -82,10 +110,17 @@
     CFRelease(sample);
     _lastOutput = nowNs;
     _discontinuity = static_cast<CMIOExtensionStreamDiscontinuityFlags>(0);
+    ++_sendCount;
     if (live && (!_haveNotified || _notified != _sequence)) {
         [_sink notifyScheduledOutputChanged:[[CMIOExtensionScheduledOutput alloc]
             initWithSequenceNumber:_sequence hostTimeInNanoseconds:nowNs]];
         _notified = _sequence; _haveNotified = YES;
+    }
+    // Periodic send log: sequence + scheduled time for stage 6 correlation
+    // (host enqueue -> consume seq -> source send time).
+    if (_sendCount <= 3 || _sendCount % 150 == 0) {
+        NSLog(@"KMFrameRelay: send n=%llu seq=%llu pts=%llu live=%d active=%d",
+              _sendCount, _sequence, nowNs, live, _active);
     }
 }
 - (void)stop {

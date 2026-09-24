@@ -1,43 +1,12 @@
+#import "sink_stream.h"
 #import "source_stream.h"
+#import "device.h"
 #import "ids.h"
-#include <cstring>
-#include <string>
 
-namespace {
-constexpr int kWidth = 1280;
-constexpr int kHeight = 720;
-constexpr int32_t kFps = 30;
-
-NSDictionary* KMFixedFormatExtensions(void) {
-    return @{
-        (__bridge NSString*)kCVImageBufferYCbCrMatrixKey :
-            (__bridge NSString*)kCVImageBufferYCbCrMatrix_ITU_R_709_2,
-        (__bridge NSString*)kCVImageBufferColorPrimariesKey :
-            (__bridge NSString*)kCVImageBufferColorPrimaries_ITU_R_709_2,
-        (__bridge NSString*)kCVImageBufferTransferFunctionKey :
-            (__bridge NSString*)kCVImageBufferTransferFunction_ITU_R_709_2,
-    };
-}
-} // namespace
-
-CMVideoFormatDescriptionRef KMCreateFixedFormatDescription(void) {
-    CMVideoFormatDescriptionRef format = nullptr;
-    const OSStatus status = CMVideoFormatDescriptionCreate(kCFAllocatorDefault,
-        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kWidth, kHeight,
-        (__bridge CFDictionaryRef)KMFixedFormatExtensions(), &format);
-    if (status != noErr) {
-        NSLog(@"KMSourceStream: CMVideoFormatDescriptionCreate failed status=%d",
-              static_cast<int>(status));
-        return nullptr;
-    }
-    return format;
-}
-
-@implementation KMSourceStream {
+@implementation KMSinkStream {
     dispatch_queue_t _queue;
     CMIOExtensionStream* _stream;
     CMVideoFormatDescriptionRef _formatDescription;
-    NSInteger _activeConsumers;
 }
 
 - (instancetype)initWithQueue:(dispatch_queue_t)queue {
@@ -45,14 +14,17 @@ CMVideoFormatDescriptionRef KMCreateFixedFormatDescription(void) {
         _queue = queue;
         _formatDescription = KMCreateFixedFormatDescription();
         if (!_formatDescription) return nil;
-        _stream = [[CMIOExtensionStream alloc] initWithLocalizedName:@"Camera"
+        _stream = [[CMIOExtensionStream alloc] initWithLocalizedName:@"Publisher"
                                                             streamID:[[NSUUID alloc]
                                                                           initWithUUIDString:
-                                                                              kKMSourceStreamIDString]
-                                                           direction:CMIOExtensionStreamDirectionSource
+                                                                              kKMSinkStreamIDString]
+                                                           direction:CMIOExtensionStreamDirectionSink
                                                            clockType:CMIOExtensionStreamClockTypeHostTime
                                                                source:self];
-        if (!_stream) return nil;
+        if (!_stream) {
+            NSLog(@"KMSinkStream: CMIOExtensionStream(sink) creation failed");
+            return nil;
+        }
     }
     return self;
 }
@@ -65,14 +37,10 @@ CMVideoFormatDescriptionRef KMCreateFixedFormatDescription(void) {
     return _stream;
 }
 
-- (NSInteger)activeConsumerCount {
-    return _activeConsumers;
-}
-
 #pragma mark - CMIOExtensionStreamSource
 
 - (NSArray<CMIOExtensionStreamFormat*>*)formats {
-    const CMTime frameDuration = CMTimeMake(1, kFps);
+    const CMTime frameDuration = CMTimeMake(1, 30);
     return @[ [[CMIOExtensionStreamFormat alloc] initWithFormatDescription:_formatDescription
                                                           maxFrameDuration:frameDuration
                                                           minFrameDuration:frameDuration
@@ -90,13 +58,13 @@ CMVideoFormatDescriptionRef KMCreateFixedFormatDescription(void) {
 - (nullable CMIOExtensionStreamProperties*)streamPropertiesForProperties:
     (NSSet<CMIOExtensionProperty>*)properties error:(NSError* _Nullable*)outError {
     (void)outError;
-    const CMTime frameDuration = CMTimeMake(1, kFps);
+    const CMTime frameDuration = CMTimeMake(1, 30);
     NSDictionary* durationDict = (__bridge_transfer NSDictionary*)
         CMTimeCopyAsDictionary(frameDuration, kCFAllocatorDefault);
-    NSMutableDictionary<CMIOExtensionProperty, CMIOExtensionPropertyState*>* dict =
-        [NSMutableDictionary dictionary];
     CMIOExtensionPropertyAttributes* readonly = CMIOExtensionPropertyAttributes
         .readOnlyPropertyAttribute;
+    NSMutableDictionary<CMIOExtensionProperty, CMIOExtensionPropertyState*>* dict =
+        [NSMutableDictionary dictionary];
     if ([properties containsObject:CMIOExtensionPropertyStreamActiveFormatIndex])
         dict[CMIOExtensionPropertyStreamActiveFormatIndex] = [CMIOExtensionPropertyState
             propertyStateWithValue:@0
@@ -128,26 +96,28 @@ CMVideoFormatDescriptionRef KMCreateFixedFormatDescription(void) {
 }
 
 - (BOOL)authorizedToStartStreamForClient:(CMIOExtensionClient*)client {
-    (void)client;
-    // Every capture app may consume the source; producer authentication (W6-2)
-    // applies to the sink stream only.
-    return YES;
+    // W6-2: only an OS-verified host may start the sink and become the producer.
+    // The device rejects a second, different producer as well.
+    KMDeviceSource* device = self.device;
+    if (!device) {
+        NSLog(@"KMSinkStream: sink start rejected: device not wired yet");
+        return NO;
+    }
+    return [device sinkAuthorizeClient:client];
 }
 
 - (BOOL)startStreamAndReturnError:(NSError* _Nullable*)outError {
     (void)outError;
-    ++_activeConsumers;
-    NSLog(@"KMSourceStream: startStream (consumers=%ld)", (long)_activeConsumers);
-    if (self.consumersChanged) self.consumersChanged(_activeConsumers);
+    // The producer was authorized in authorizedToStartStreamForClient: already;
+    // frames arrive through the client queue and the relay consumes them.
+    NSLog(@"KMSinkStream: startStream");
     return YES;
 }
 
 - (BOOL)stopStreamAndReturnError:(NSError* _Nullable*)outError {
     (void)outError;
-    // Count unmatched calls: one consumer stopping must not stop the others.
-    if (_activeConsumers > 0) --_activeConsumers;
-    NSLog(@"KMSourceStream: stopStream (consumers=%ld)", (long)_activeConsumers);
-    if (self.consumersChanged) self.consumersChanged(_activeConsumers);
+    NSLog(@"KMSinkStream: stopStream");
+    [self.device sinkStreamStopped];
     return YES;
 }
 

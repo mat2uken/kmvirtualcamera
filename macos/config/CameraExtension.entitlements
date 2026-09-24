@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Stage 6 (W6-2): App Sandbox is MANDATORY here - measured on macOS 26.7: with
+     com.apple.security.app-sandbox removed, kernel AppleSystemPolicy (ASP) denies
+     exec of the extension entirely ("ASP: Security policy would not allow
+     process", launchd retries fail every 10s; see work/records/w6-2-asp-sandbox-required.log).
+     The sandbox also blocks SecCodeCopyGuestWithAttributes (EPERM), so
+     producer_auth runs its path/evidence modes B/C instead of live mode A. -->
 <plist version="1.0"><dict>
   <key>com.apple.security.app-sandbox</key>
   <true/>

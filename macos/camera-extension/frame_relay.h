@@ -14,4 +14,7 @@ API_AVAILABLE(macos(12.3))
 - (void)setSourceActive:(BOOL)active;
 - (void)tickAtHostTimeNs:(uint64_t)nowNs;
 - (void)stop;
+// YES while a producer is authorized. Call on the relay queue only; owners use it
+// for relay-timer policy and second-producer rejection (stage 6).
+- (BOOL)hasAuthorizedProducer;
 @end
