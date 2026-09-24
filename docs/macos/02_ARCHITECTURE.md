@@ -62,7 +62,7 @@ producerは当初1つだけ許可し、producer終了／ユーザー切替／再
 | ターゲット | 依存 |
 |---|---|
 | `km_media_core` | C++標準ライブラリのみ |
-| `km_rtc_shared`（任意） | 上記＋インストール済みlibdatachannel |
+| `km_rtc_shared`（任意） | 上記＋libdatachannel（`find_package` の導入済み実装、または `KM_FETCH_DATACHANNEL=ON` でWindows pinと同一をFetchContent） |
 | Windows Receiver | 既存libdatachannel / mbedTLS とOS API |
 | `km_macos_buffers` | Foundation / CoreVideo / CoreMedia |
 | `km_macos_decoder` | buffers + VideoToolbox |
@@ -71,6 +71,7 @@ producerは当初1つだけ許可し、producer終了／ユーザー切替／再
 
 libdatachannelの推移的依存（ICE、SCTP、SRTP等）も配布物に含めて管理します。
 既存のpinはmbedTLS3.6.2、libdatachannel0.22.4です。これは調査時のコード値で、現在の推奨最新版という意味ではありません。
+Macは同一pinを `KM_FETCH_DATACHANNEL` でFetchContentして組み込む（D11）。first configure のみネットワークを要します。
 移植と無関係な大型upgradeを同時に行わず、配布前に別途セキュリティ・対応版を確認します。
 WebSocket不要設定を維持しても、RTP MediaTrack対応を残すためmedia機能を無効化してはいけません。
 

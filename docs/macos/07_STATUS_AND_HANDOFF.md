@@ -41,14 +41,14 @@ Opus有効構成では、CMakeが取得したlibopus 1.6.1をビルドしてい�
 ## 未検証
 
 WindowsではSDK全体ビルド、WinHTTPの実TLSとキャンセル、WASAPI出力、仮想カメラE2Eを未確認です。
-libdatachannelをリンクしたRTC経路、TURN relay、実ブラウザの送信も未確認です。
+libdatachannelをリンクしたRTC経路はMacでビルドとオフライン設定試験まで確認し、接続・TURN relay・実ブラウザの送信は未確認です。
 MacではObjective-C++部品のSDKビルド、署名、実機動作を未確認です。
 今回の修正でMacの仮想カメラがインストールできるようになったわけではありません。
 
 ## 依然として未実装のmacOS機能
 
 署名済みhost app、Xcodeプロジェクト、Provider/Device/StreamSource、host-side sink publisherは未実装です。
-ReceiverEngine/UI統合の接続と仮想マイクは未実装です（共通ReceiverEngine部・シグナリング専用ワーカー・NSURLSession adapter・producer認証は各単位で試験済み、AppKit join UI・QRとローカルsignalingでのセッション作成・Offer受信・RTC未実装の失敗表示も確認済み）。
+ReceiverEngine/UI統合の接続と仮想マイクは未実装です（共通ReceiverEngine部・シグナリング専用ワーカー・NSURLSession adapter・producer認証は各単位で試験済み、AppKit join UI・QRとローカルsignalingでのセッション作成・Offer受信・RTC未実装の失敗表示も確認済み、libdatachannel導入とオフライン試験は単位6で確認、RTC配線は残り）。
 VideoToolbox部品は初回のAU単位wait構成であり、bounded非同期パイプラインへの拡張が必要です。
 
 ## 次の担当者

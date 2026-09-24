@@ -138,7 +138,7 @@ M4-aはM1–M3と並行して着手できる。M4-bはWindows端末がなけれ�
 
 この単体では「接続成功」を主張しない。ビルドと単体試験のみを証拠とする。
 
-### M4-a 結果記録（2026-09-24–25、HEAD `d09a207`・`4347313`・`fc70312`・`b889984`・`9ffaeb8`・`457ecb7`、18コミット先行・未push）
+### M4-a 結果記録（2026-09-24–25、HEAD `d09a207`・`4347313`・`fc70312`・`b889984`・`9ffaeb8`・`457ecb7`・`45bbbff`・`f133861`、21コミット先行・未push）
 
 | 作業 | 結果 | 根拠 |
 |---|---|---|
@@ -147,11 +147,12 @@ M4-aはM1–M3と並行して着手できる。M4-bはWindows端末がなけれ�
 | ReceiverEngine共通C++化（単位3） | 成功 | `shared/receiver/engine/receiver_engine.{h,cpp}`（PCMの受信方針を集約: ペイロード型のフェイルクローズ絞り込み、SSRC変更時のunwrapリセット、DC経路優先の仲裁、50msスロットル付きキーフレーム要求とタイマ再試行、コントロール伝送、世代・時刻スタンプ、統計）。試験 `receiver_engine` は合成パケットのみで8シナリオと2万件の破損コーパスを確認。Windowsビルド不要範囲に限定し `windows/receiver/rtc/*` 本体は未変更。コミット `fc70312` |
 | シグナリング専用ワーカー（単位4） | 成功 | `shared/receiver/signaling/signaling_worker.{h,cpp}`（SessionClientの作成・Offer poll・Answer送信を1本の専用スレッドへ集約。Windows `SignalingWorkerProc` と同じサーバ指定間隔・+500msバックオフ・タイムアウト巡回、cancelは `IHttpTransport::cancel` で中断してjoin、フェーズ通知とjoinUrl通知、時刻シームで仮想時刻を注入可能）。試験 `signaling_worker` は6シナリオを合成transportのみで確認: 正常系（4回poll・3秒でanswer送信・PUT JSON検証）、バックオフ/タイムアウトの決定的検証（8ポール・1120ms）、作成失敗、Answer生成不能、Answer拒否、ブロック中のcancel（2秒以内、コールバック・HTTPがすべて同一ワーカースレッドでmainではないこと）。実通信なし・ブラウザ接続なし。コミット `b889984` |
 | AppKit join UI・QR・worker配線（単位5） | 成功 | `macos/host/app_delegate.mm`（受信セッション節: Signaling URL入力・開始/停止・フェーズ日本語表示・join URL表示・QR画像。`windows/third_party/qr/qrcodegen` をWindows UI同設定（Ecc::MEDIUM・quiet zone 4）で描画し、Mac transport + `SignalingWorker` を専用スレッドで配線、generationガード付きでmain queueへ集約、終了時にcancel・join）。試験 `macos_qr_roundtrip` はqrcodegen生成→グレースケールbitmap→Vision QR復号の一致3件（独立デコーダ・fixtureなし）。ビルドはxcodebuild警告0。実行証跡: ローカルsignaling（`wrangler dev` 127.0.0.1:8787、実装コード）でセッション作成→join URL/QR→API経由のOffer受信→RTC未実装による明示失敗（phase 0→1→2→3→7）を起動ログで確認し、画面QRをjsqrで復号してjoin URLと一致を確認（`work/records/m4a-unit5-*`、未追跡）。コミット `9ffaeb8`・`457ecb7` |
-| CTestゲート | 成功 | `sh scripts/test_macos_foundation.sh` → 単位1–2で **7/7 pass**、単位3で **8/8 pass**、単位4で **9/9 pass**、単位5で **10/10 pass**（`macos_qr_roundtrip` 追加・警告0、ビルド・試験のみ・インストールなし） |
+| libdatachannel導入（単位6） | 成功 | ルートCMakeの `KM_FETCH_DATACHANNEL`（Windows `legacy_targets.cmake` と同一pin: mbedTLS v3.6.2＋libdatachannel v0.22.4・mbedTLS・static、CMake 4互換の `CMAKE_POLICY_VERSION_MINIMUM`、libsrtp `TEST_APPS` 抑制）で `km_rtc_shared`（`peer_connection_manager.cpp`・`shared/receiver/rtc` 含む）をmacOSでビルド・リンク（`-Wall -Wextra -Wpedantic` で警告0、pcmのWin32シンボル0を実測）。試験 `rtc_load` はオフライン（Offer・gathering・接続なし）でPC生成／破棄と設定ゲート6件（policy all成功、relayで無TURN拒否、UDP TURN受容、`turns:`（TLS）不採用時のrelay拒否、資格情報なし拒否、不正スキーム拒否）を確認。`sh scripts/build_macos_rtc.sh` → **11/11 pass**・自社コード警告0（`work/records/m4a-unit6-rtc-final.txt`）。判断はD11。新規フルビルドで判明した `CVBufferGetAttachment` のdeprecation（`cv_nv12.mm`・`media_smoke.mm`）を `CVBufferCopyAttachment` へ修正して警告0を維持。pinned mbedTLSは新規フルビルド時のみApple Clang 21の資材由来警告（自社コード外）。コミット `45bbbff`・`f133861` |
+| CTestゲート | 成功 | `sh scripts/test_macos_foundation.sh` → 単位1–2で **7/7 pass**、単位3で **8/8 pass**、単位4で **9/9 pass**、単位5で **10/10 pass**、単位6でも **10/10 pass**（非推奨修正後の再ビルドで警告0、ビルド・試験のみ・インストールなし）。RTC変種（`scripts/build_macos_rtc.sh`）は **11/11 pass**（`rtc_load` 追加） |
 
-- **主張しない範囲**: 実Cloudflare API・実ブラウザとの接続、RTC answer生成と映像受信は未実施（Mac RTC未導入、残り単位とM4-b依存）。実signalingはローカル `wrangler dev` のみで接続成立は主張しない。QRは独立デコーダ（Vision/jsqr）との照合のみで端末カメラ走査は未実施。本記録はビルド・単体試験とローカル実行ログを根拠とする。
+- **主張しない範囲**: 実Cloudflare API・実ブラウザとの接続、RTC answer生成と映像受信は未実施（RTC導入はビルド・オフライン試験までで、answer生成・映像受信は配線待ちとM4-b依存）。実signalingはローカル `wrangler dev` のみで接続成立は主張しない。QRは独立デコーダ（Vision/jsqr）との照合のみで端末カメラ走査は未実施。本記録はビルド・単体試験とローカル実行ログを根拠とする。
 - **記録で延期**: `windows/receiver/rtc/peer_connection_manager.*` のReceiverEngine切替はWindowsビルドでの回帰確認が必要なため後続（M4-b端末依存）へ延期。
-- **残り（M4-a）**: 受信映像のpipeline/sink供給配線（RTC供給待ち）、TURN設定の引き継ぎ（libdatachannel導入判断依存）。
+- **残り（M4-a）**: `SignalingWorker::makeAnswer` へのRTC配線（answer生成・ICE、単位6の導入基盤の上）、受信映像のpipeline/sink供給配線、TURN設定の引き継ぎ（D11で判断解消、libjuiceのUDP TURN範囲）、接続・統計表示UI。実映像確認は段階7の順序（ブラウザMediaTrack→WebCodecs/DC）に従う。
 
 ## M4-b: 段階7のWindows依存分（段階3）
 
