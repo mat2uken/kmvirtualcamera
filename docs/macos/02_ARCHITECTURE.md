@@ -24,7 +24,7 @@ OSのGPUバッファ、デコードAPI、デバイス登録、UI、IPCは別実�
 
 現在の `km_media_core` はDataChannel再構成と小さな共通ヘッダーの基盤です。
 `km_rtc_shared` は既存RTP／RTCPの抽出先で、オプションビルドです。
-`ReceiverEngine`（`shared/receiver/engine`）とシグナリングワーカー（`shared/receiver/signaling/signaling_worker`）は共通C++で単体試験済みですが、実RTC接続とMacアプリへの配線は存在せず、`PeerConnectionManager` からの切替と `AppController` との分離は次の作業です。
+`ReceiverEngine`（`shared/receiver/engine`）とシグナリングワーカー（`shared/receiver/signaling/signaling_worker`）は共通C++で単体試験済み、AppKit hostへワーカー配線とQR join UIも実装済みですが、実RTC接続（Answer生成）は未実装で、`PeerConnectionManager` からの切替と `AppController` との分離は次の作業です。
 macOSのデコーダ・relay・有効化managerも、それぞれを接続する実アプリをまだ持ちません。
 
 ## 3つの基本境界
