@@ -48,7 +48,7 @@ MacではObjective-C++部品のSDKビルド、署名、実機動作を未確認�
 ## 依然として未実装のmacOS機能
 
 署名済みhost app、Xcodeプロジェクト、Provider/Device/StreamSource、host-side sink publisherは未実装です。
-producer認証、NSURLSession adapter、完全なReceiverEngine/UI統合、仮想マイクも未実装です。
+ReceiverEngine/UI統合の接続と仮想マイクは未実装です（共通ReceiverEngine部・NSURLSession adapter・producer認証は各単位で試験済み）。
 VideoToolbox部品は初回のAU単位wait構成であり、bounded非同期パイプラインへの拡張が必要です。
 
 ## 次の担当者
