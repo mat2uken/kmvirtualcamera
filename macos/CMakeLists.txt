@@ -15,9 +15,21 @@ target_link_libraries(km_camera_relay PUBLIC km_macos_buffers "-framework CoreMe
 add_library(km_extension_manager STATIC host/extension_manager.mm)
 target_compile_options(km_extension_manager PRIVATE -fobjc-arc)
 target_link_libraries(km_extension_manager PUBLIC "-framework Foundation" "-framework SystemExtensions")
+# M4-a signaling transport: blocking NSURLSession adapter for the signaling
+# worker only. Links Foundation alone (no WebRTC, no VideoToolbox).
+add_library(km_macos_signaling STATIC receiver/url_session_transport.mm)
+target_include_directories(km_macos_signaling PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../shared)
+target_compile_options(km_macos_signaling PRIVATE -fobjc-arc -Wall -Wextra)
+target_link_libraries(km_macos_signaling PUBLIC "-framework Foundation")
 add_executable(km_macos_media_smoke tools/media_smoke.mm)
 target_compile_options(km_macos_media_smoke PRIVATE -fobjc-arc)
 target_link_libraries(km_macos_media_smoke PRIVATE km_macos_decoder)
 if(KM_BUILD_TESTS)
     add_test(NAME macos_media_allocation COMMAND km_macos_media_smoke)
+    # Loopback-only HTTP transport test; binds 127.0.0.1, no external network.
+    add_executable(km_macos_http_tests tests/url_session_transport_test.cpp)
+    target_include_directories(km_macos_http_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_options(km_macos_http_tests PRIVATE -Wall -Wextra)
+    target_link_libraries(km_macos_http_tests PRIVATE km_macos_signaling Threads::Threads)
+    add_test(NAME macos_http_transport COMMAND km_macos_http_tests)
 endif()
