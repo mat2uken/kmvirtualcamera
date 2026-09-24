@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(KMVirtualCameraFoundation LANGUAGES C CXX)
+project(KMVirtualCameraFoundation VERSION 1.0.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -8,6 +8,7 @@ option(KM_BUILD_MACOS "Build unsigned macOS media components (not an installed c
 option(KM_ENABLE_SANITIZERS "Enable AddressSanitizer and UBSan" OFF)
 option(KM_ENABLE_OPUS "Build real Opus audio decoding (fetch pinned libopus)" OFF)
 option(KM_BUILD_RTC_SHARED "Compile RTC integration using an installed LibDataChannel" OFF)
+option(KM_FETCH_DATACHANNEL "Fetch pinned libdatachannel+mbedTLS source like windows/legacy_targets.cmake (first configure needs network)" OFF)
 find_package(Threads REQUIRED)
 add_library(km_media_core STATIC
     shared/receiver/codec/dc_video_depacketizer.cpp
@@ -86,15 +87,96 @@ if(KM_BUILD_MACOS)
     add_subdirectory(macos)
 endif()
 if(KM_BUILD_RTC_SHARED)
-    find_package(LibDataChannel CONFIG REQUIRED)
+    # RTC integration: PeerConnectionManager plus the shared rtc helpers.
+    # LibDataChannel supply: KM_FETCH_DATACHANNEL=ON fetches the exact pins the
+    # Windows build uses (windows/legacy_targets.cmake: mbedTLS v3.6.2,
+    # libdatachannel v0.22.4, static, mbedTLS backend); OFF keeps find_package.
+    # TURN: the fetched libjuice carries UDP TURN only, so KM_TURN_TCP_TLS stays 0
+    # unless a libnice build is installed — TCP/TLS TURN endpoints are skipped and
+    # relay policy without a usable TURN fails with a reason instead of pretending.
+    if(KM_FETCH_DATACHANNEL)
+        include(FetchContent)
+        # Pinned deps (e.g. libdatachannel's vendored plog) declare pre-3.5
+        # cmake_minimum_required values; CMake 4 removed that compatibility and
+        # documents this override for fetched trees.
+        set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+        set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+        set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+        set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+        set(INSTALL_MBEDTLS_HEADERS ON CACHE BOOL "" FORCE)
+        set(MBEDTLS_USER_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/windows/mbedtls_custom_config.h" CACHE STRING "" FORCE)
+        # The user config header defines MBEDTLS_SSL_DTLS_SRTP itself; passing it as
+        # -D too would be a macro redefinition warning on clang, so only the file is
+        # exported as a compile definition. CMake applies it to the whole tree at
+        # generation time, which is harmless here: only sources that include mbedtls
+        # headers (the fetched ones) consume the macro.
+        add_compile_definitions(MBEDTLS_USER_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/windows/mbedtls_custom_config.h")
+        FetchContent_Declare(
+            MbedTLS
+            GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+            GIT_TAG v3.6.2
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(MbedTLS)
+        set(USE_MBEDTLS ON CACHE BOOL "" FORCE)
+        set(USE_GNUTLS OFF CACHE BOOL "" FORCE)
+        set(USE_OPENSSL OFF CACHE BOOL "" FORCE)
+        set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
+        set(NO_MEDIA OFF CACHE BOOL "" FORCE)
+        set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
+        set(NO_TESTS ON CACHE BOOL "" FORCE)
+        set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+        # libsrtp (vendored by libdatachannel) defaults TEST_APPS ON, which would
+        # register its drivers in this build's ctest; our gate must stay ours.
+        set(TEST_APPS OFF CACHE BOOL "" FORCE)
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        set(PREFER_SYSTEM_LIB OFF CACHE BOOL "" FORCE)
+        # FindMbedTLS resolution: targets come from the fetched mbedTLS above.
+        set(MbedTLS_INCLUDE_DIR "${mbedtls_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+        set(MbedTLS_LIBRARY mbedtls CACHE STRING "" FORCE)
+        set(MbedCrypto_LIBRARY mbedcrypto CACHE STRING "" FORCE)
+        set(MbedX509_LIBRARY mbedx509 CACHE STRING "" FORCE)
+        FetchContent_Declare(
+            libdatachannel
+            GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
+            GIT_TAG v0.22.4
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(libdatachannel)
+        set(KM_RTC_LIBS datachannel-static)
+    else()
+        find_package(LibDataChannel CONFIG REQUIRED)
+        set(KM_RTC_LIBS LibDataChannel::LibDataChannel)
+    endif()
     add_library(km_rtc_shared STATIC
         shared/receiver/rtc/bandwidth_estimator.cpp
         shared/receiver/rtc/twcc_receiver.cpp
         shared/receiver/rtc/enhanced_rtcp_session.cpp
         windows/receiver/rtc/peer_connection_manager.cpp)
     target_include_directories(km_rtc_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/shared)
-    target_link_libraries(km_rtc_shared PUBLIC km_media_core km_audio LibDataChannel::LibDataChannel)
+    target_link_libraries(km_rtc_shared PUBLIC km_media_core km_audio ${KM_RTC_LIBS})
+    if(KM_FETCH_DATACHANNEL)
+        # Same as windows/legacy_targets.cmake: name the fetched mbedTLS targets on
+        # the consumer (resolves to real files and fixes build order) and add their
+        # output directory, because FindMbedTLS binds bare libnames that reach the
+        # linker as -l entries only searchable through -L.
+        target_link_directories(km_rtc_shared PUBLIC ${mbedtls_BINARY_DIR}/library)
+        target_link_libraries(km_rtc_shared PUBLIC mbedtls mbedcrypto mbedx509)
+    endif()
     option(KM_INSTALLED_RTC_USES_LIBNICE "Installed LibDataChannel was built with libnice" OFF)
     target_compile_definitions(km_rtc_shared PRIVATE KM_TURN_TCP_TLS=$<BOOL:${KM_INSTALLED_RTC_USES_LIBNICE}>)
+    if(MSVC)
+        target_compile_options(km_rtc_shared PRIVATE /W4 /utf-8)
+    else()
+        target_compile_options(km_rtc_shared PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    if(KM_BUILD_TESTS)
+        # Offline load smoke: builds the manager against libdatachannel and checks
+        # configuration gating. No offer/answer, no ICE gathering, no connection.
+        add_executable(km_rtc_load_tests tests/shared/test_rtc_load.cpp)
+        target_include_directories(km_rtc_load_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/windows/receiver/rtc)
+        target_link_libraries(km_rtc_load_tests PRIVATE km_rtc_shared)
+        add_test(NAME rtc_load COMMAND km_rtc_load_tests)
+    endif()
 endif()
 # Production Windows build remains: cmake -S windows -B build/windows.
