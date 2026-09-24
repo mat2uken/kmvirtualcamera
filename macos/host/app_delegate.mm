@@ -2,9 +2,15 @@
 #import "generated_video.h"
 #import "host_exec_publisher.h"
 #import "../receiver/cmio_sink_publisher.h"
+#import "../receiver/url_session_transport.h"
+#import <CoreGraphics/CoreGraphics.h>
 #import <CoreMediaIO/CoreMediaIO.h>
+#include "receiver/signaling/signaling_worker.h"
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
+#include "../../windows/third_party/qr/qrcodegen.hpp"
 // Development identifier; must match PRODUCT_BUNDLE_IDENTIFIER of the extension target.
 static NSString* const kKMExtensionIdentifier = @"com.mat2uken.kmvirtualcamera.camera-extension";
 
@@ -18,6 +24,65 @@ uint64_t HostNanos() {
     return ns.value > 0 ? static_cast<uint64_t>(ns.value) : 0;
 }
 } // namespace
+
+// Signaling phase → Japanese status text; mirrors the Windows status strings.
+static NSString* KMPhaseText(km::signaling::SignalingPhase phase, NSString* detail) {
+    switch (phase) {
+        case km::signaling::SignalingPhase::CreatingSession: return @"セッション作成中…";
+        case km::signaling::SignalingPhase::SessionCreated: return @"セッション作成完了";
+        case km::signaling::SignalingPhase::WaitingForOffer:
+            return @"Offer待機中 — QRを読み取り、ブラウザで送信を開始してください";
+        case km::signaling::SignalingPhase::GeneratingAnswer: return @"Offer受信・Answer生成中…";
+        case km::signaling::SignalingPhase::SendingAnswer: return @"Answer送信中…";
+        case km::signaling::SignalingPhase::Succeeded: return @"シグナリング完了（RTC接続は未実装）";
+        case km::signaling::SignalingPhase::TimedOut: return @"接続待機がタイムアウトしました";
+        case km::signaling::SignalingPhase::Failed:
+            if ([detail isEqualToString:@"answer generation failed"])
+                return @"失敗: Answer生成不可（Mac RTC未実装: libdatachannel未導入）";
+            return detail.length ? [NSString stringWithFormat:@"失敗: %@", detail] : @"失敗";
+        case km::signaling::SignalingPhase::Canceled: return @"中断しました";
+    }
+    return @"不明";
+}
+
+// Join QR with the same generator and parameters as the Windows view
+// (qrcodegen, Ecc::MEDIUM, quiet zone 4), fitted into `box` pixels.
+// Returns nil on encode/render failure (Windows shows QRコード未生成 then).
+static NSImage* KMJoinQrImage(NSString* text, CGFloat box) {
+    if (text.length == 0) return nil;
+    try {
+        const qrcodegen::QrCode qr =
+            qrcodegen::QrCode::encodeText(text.UTF8String, qrcodegen::QrCode::Ecc::MEDIUM);
+        const int border = 4;
+        const int size = qr.getSize();
+        const int total = size + border * 2;
+        int cell = int(box) / total;
+        if (cell < 1) cell = 1;
+        const int px = cell * total;
+        std::vector<uint8_t> pixels(size_t(px) * size_t(px), 0xFF); // white background
+        CGColorSpaceRef gray = CGColorSpaceCreateDeviceGray();
+        CGContextRef ctx =
+            CGBitmapContextCreate(pixels.data(), px, px, 8, px, gray, kCGImageAlphaNone);
+        CGColorSpaceRelease(gray);
+        if (!ctx) return nil;
+        CGContextSetGrayFillColor(ctx, 0.0, 1.0);
+        for (int y = 0; y < size; ++y) { // y=0 is the top row; CG origin is bottom-left
+            for (int x = 0; x < size; ++x) {
+                if (!qr.getModule(x, y)) continue;
+                CGContextFillRect(ctx, CGRectMake((border + x) * cell,
+                    (total - border - y - 1) * cell, cell, cell));
+            }
+        }
+        CGImageRef cgImage = CGBitmapContextCreateImage(ctx);
+        CGContextRelease(ctx);
+        if (!cgImage) return nil;
+        NSImage* image = [[NSImage alloc] initWithCGImage:cgImage size:NSMakeSize(px, px)];
+        CGImageRelease(cgImage);
+        return image;
+    } catch (const std::exception&) {
+        return nil;
+    }
+}
 
 // Lightweight device re-enumeration via CoreMediaIO. Display names only: identity checks
 // by display name are never sufficient (see stage 5/6 for stable IDs and directions).
@@ -65,6 +130,16 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
     NSTextField* _detailLabel;
     NSTextField* _devicesLabel;
     NSTextField* _sinkLabel;
+    // M4-a join session: signaling worker wiring (worker-thread-only blocking).
+    NSTextField* _signalingUrlField;
+    NSTextField* _phaseLabel;
+    NSTextField* _joinUrlLabel;
+    NSImageView* _qrView;
+    NSUInteger _signalingGeneration; // stale callbacks from a stopped run are dropped
+    // Declared before the worker so it outlives it (the worker borrows the transport;
+    // transports are single-cancel, so every run gets a fresh one).
+    std::unique_ptr<km::IHttpTransport> _signalingTransport;
+    std::unique_ptr<km::signaling::SignalingWorker> _signalingWorker;
     KMCMSinkPublisher* _publisher;
     dispatch_queue_t _genQueue;
     dispatch_source_t _genTimer;
@@ -126,6 +201,75 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
 - (void)deactivate:(id)sender {
     (void)sender;
     [self.extensionManager deactivateIdentifier:kKMExtensionIdentifier];
+}
+
+#pragma mark - join session (M4-a)
+
+// Cancel + join the worker and drop its transport. Called on start (restart),
+// stop and termination; also bumps the generation so callbacks already
+// dispatched by the old run cannot overwrite the new state.
+- (void)stopSignalingWorker {
+    if (_signalingWorker) {
+        _signalingWorker->cancel(); // IHttpTransport::cancel aborts the in-flight call, then join
+        _signalingWorker.reset();
+    }
+    _signalingTransport.reset();
+    ++_signalingGeneration;
+}
+
+- (void)startSignaling:(id)sender {
+    (void)sender;
+    [self stopSignalingWorker];
+    const NSUInteger generation = _signalingGeneration;
+    // The callbacks are released with the worker, so the strong self capture
+    // cannot outlive stopSignalingWorker; UI updates jump to the main queue.
+    KMAppDelegate* strongSelf = self;
+    km::signaling::SignalingWorker::Callbacks callbacks;
+    callbacks.onPhase = [strongSelf, generation](km::signaling::SignalingPhase phase,
+                                                  const std::string& detail) {
+        NSLog(@"KMAppDelegate: signaling phase=%d detail=%s", int(phase), detail.c_str());
+        NSString* text = KMPhaseText(phase, [NSString stringWithUTF8String:detail.c_str()] ?: @"");
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (strongSelf->_signalingGeneration != generation) return;
+            strongSelf->_phaseLabel.stringValue = text;
+        });
+    };
+    callbacks.onSessionCreated = [strongSelf, generation](const km::signaling::CreateSessionResponse& session) {
+        NSString* joinUrl = [NSString stringWithUTF8String:session.joinUrl.c_str()] ?: @"";
+        NSLog(@"KMAppDelegate: join URL ready: %@", joinUrl);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (strongSelf->_signalingGeneration != generation) return;
+            strongSelf->_joinUrlLabel.stringValue = joinUrl;
+            strongSelf->_qrView.image = KMJoinQrImage(joinUrl, 130);
+        });
+    };
+    // Mac RTC is not wired yet (libdatachannel dependency undecided): fail the
+    // run with the explicit Answer reason instead of fabricating an SDP answer.
+    callbacks.makeAnswer = [](const std::string&, const km::signaling::CreateSessionResponse&)
+        -> std::optional<std::string> { return std::nullopt; };
+    const std::string url = _signalingUrlField.stringValue.UTF8String ?: "";
+    try {
+        _signalingTransport = km::mac::MakeUrlSessionTransport();
+        _signalingWorker = std::make_unique<km::signaling::SignalingWorker>(
+            *_signalingTransport, url, std::move(callbacks));
+        if (!_signalingWorker->start("macos-receiver")) {
+            _phaseLabel.stringValue = @"状態: 失敗 — ワーカースレッドを起動できません";
+            [self stopSignalingWorker];
+            return;
+        }
+        _phaseLabel.stringValue = @"状態: セッション作成中…";
+    } catch (const std::exception& e) {
+        _phaseLabel.stringValue = [NSString stringWithFormat:@"状態: 失敗 — %s", e.what()];
+        [self stopSignalingWorker];
+    }
+}
+
+- (void)sessionStop:(id)sender {
+    (void)sender;
+    [self stopSignalingWorker];
+    _phaseLabel.stringValue = @"状態: 停止しました";
+    _joinUrlLabel.stringValue = @"join URL: (未作成)";
+    _qrView.image = nil;
 }
 
 #pragma mark - sink publisher (stage 6)
@@ -242,7 +386,7 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
-    const NSRect frame = NSMakeRect(0, 0, 560, 420);
+    const NSRect frame = NSMakeRect(0, 0, 560, 680);
     _window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
         backing:NSBackingStoreBuffered defer:NO];
@@ -271,6 +415,29 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
     NSButton* burst = [NSButton buttonWithTitle:@"背圧試験(2s)" target:self action:@selector(sinkBurst:)];
     burst.frame = NSMakeRect(280, 162, 130, 32);
 
+    // M4-a join session UI: URL entry, start/stop, phase, join URL + QR.
+    NSTextField* joinTitle = [self makeLabelWithFrame:NSMakeRect(20, 630, 520, 24) bold:YES];
+    joinTitle.stringValue = @"受信セッション（ブラウザから送信）";
+    NSTextField* urlTitle = [self makeLabelWithFrame:NSMakeRect(20, 602, 96, 24) bold:NO];
+    urlTitle.stringValue = @"Signaling URL";
+    _signalingUrlField = [[NSTextField alloc] initWithFrame:NSMakeRect(120, 599, 300, 24)];
+    _signalingUrlField.stringValue = @"http://127.0.0.1:8787"; // local dev default, as on Windows
+    NSButton* sessionStart = [NSButton buttonWithTitle:@"セッション開始"
+                                                target:self
+                                                action:@selector(startSignaling:)];
+    sessionStart.frame = NSMakeRect(20, 558, 130, 32);
+    NSButton* sessionStop = [NSButton buttonWithTitle:@"停止"
+                                               target:self
+                                               action:@selector(sessionStop:)];
+    sessionStop.frame = NSMakeRect(160, 558, 90, 32);
+    _phaseLabel = [self makeLabelWithFrame:NSMakeRect(20, 520, 380, 44) bold:YES];
+    _phaseLabel.stringValue = @"状態: 待機中";
+    _joinUrlLabel = [self makeLabelWithFrame:NSMakeRect(20, 468, 380, 48) bold:NO];
+    _joinUrlLabel.selectable = YES;
+    _joinUrlLabel.stringValue = @"join URL: (未作成)";
+    _qrView = [[NSImageView alloc] initWithFrame:NSMakeRect(410, 436, 130, 130)];
+    _qrView.imageScaling = NSImageScaleProportionallyUpOrDown;
+
     NSTextField* note = [self makeLabelWithFrame:NSMakeRect(20, 20, 520, 130) bold:NO];
     note.stringValue = @"開発用host（段階4–6）: 有効化要求の状態表示、device再列挙、"
                         "sink投入（720p30の既知映像をCamera Extensionのsinkへ送出）を行います。"
@@ -278,7 +445,9 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
                         "producer要求文は開発用の暫定値です。";
 
     for (NSView* view in @[ _stateLabel, _detailLabel, _devicesLabel, activate, deactivate,
-             refresh, _sinkLabel, sinkStart, sinkStop, burst, note ])
+             refresh, _sinkLabel, sinkStart, sinkStop, burst, joinTitle, urlTitle,
+             _signalingUrlField, sessionStart, sessionStop, _phaseLabel, _joinUrlLabel,
+             _qrView, note ])
         [content addSubview:view];
 
     __weak KMAppDelegate* weakSelf = self;
@@ -302,10 +471,17 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
     [_window center];
     [_window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
+
+    // Dev smoke only: -KMStartSignaling starts a session without UI scripting so
+    // the phase flow lands in the launch log.
+    if ([[[NSProcessInfo processInfo] arguments] containsObject:@"-KMStartSignaling"]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self startSignaling:nil]; });
+    }
 }
 
 - (void)applicationWillTerminate:(NSNotification*)notification {
     (void)notification;
+    [self stopSignalingWorker];
     [self stopGenerator];
     [_publisher stop];
 }

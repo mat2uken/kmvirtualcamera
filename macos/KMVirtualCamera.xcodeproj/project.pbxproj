@@ -22,6 +22,7 @@
 		70CFD7836DC21804B35CF94A /* source_stream.mm in Sources */ = {isa = PBXBuildFile; fileRef = 443A9DD474550416A0DAD20E /* source_stream.mm */; };
 		78B509430C4905B27341F22B /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC131682FCA6BC0310A19882 /* CoreVideo.framework */; };
 		7AB98824C25AFA3332819190 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6E8AB90840D9C23AFF9F5246 /* Security.framework */; };
+		7C1E9A2B4D5F6081A2B3C4D2 /* qrcodegen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7C1E9A2B4D5F6081A2B3C4D0 /* qrcodegen.cpp */; };
 		898B4D5E05A35AC4DBFF3704 /* cmio_sink_publisher.mm in Sources */ = {isa = PBXBuildFile; fileRef = 6A2314A9BC60210626169EAC /* cmio_sink_publisher.mm */; };
 		997076B1A10C695CEA9C778E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A2E241C71F01A6E59CE6818 /* Foundation.framework */; };
 		C5FE5EC7FF2CA73D8F58BB5E /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5194BF88B2B676009952065E /* CoreMedia.framework */; };
@@ -71,6 +72,8 @@
 		6A2314A9BC60210626169EAC /* cmio_sink_publisher.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = cmio_sink_publisher.mm; sourceTree = "<group>"; };
 		6E8AB90840D9C23AFF9F5246 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		7CBF8698D2EBE82C464E5D05 /* SystemExtensions.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemExtensions.framework; path = System/Library/Frameworks/SystemExtensions.framework; sourceTree = SDKROOT; };
+		7C1E9A2B4D5F6081A2B3C4D0 /* qrcodegen.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = qrcodegen.cpp; sourceTree = "<group>"; };
+		7C1E9A2B4D5F6081A2B3C4D1 /* qrcodegen.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = qrcodegen.hpp; sourceTree = "<group>"; };
 		8007E79E37AFECEBBC86CDA5 /* KMVirtualCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KMVirtualCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A4BBD5813A550E31C965DCAF /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		AC2B44BFF9F4FA3E3EE891A6 /* producer_auth.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = producer_auth.mm; sourceTree = "<group>"; };
@@ -159,12 +162,23 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		7C1E9A2B4D5F6081A2B3C4D3 /* qr */ = {
+			isa = PBXGroup;
+			children = (
+				7C1E9A2B4D5F6081A2B3C4D0 /* qrcodegen.cpp */,
+				7C1E9A2B4D5F6081A2B3C4D1 /* qrcodegen.hpp */,
+			);
+			name = qr;
+			path = "../windows/third_party/qr";
+			sourceTree = "<group>";
+		};
 		BA619BF546ED614AD422AB7F = {
 			isa = PBXGroup;
 			children = (
 				404E02A59F9EA36F0C4D1C54 /* camera-extension */,
 				1486187C94698F1249199FDB /* host */,
 				1B5FB087F88BB1A8CC30E3F0 /* receiver */,
+				7C1E9A2B4D5F6081A2B3C4D3 /* qr */,
 				7A195908B032C1B8111E53CB /* Frameworks */,
 				DD11A02EBFFA263D713E96B7 /* Products */,
 			);
@@ -326,6 +340,7 @@
 				44D4C14010F05D812462FA91 /* host_auth_signer.mm in Sources */,
 				F5A6E70807C3A24835081718 /* host_exec_publisher.mm in Sources */,
 				1603FC5989AC8BBF36AA6F6C /* main.mm in Sources */,
+				7C1E9A2B4D5F6081A2B3C4D2 /* qrcodegen.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -441,8 +456,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
-				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos $(SRCROOT)/../build/macos-foundation";
+				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker";
 				PRODUCT_BUNDLE_IDENTIFIER = com.mat2uken.kmvirtualcamera;
 				SDKROOT = macosx;
 			};
@@ -521,8 +536,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
-				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos $(SRCROOT)/../build/macos-foundation";
+				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker";
 				PRODUCT_BUNDLE_IDENTIFIER = com.mat2uken.kmvirtualcamera;
 				SDKROOT = macosx;
 			};
