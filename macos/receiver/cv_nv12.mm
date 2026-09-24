@@ -63,7 +63,9 @@ PixelBuffer Normalize720p(CVPixelBufferRef input, int rotation, std::string& err
     }
     // Reject only non-identity source geometry. VideoToolbox attaches an identity
     // pixel-aspect (1:1) to decoded frames, so a bare presence check would stop video.
-    if (CFTypeRef aperture = CVBufferGetAttachment(input, kCVImageBufferCleanApertureKey, nullptr)) {
+    // CVBufferCopyAttachment is the non-deprecated form of GetAttachment (macOS 12.0);
+    // the caller releases what it copies.
+    if (CFTypeRef aperture = CVBufferCopyAttachment(input, kCVImageBufferCleanApertureKey, nullptr)) {
         error = "Clean-aperture normalization is not implemented: " + [&] {
             CFStringRef desc = CFCopyDescription(aperture);
             char buffer[256];
@@ -71,9 +73,10 @@ PixelBuffer Normalize720p(CVPixelBufferRef input, int rotation, std::string& err
             if (desc) CFRelease(desc);
             return ok ? std::string(buffer) : std::string("(unknown)");
         }();
+        CFRelease(aperture);
         return {};
     }
-    if (CFTypeRef aspect = CVBufferGetAttachment(input, kCVImageBufferPixelAspectRatioKey, nullptr)) {
+    if (CFTypeRef aspect = CVBufferCopyAttachment(input, kCVImageBufferPixelAspectRatioKey, nullptr)) {
         CFDictionaryRef dict = (CFDictionaryRef)aspect;
         auto number = [&](CFStringRef key) -> int {
             CFTypeRef value = CFDictionaryGetValue(dict, key);
@@ -87,8 +90,10 @@ PixelBuffer Normalize720p(CVPixelBufferRef input, int rotation, std::string& err
         if (horizontal != 1 || vertical != 1) {
             error = "Non-square pixel aspect (" + std::to_string(horizontal) + ":" +
                     std::to_string(vertical) + ") is not implemented";
+            CFRelease(aspect);
             return {};
         }
+        CFRelease(aspect);
     }
     if (rotation == 0 && CVPixelBufferGetWidth(input) == 1280 && CVPixelBufferGetHeight(input) == 720)
         return PixelBuffer::retain(input);
@@ -107,8 +112,10 @@ PixelBuffer Normalize720p(CVPixelBufferRef input, int rotation, std::string& err
     // Preserve color description, but not stale source geometry. No matrix/range conversion here.
     for (CFStringRef key : {kCVImageBufferYCbCrMatrixKey, kCVImageBufferColorPrimariesKey,
                            kCVImageBufferTransferFunctionKey}) {
-        if (CFTypeRef value = CVBufferGetAttachment(input, key, nullptr))
+        if (CFTypeRef value = CVBufferCopyAttachment(input, key, nullptr)) {
             CVBufferSetAttachment(out.get(), key, value, kCVAttachmentMode_ShouldPropagate);
+            CFRelease(value);
+        }
     }
     return out;
 }

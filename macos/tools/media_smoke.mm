@@ -27,8 +27,12 @@ void PrintInspection(const char* label, CVPixelBufferRef pb) {
     for (CFStringRef key : {kCVImageBufferCleanApertureKey, kCVImageBufferPixelAspectRatioKey,
                             kCVImageBufferYCbCrMatrixKey, kCVImageBufferColorPrimariesKey,
                             kCVImageBufferTransferFunctionKey}) {
+        // CVBufferGetAttachment is deprecated since macOS 12.0; copy matches its
+        // behavior for the snapshot we print and must be released.
+        CFTypeRef attachment = CVBufferCopyAttachment(pb, key, nullptr);
         std::cout << "  " << CFStringGetCStringPtr(key, kCFStringEncodingUTF8) << "="
-                  << Describe(CVBufferGetAttachment(pb, key, nullptr)) << "\n";
+                  << Describe(attachment) << "\n";
+        if (attachment) CFRelease(attachment);
     }
 }
 
