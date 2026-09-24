@@ -138,6 +138,17 @@ M4-aはM1–M3と並行して着手できる。M4-bはWindows端末がなけれ�
 
 この単体では「接続成功」を主張しない。ビルドと単体試験のみを証拠とする。
 
+### M4-a 結果記録（2026-09-24、HEAD `d09a207`・`4347313`、11コミット先行・未push）
+
+| 作業 | 結果 | 根拠 |
+|---|---|---|
+| Mac `IHttpTransport`（単位1） | 成功 | `macos/receiver/url_session_transport.{h,mm}`（NSURLSession、single in-flight、redirect拒否、loopback以外の `http://` 拒否、1MiB上限、400ms期限、cancelのsticky）。試験 `macos_http_transport` はループバックのみ（127.0.0.1 bind）でSessionClient全体・redirect未追従・上限・期限・cancelを確認。コミット `d09a207` |
+| Mac `IVideoPipeline`（単位2） | 成功 | `macos/receiver/video_pipeline.{h,mm}`（owning Annex-B AUを保有workerで直列デコード、bounded queue容量8、epoch管理）。試験 `macos_video_pipeline` は実H.264をVideoToolboxで試験内生成（fixture非依存）し、start検証・start前submit・世代不整合・Malformed Annex-B・SPS欠落デコード失敗からのキーフレーム回復・背圧時の依存列破棄・90°変換下の720p/420v配信・stop後のキュー無効化とhandler停止を確認。コミット `4347313` |
+| CTestゲート | 成功 | `sh scripts/test_macos_foundation.sh` → **7/7 pass**（警告0、ビルド・試験のみ・インストールなし） |
+
+- **主張しない範囲**: 実ブラウザとのsignaling・RTC接続・映像受信は未実施（unit 3以降とM4-b依存）。本記録はビルドと単体試験のみを根拠とする。
+- **残り（M4-a）**: ReceiverEngine共通C++化（Windowsビルド不要範囲に限定）、AppKit join UI（join URL/QR、`windows/third_party/qr/qrcodegen`）、signaling worker配線、TURN設定の引き継ぎ。
+
 ## M4-b: 段階7のWindows依存分（段階3）
 
 [段階2–3の文書](02-03-windows-native.md)に従う。Mac計画からは切り出すが、M4完了の必須依存である。

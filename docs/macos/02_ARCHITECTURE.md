@@ -43,7 +43,9 @@ NSURLSessionアダプターは内部で非同期通信を使い、キャンセ�
 
 映像パイプラインのsubmitはバッファの所有権を受け取り、保持範囲を明示します。
 start/stop/config変更は単一owner executorへ直列化し、callbackにもgenerationを付与します。
-現在のVideoToolbox補助クラスは `IVideoPipeline` の実装そのものではありません。
+`macos/receiver/video_pipeline.mm` が `IVideoPipeline` の実装で、owning Annex-B AUを保有workerが直列デコードします。
+queue満杯は依存列を破棄してBackpressure、デコード失敗は次のrandomAccess要求に戻ります。
+VideoToolboxの補助クラス（`native_media.h` のデコード・正規化）はこの実装の内部部品です。
 
 ## プロセスとライフサイクル
 
