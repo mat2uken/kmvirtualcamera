@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
+project(WebRtcBridgeWindows VERSION 1.0.0 LANGUAGES C CXX)
 # Preserve the existing target definitions in one included file, without a second copy.
 # USE_NICE may be supplied to libdatachannel with -DUSE_NICE=ON; install libnice first.
 option(KM_ENABLE_OPUS "Decode browser Opus audio with pinned libopus" ON)
