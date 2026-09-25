@@ -177,6 +177,13 @@ if(KM_BUILD_RTC_SHARED)
         target_include_directories(km_rtc_load_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/windows/receiver/rtc)
         target_link_libraries(km_rtc_load_tests PRIVATE km_rtc_shared)
         add_test(NAME rtc_load COMMAND km_rtc_load_tests)
+        # Offline makeAnswer wiring: worker -> manager (Initialize with the
+        # session's RTC configuration -> answer generation). Synthetic transport,
+        # local candidates only, no connection attempted or asserted.
+        add_executable(km_rtc_answer_tests tests/shared/test_rtc_answer.cpp)
+        target_include_directories(km_rtc_answer_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/windows/receiver/rtc)
+        target_link_libraries(km_rtc_answer_tests PRIVATE km_rtc_shared km_signaling_worker)
+        add_test(NAME rtc_answer COMMAND km_rtc_answer_tests)
     endif()
 endif()
 # Production Windows build remains: cmake -S windows -B build/windows.

@@ -6,6 +6,8 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreMediaIO/CoreMediaIO.h>
 #include "receiver/signaling/signaling_worker.h"
+#include "../../windows/receiver/rtc/peer_connection_manager.h"
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,13 +36,26 @@ static NSString* KMPhaseText(km::signaling::SignalingPhase phase, NSString* deta
             return @"Offer待機中 — QRを読み取り、ブラウザで送信を開始してください";
         case km::signaling::SignalingPhase::GeneratingAnswer: return @"Offer受信・Answer生成中…";
         case km::signaling::SignalingPhase::SendingAnswer: return @"Answer送信中…";
-        case km::signaling::SignalingPhase::Succeeded: return @"シグナリング完了（RTC接続は未実装）";
+        case km::signaling::SignalingPhase::Succeeded: return @"シグナリング完了（Answer送信済み）";
         case km::signaling::SignalingPhase::TimedOut: return @"接続待機がタイムアウトしました";
         case km::signaling::SignalingPhase::Failed:
             if ([detail isEqualToString:@"answer generation failed"])
-                return @"失敗: Answer生成不可（Mac RTC未実装: libdatachannel未導入）";
+                return @"失敗: Answer生成不可（RTC初期化・SDP処理失敗）";
             return detail.length ? [NSString stringWithFormat:@"失敗: %@", detail] : @"失敗";
         case km::signaling::SignalingPhase::Canceled: return @"中断しました";
+    }
+    return @"不明";
+}
+
+// RTC peer state → Japanese status text for the RTC line of the session UI.
+static NSString* KMPeerStateText(km::rtc_net::PeerState state) {
+    switch (state) {
+        case km::rtc_net::PeerState::New: return @"未接続";
+        case km::rtc_net::PeerState::Connecting: return @"接続試行中";
+        case km::rtc_net::PeerState::Connected: return @"接続中";
+        case km::rtc_net::PeerState::Disconnected: return @"切断";
+        case km::rtc_net::PeerState::Failed: return @"接続失敗";
+        case km::rtc_net::PeerState::Closed: return @"クローズ";
     }
     return @"不明";
 }
@@ -136,10 +151,14 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
     NSTextField* _joinUrlLabel;
     NSImageView* _qrView;
     NSUInteger _signalingGeneration; // stale callbacks from a stopped run are dropped
+    NSTextField* _rtcLabel; // RTC peer state; extended with statistics later
     // Declared before the worker so it outlives it (the worker borrows the transport;
-    // transports are single-cancel, so every run gets a fresh one).
+    // transports are single-cancel, so every run gets a fresh one). _rtc outlives the
+    // worker too: makeAnswer runs on the worker thread and Close() waits for it.
+    std::unique_ptr<km::rtc_net::PeerConnectionManager> _rtc;
     std::unique_ptr<km::IHttpTransport> _signalingTransport;
     std::unique_ptr<km::signaling::SignalingWorker> _signalingWorker;
+    std::atomic<uint64_t> _videoFrames; // received AUs; statistics arrive later
     KMCMSinkPublisher* _publisher;
     dispatch_queue_t _genQueue;
     dispatch_source_t _genTimer;
@@ -209,11 +228,16 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
 // stop and termination; also bumps the generation so callbacks already
 // dispatched by the old run cannot overwrite the new state.
 - (void)stopSignalingWorker {
+    // Mirror of the Windows StartNewSignalingSession order: unblock answer
+    // generation first, then cancel + join the worker, then close the RTC side
+    // (Close waits for RTC callbacks, so it must run after the join).
+    if (_rtc) _rtc->CancelPending();
     if (_signalingWorker) {
         _signalingWorker->cancel(); // IHttpTransport::cancel aborts the in-flight call, then join
         _signalingWorker.reset();
     }
     _signalingTransport.reset();
+    if (_rtc) _rtc->Close();
     ++_signalingGeneration;
 }
 
@@ -243,10 +267,42 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
             strongSelf->_qrView.image = KMJoinQrImage(joinUrl, 130);
         });
     };
-    // Mac RTC is not wired yet (libdatachannel dependency undecided): fail the
-    // run with the explicit Answer reason instead of fabricating an SDP answer.
-    callbacks.makeAnswer = [](const std::string&, const km::signaling::CreateSessionResponse&)
-        -> std::optional<std::string> { return std::nullopt; };
+    // Answer generation runs on the worker thread, as on Windows: initialize the
+    // RTC session with the configuration the server attached to this session
+    // (ICE policy and TURN endpoints carry over unchanged) and answer the offer.
+    // A null result fails the run with the explicit Answer reason.
+    callbacks.makeAnswer = [strongSelf, generation](const std::string& offerSdp,
+                                const km::signaling::CreateSessionResponse& session)
+        -> std::optional<std::string> {
+        km::rtc_net::PeerConnectionManager* rtc = strongSelf->_rtc.get();
+        if (!rtc) return std::nullopt;
+        const bool initialized = rtc->Initialize(session.rtcConfiguration,
+            [strongSelf, generation](km::rtc_net::PeerState state) {
+                NSLog(@"KMAppDelegate: rtc state=%d", int(state));
+                NSString* text = [NSString stringWithFormat:@"RTC: %@", KMPeerStateText(state)];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (strongSelf->_signalingGeneration != generation) return;
+                    strongSelf->_rtcLabel.stringValue = text;
+                });
+            },
+            [strongSelf](const uint8_t* data, size_t size, int, int, int64_t) {
+                // Received H264 AU; the pipeline/sink supply lands with the
+                // next unit, so arrivals are counted for the log meanwhile.
+                if (!data || size == 0) return;
+                const uint64_t frames = ++strongSelf->_videoFrames;
+                if (frames == 1 || frames % 300 == 0)
+                    NSLog(@"KMAppDelegate: rtc video frames=%llu", (unsigned long long)frames);
+            },
+            [](const int16_t*, size_t, int, int) {
+                // Audio output is a later stage; nothing consumes it yet.
+            });
+        if (!initialized) return std::nullopt;
+        std::string answer;
+        if (!rtc->ProcessOfferAndGenerateAnswer(offerSdp, answer)) return std::nullopt;
+        NSLog(@"KMAppDelegate: rtc answer generated bytes=%zu", answer.size());
+        return answer;
+    };
+    _rtc = std::make_unique<km::rtc_net::PeerConnectionManager>();
     const std::string url = _signalingUrlField.stringValue.UTF8String ?: "";
     try {
         _signalingTransport = km::mac::MakeUrlSessionTransport();
@@ -258,6 +314,7 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
             return;
         }
         _phaseLabel.stringValue = @"状態: セッション作成中…";
+        _rtcLabel.stringValue = @"RTC: （未接続）";
     } catch (const std::exception& e) {
         _phaseLabel.stringValue = [NSString stringWithFormat:@"状態: 失敗 — %s", e.what()];
         [self stopSignalingWorker];
@@ -268,6 +325,7 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
     (void)sender;
     [self stopSignalingWorker];
     _phaseLabel.stringValue = @"状態: 停止しました";
+    _rtcLabel.stringValue = @"RTC: （未接続）";
     _joinUrlLabel.stringValue = @"join URL: (未作成)";
     _qrView.image = nil;
 }
@@ -386,6 +444,7 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
+    _videoFrames = 0;
     const NSRect frame = NSMakeRect(0, 0, 560, 680);
     _window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
@@ -437,6 +496,8 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
     _joinUrlLabel.stringValue = @"join URL: (未作成)";
     _qrView = [[NSImageView alloc] initWithFrame:NSMakeRect(410, 436, 130, 130)];
     _qrView.imageScaling = NSImageScaleProportionallyUpOrDown;
+    _rtcLabel = [self makeLabelWithFrame:NSMakeRect(20, 392, 520, 40) bold:YES];
+    _rtcLabel.stringValue = @"RTC: （未接続）";
 
     NSTextField* note = [self makeLabelWithFrame:NSMakeRect(20, 20, 520, 130) bold:NO];
     note.stringValue = @"開発用host（段階4–6）: 有効化要求の状態表示、device再列挙、"
@@ -447,7 +508,7 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
     for (NSView* view in @[ _stateLabel, _detailLabel, _devicesLabel, activate, deactivate,
              refresh, _sinkLabel, sinkStart, sinkStop, burst, joinTitle, urlTitle,
              _signalingUrlField, sessionStart, sessionStop, _phaseLabel, _joinUrlLabel,
-             _qrView, note ])
+             _qrView, _rtcLabel, note ])
         [content addSubview:view];
 
     __weak KMAppDelegate* weakSelf = self;

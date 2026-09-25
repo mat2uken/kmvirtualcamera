@@ -456,8 +456,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos $(SRCROOT)/../build/macos-foundation";
-				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker";
+				OTHER_CFLAGS = "$(inherited) -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/include -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/deps/plog/include";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-rtc/macos $(SRCROOT)/../build/macos-rtc $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libjuice $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libsrtp $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/usrsctp/usrsctplib $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/library $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/everest $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/p256-m";
+				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker -lkm_rtc_shared -lkm_audio -lkm_media_core -ldatachannel-static -lusrsctp -lsrtp2 -lmbedtls -lmbedcrypto -lmbedx509 -ljuice-static -leverest -lp256m";
 				PRODUCT_BUNDLE_IDENTIFIER = com.mat2uken.kmvirtualcamera;
 				SDKROOT = macosx;
 			};
@@ -536,8 +537,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos $(SRCROOT)/../build/macos-foundation";
-				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker";
+				OTHER_CFLAGS = "$(inherited) -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/include -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/deps/plog/include";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-rtc/macos $(SRCROOT)/../build/macos-rtc $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libjuice $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libsrtp $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/usrsctp/usrsctplib $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/library $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/everest $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/p256-m";
+				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker -lkm_rtc_shared -lkm_audio -lkm_media_core -ldatachannel-static -lusrsctp -lsrtp2 -lmbedtls -lmbedcrypto -lmbedx509 -ljuice-static -leverest -lp256m";
 				PRODUCT_BUNDLE_IDENTIFIER = com.mat2uken.kmvirtualcamera;
 				SDKROOT = macosx;
 			};
