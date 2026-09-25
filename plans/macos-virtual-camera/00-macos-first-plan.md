@@ -170,18 +170,23 @@ M4-aはM1–M3と並行して着手できる。M4-bはWindows端末がなけれ�
 
 M3・M4-a・M4-bが揃ったら、[段階7の文書](07-live-receiver.md)の手順でローカルsignaling→実ブラウザのMediaTrack、続いてWebCodecs/DCの順に確認する。この到達点がREADMEの最初の到達点（通常設定Macでブラウザ映像を仮想カメラ表示）である。検証は[記録様式](verification.md)に従い、実ブラウザ2経路・断線復旧・Mac captureの証拠を残す。
 
-### M4 結果記録（2026-09-25、HEAD `ffd4de2`（u1試験中のAnswer修正は `690e7c0`）、28コミット先行・未push）
+### M4 結果記録（2026-09-25、HEAD `38bb918`（u1試験中のAnswer修正は `690e7c0`）、31コミット先行・未push）
 
 | 試験 | 結果 | 根拠 |
 |---|---|---|
 | M4-u1 実ブラウザ MediaTrack経路 | 成功 | Chrome（`--use-fake-device-for-media-stream` 等、CDP 9222）→ ローカルsignaling（実装コードの `wrangler dev`、127.0.0.1:8787）→ host RTC → VideoToolbox → sink publisher → Extension → AVFoundation consumer。phase 0→5、answer 4978 bytes、rtc state 1→2、受信frames 1→8400（約20fps）、統計「送信2.80Mbps｜loss0.0%｜受信20.0fps｜配信20.0fps｜decode失敗0」、「KM Virtual Camera」1280x720へのcaptureが実ブラウザ映像（`work/records/m4-u1-*`、未追跡）。試行でChromeのanswer拒否（rejected m-lineのPT保持不足）を発見し `690e7c0` で修正、`test_rtc_answer` シナリオ4で回帰固定 |
 | M4-u2 実ブラウザ WebCodecs/DC経路 | 成功 | 同一構成のDC経路。answer 1681 bytes → state 2 → 受信frames 2100超、統計「2.50Mbps｜20.0fps｜decode失敗0」、consumer captureが実ブラウザ映像（`work/records/m4-u2-*`、未追跡） |
 | M4-u3 断線復旧（停止→黒→再接続） | 成功 | 同一セッションで2回反復。送信停止 → rtc state 3/5 → 最終フレームから1.018秒・1.008秒で `no new frame … -> feeding black` → consumerが完全な黒（生フレームとの差19.12、黒同士の差0.00）。再接続 → phase 3 → 新規answer（1681・1682 bytes）→ phase 5 → state 2 → `new frame arrived -> resuming live feed` → 受信frames継続 → consumerが実映像（差1.76）、`answer send failed` 0件（`work/records/m4-u3-*`、未追跡）。試行で見つけたhost側2ギャップ（停止後の最終フレーム再投入で黒timeout不発、Succeeded後の監視終了で再Offer未回答）を `ffd4de2` で修正し、sink publisherの1秒新着なしで黒送出、signaling workerの継続監視と回答済み同一Offerスキップを `signaling_worker` シナリオ7で固定 |
-| 試験ゲート | 成功 | `sh scripts/test_macos_foundation.sh` → **10/10 pass**、`sh scripts/build_macos_rtc.sh` → **12/12 pass**、xcodebuild警告0（各コミット前、`work/records/m4-u3-gate.txt`・`m4-u3-rtc-test.txt`・`m4-u3-xcodebuild.txt`） |
+| M4-u4 音声無効設定（受信がaudio拒否） | 成功 | 受信host（`KM_ENABLE_OPUS=OFF`）でanswerがaudio m-lineを拒否。送信側Statsに `audioBytesSent` が現れず `videoBytesSent` のみ増加 ＝ 音声RTP未送信（offer metadata `m-lines=2 codecs=opus,…` は試験中追加の `f43b058` によるNSLog。`work/records/m4-u4-run*.txt`・`m4-u45-cdp2.txt`・`m4-u4-shot*.png`、未追跡） |
+| M4-u5 カメラ切替での継続 | 成功 | 接続中に「📷 切替」操作後も `videoBytesSent` が 61609→752018→798736 と途切れず増加、videoFps 20を維持、consumerが切替後の映像を表示（`work/records/m4-u45-cdp2.txt`・`m4-u5-shot*.png`、未追跡） |
+| M4-u6 縦持ち画素（portrait） | 成功 | attempt1/2はChromeの `--use-file-for-fake-video-capture` がPC connectedで供給を止め全黒（RTCなしの隔離試験では20秒300フレーム正常でChrome環境側の問題と切り分け）。attempt3は送信元を `canvas.captureStream(360x640,30fps)` のテストダブルへ切替（encode以降は実機と同一経路）: preview 360x640、`videoBytesSent` 1932→417337単調増加、rtc frames 1→5100、consumer 1280x720に縦画像がアスペクト保持のpillarboxで到達し2枚間でバー位置が変化。hostのstale→黒（Gap A）も実条件確認（`work/records/m4-u6-notes.txt`・`m4-u6-cdp3.txt`・`m4-u6-shot3*.png`、未追跡） |
+| M4-u7 実カメラ・landscape（解像度切替） | 成功 | FaceTime HDカメラと1920x1080へ切替 → Stats `videoWidth:1920 videoHeight:1080`・videoFps 30・`videoBytesSent` 5605958→7570708と連続増加、rtc frames 1→900超、consumer 1280x720が生動する実カメラ映像（2枚の平均輝度0.56/0.57。`work/records/m4-u7-cdp2.txt`・`m4-u7-run2.txt`・`m4-u7-shot3/4.png`、未追跡） |
+| M4-u8 AU上限超過（v1 300900 byte） | 成功 | WebCodecs/DCモード（offer `m-lines=2 codecs=opus,…`、video RTP非搭載、answer 1747 bytes）＋1080pノイズcanvasテストダブル・6Mbpsで、接続約4秒後にencoded chunk 3連続が上限超過（1758334→1039390→725137 bytes > 300900）。診断ログでdrop→ビットレート低減→IDR要求が2回、3回目で「Access unit exceeds the v1 300900-byte limit repeatedly; stop and select a lower resolution.」表示と `stop()`、以降80秒間chunk 0件。送信AU 0件のためconsumerは黒で停止と整合（`work/records/m4-u8-notes.txt`・`m4-u8-cdp.txt`・`m4-u8-run.txt`、未追跡） |
+| 試験ゲート | 成功 | 各コミット前に `sh scripts/test_macos_foundation.sh` → **10/10 pass**、`sh scripts/build_macos_rtc.sh` → **12/12 pass**、`cloud` `npm test` → **17/17**、xcodebuild警告0（u1–u3時は `work/records/m4-u3-gate.txt`・`m4-u3-rtc-test.txt`・`m4-u3-xcodebuild.txt`、u4–u8時は `m4-u4-gate.txt`・`m4-u4-rtc-gate.txt`・`m4-u4-xcodebuild.txt`、本追記時は `m4-docs-gate.txt`、いずれも未追跡） |
 
 - **環境**: macOS 26.7（Apple Silicon Mac15,10）、Xcode 26.6、Chrome（CDP 9222・fake device）。受信consumerはAVFoundation。signalingはローカル `wrangler dev`（127.0.0.1 bind）のみで実Cloudflare運用は未検証。SDPはバイト数のみ記録し、認証情報は残さない。
-- **主張しない範囲**: M4-b（Windows 2経路の回帰）は未実施（端末なし）でM4の完了は保留。カメラ切替、portrait/landscape、SPS/PPS変更、AU上限超過、音声無効設定、ICE candidate pairの記録、音声（D08）は未実施。fps以外の遅延・CPU測定は段階8へ送る。
-- **段階7への判定**: 必須証拠（実ブラウザ2経路・断線復旧・Mac capture）は揃った。ただし完了条件のカメラ切替とWindows後退確認が未了のため段階7の完了は主張しない。
+- **主張しない範囲**: M4-b（Windows 2経路の回帰）は未実施（端末なし）でM4の完了は保留。SPS/PPS変更の単独確認、ICE candidate pairの記録、Cloudflare運用構成での確認、音声（D08）は未実施。u6・u8は送信元にテストダブル（縦canvas・ノイズcanvas）を使い、その旨を各試験に明記する。fps以外の遅延・CPU測定は段階8へ送る。
+- **段階7への判定**: 必須証拠（実ブラウザ2経路・断線復旧・Mac capture）は揃った。[07の試験項目](07-live-receiver.md)のうちカメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で完了したが、SPS/PPS変更の単独確認とWindows後退確認（M4-b）が未了のため段階7の完了は主張しない。
 
 ## 共通ルール
 

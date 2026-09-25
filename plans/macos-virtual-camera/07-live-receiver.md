@@ -32,6 +32,8 @@ Browser WebCodecs/DC ─────┘                                ↓
 
 まずローカルのsignalingとブラウザでMediaTrackをつなぎ、host preview、publisher投入、source captureの各段階に同じ動く映像があるか確かめる。次にWebCodecs/DCで同じ順に確認する。ブラウザのカメラ切替、portrait/landscape、SPS/PPS変更、回線断、再接続、AU上限超過、音声無効設定も試す。Cloudflareを使用する構成では、secret値を残さずAPI応答、Offer/Answer、ICE状態、選択candidate pairを記録する。
 
+**試験状況（2026-09-25、[00-plan](00-macos-first-plan.md)のM4結果記録を参照）**: MediaTrack・WebCodecs/DC、カメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で実施済み。SPS/PPS変更の単独確認、Cloudflare運用構成でのAPI応答・ICE状態・candidate pair記録は未実施。
+
 ## 完了条件
 
 実ブラウザのMediaTrackとWebCodecs/DCの両方で、一般アプリのMac仮想カメラに映像が届く。セッション開始・終了、失敗表示、カメラ切替、通信断・再接続、古いcallback破棄、黒画面へのtimeoutが確認できる。各試験でブラウザ種類・版、OS、source解像度と向き、実行SHA、映像記録、ログ、統計を残す。Windowsの同じ2経路も後退していないことを確認する。
