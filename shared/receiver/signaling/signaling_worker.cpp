@@ -22,8 +22,9 @@ SignalingTimeSource withDefaults(SignalingTimeSource time) {
 } // namespace
 
 SignalingWorker::SignalingWorker(km::IHttpTransport& transport, std::string baseUrl, Callbacks callbacks,
-                                 SignalingTimeSource time)
-    : transport_(transport), client_(transport_, std::move(baseUrl)), callbacks_(std::move(callbacks)) {
+                                 SignalingTimeSource time, bool keepPollingAfterAnswer)
+    : transport_(transport), client_(transport_, std::move(baseUrl)), callbacks_(std::move(callbacks)),
+      keepPollingAfterAnswer_(keepPollingAfterAnswer) {
     if (!callbacks_.makeAnswer) throw std::invalid_argument("missing answer handler");
     time_ = withDefaults(std::move(time));
 }
@@ -70,11 +71,24 @@ void SignalingWorker::run(std::string clientName) {
 
     const int64_t begin = time_.nowMonotonicNs();
     int64_t intervalMs = session->poll.initialIntervalMs;
+    bool answered = false;
+    std::string answeredOfferSdp;
     while (!cancelRequested_) {
         const int64_t elapsedMs = (time_.nowMonotonicNs() - begin) / 1'000'000;
-        if (elapsedMs >= int64_t(session->poll.timeoutMs)) { report(SignalingPhase::TimedOut); return; }
+        if (elapsedMs >= int64_t(session->poll.timeoutMs)) {
+            // A completed run ends quietly on session age-out: the success phases
+            // stay reported, only the pending reconnect wait stops.
+            if (!answered) report(SignalingPhase::TimedOut);
+            return;
+        }
         auto offer = client_.PollOffer(session->sessionId, session->receiverToken);
-        if (offer && !cancelRequested_) {
+        // The server keeps the stored offer readable after an answer, so the
+        // reconnect wait would see the answered offer on every poll. Answering it
+        // again from a fresh PeerConnection produces a DIFFERENT answer SDP that
+        // the server rejects (409 conflicting answer). Only a genuinely new offer
+        // - a sender reconnect stores a fresh one and resets the answer - gets an
+        // answer; the identical one is waited out.
+        if (offer && !cancelRequested_ && offer->sdp != answeredOfferSdp) {
             report(SignalingPhase::GeneratingAnswer);
             const auto answer = callbacks_.makeAnswer(offer->sdp, *session);
             if (cancelRequested_) { report(SignalingPhase::Canceled); return; }
@@ -88,7 +102,9 @@ void SignalingWorker::run(std::string clientName) {
                 return;
             }
             report(SignalingPhase::Succeeded);
-            return;
+            answeredOfferSdp = offer->sdp;
+            answered = true;
+            if (!keepPollingAfterAnswer_) return;
         }
         if (cancelRequested_) break;
         // Windows cadence: fixed +500ms step once backoffAfterMs passed, clamped to max.

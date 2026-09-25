@@ -57,6 +57,7 @@ constexpr int64_t kBurstPeriodNs = 1000000;             // backpressure test cad
 // (dropped stayed 0). 1ms pushes feed past the drain ceiling so the queue
 // actually fills and the drop path runs.
 constexpr uint64_t kConsumeWatchdogNs = 3000000000ull;  // no consume for 3s => broken
+constexpr uint64_t kFreshFeedNs = 1000000000ull;         // no new frame for 1s => black
 constexpr int64_t kRetryDelayNs = 2000000000ll;          // re-enumerate every 2s
 constexpr int kWidth = 1280;
 constexpr int kHeight = 720;
@@ -170,6 +171,9 @@ static void KMSinkQueueAltered(CMIOStreamID streamID, void* token, void* refCon)
     std::deque<CMSampleBufferRef> _held;
     CVPixelBufferRef _pending;
     os_unfair_lock _pendingLock;
+    uint64_t _pendingPublishNs; // under _pendingLock: when _pending was last set
+    km::mac::PixelBuffer _blackFeed;
+    BOOL _staleFeedLogged;
     uint64_t _feedStartNs;
     uint64_t _feedIndex;
     uint64_t _lastConsumeNs;
@@ -217,6 +221,7 @@ static void KMSinkQueueAltered(CMIOStreamID streamID, void* token, void* refCon)
     os_unfair_lock_lock(&_pendingLock);
     CVPixelBufferRef replaced = _pending;
     _pending = retained;  // newest wins; this path never waits on queue/normalize
+    _pendingPublishNs = HostNanos();
     os_unfair_lock_unlock(&_pendingLock);
     if (replaced) CVPixelBufferRelease(replaced);
 }
@@ -470,11 +475,38 @@ static void KMSinkQueueAltered(CMIOStreamID streamID, void* token, void* refCon)
     }
     os_unfair_lock_lock(&_pendingLock);
     CVPixelBufferRef pending = _pending ? CVPixelBufferRetain(_pending) : nullptr;
+    const uint64_t publishNs = _pendingPublishNs;
     os_unfair_lock_unlock(&_pendingLock);
-    if (pending) {
-        [self feedFrame:pending target:target];
-        CVPixelBufferRelease(pending);
+    // Keepalive feed: a fresh pending frame runs the extension at its 30fps
+    // cadence even when the source is slower. Once no new frame has arrived for
+    // 1s (sender stopped, RTC starved, none published yet) feed black instead:
+    // re-feeding the last image would keep the old picture alive forever (the
+    // extension only sees fresh arrivals), while an un-fed queue would hit the
+    // extension's empty-queue error streak and drop the producer.
+    const BOOL fresh = pending && now <= publishNs + kFreshFeedNs;
+    if (!fresh && !_staleFeedLogged) {
+        _staleFeedLogged = YES;
+        if (pending)
+            NSLog(@"KMSinkPublisher: no new frame for %llu ms -> feeding black",
+                  (unsigned long long)((now - publishNs) / 1000000));
+        else
+            NSLog(@"KMSinkPublisher: no frame published yet -> feeding black");
+    } else if (fresh && _staleFeedLogged) {
+        _staleFeedLogged = NO;
+        NSLog(@"KMSinkPublisher: new frame arrived -> resuming live feed");
     }
+    CVPixelBufferRef feed = pending;
+    if (!fresh) {
+        if (!_blackFeed) {
+            std::string error;
+            _blackFeed = km::mac::MakeBlack720p(error);
+            if (!_blackFeed)
+                NSLog(@"KMSinkPublisher: MakeBlack720p failed: %s", error.c_str());
+        }
+        feed = _blackFeed.get();
+    }
+    if (feed) [self feedFrame:feed target:target];
+    if (pending) CVPixelBufferRelease(pending);
     if (bursting) {
         dispatch_source_set_timer(_feedTimer,
             dispatch_time(DISPATCH_TIME_NOW, kBurstPeriodNs), DISPATCH_TIME_FOREVER, 100000);

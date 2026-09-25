@@ -390,8 +390,12 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
     const std::string url = _signalingUrlField.stringValue.UTF8String ?: "";
     try {
         _signalingTransport = km::mac::MakeUrlSessionTransport();
+        // Keep polling after the first answer: the sender's 再接続 puts a fresh
+        // offer on the SAME session, and without this the worker used to finish
+        // at Succeeded, so the reconnect never received an answer (M4-u3).
         _signalingWorker = std::make_unique<km::signaling::SignalingWorker>(
-            *_signalingTransport, url, std::move(callbacks));
+            *_signalingTransport, url, std::move(callbacks),
+            km::signaling::SignalingTimeSource{}, true);
         if (!_signalingWorker->start("macos-receiver")) {
             _phaseLabel.stringValue = @"状態: 失敗 — ワーカースレッドを起動できません";
             [self stopSignalingWorker];

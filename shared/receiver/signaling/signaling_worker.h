@@ -58,8 +58,11 @@ public:
 
     // Throws std::invalid_argument for a bad base URL (SessionClient) or a missing
     // answer factory.
+    // keepPollingAfterAnswer: after Succeeded keep polling offers until the session
+    // timeout or cancel so a sender reconnect (a fresh offer on the same session)
+    // is answered too. That late end reports no phase - the run already succeeded.
     SignalingWorker(km::IHttpTransport& transport, std::string baseUrl, Callbacks callbacks,
-                    SignalingTimeSource time = {});
+                    SignalingTimeSource time = {}, bool keepPollingAfterAnswer = false);
     ~SignalingWorker();
 
     SignalingWorker(const SignalingWorker&) = delete;
@@ -81,6 +84,7 @@ private:
     km::signaling::SessionClient client_;
     Callbacks callbacks_;
     SignalingTimeSource time_;
+    bool keepPollingAfterAnswer_;
     std::thread thread_;
     std::atomic<bool> cancelRequested_{false};
     std::atomic<bool> running_{false};

@@ -22,6 +22,12 @@ const std::string kOfferBody =
     "{\"type\":\"offer\",\"sdp\":\"v=0\\r\\no=- 1 1 IN IP4 0.0.0.0\\r\\n\"}";
 const std::string kOfferSdp = "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n";
 const std::string kOfferBodySmall = "{\"type\":\"offer\",\"sdp\":\"v=0\\r\\n\"}";
+// A reconnect offer differs the way a fresh RTCPeerConnection's offer does (new
+// origin and ICE credentials); that difference is what tells the worker to answer
+// again instead of waiting out the offer it already answered.
+const std::string kReconnectOfferSdp = "v=0\r\no=- 2 2 IN IP4 0.0.0.0\r\na=ice-ufrag:reconn\r\n";
+const std::string kReconnectOfferBody =
+    "{\"type\":\"offer\",\"sdp\":\"v=0\\r\\no=- 2 2 IN IP4 0.0.0.0\\r\\na=ice-ufrag:reconn\\r\\n\"}";
 
 // Poll values must satisfy session_codec.h's policy validation
 // (initial >= 20, max >= initial, timeout >= max, backoff <= timeout).
@@ -302,7 +308,45 @@ int main() {
         CHECK(transport.count("PUT", "/answer") == 0);
         CHECK(oneWorkerThread(rec.callbackThreads, transport.performThreads));
     }
-    std::cout << "signaling_worker: session flow, backoff/timeout, failure phases, cancellation and "
-                 "worker-thread-only blocking passed\n";
+    // 7: keepPollingAfterAnswer answers a sender reconnect - the still-polling
+    // worker takes a second offer on the same session - and the age-out after
+    // the second success ends the run without another phase report.
+    {
+        FakeTransport transport;
+        Recorder rec;
+        VirtualClock clock;
+        int offerPolls = 0;
+        transport.responder = [&](const km::HttpRequest& r) -> km::HttpResponse {
+            if (r.method == "POST" && r.url.ends_with("/v1/sessions"))
+                return {201, sessionBody(1000, 15000, 2000, 18000), "", {}};
+            if (r.method == "GET" && r.url.ends_with("/offer")) {
+                // Poll 1 serves the first offer; poll 3 re-serves the IDENTICAL
+                // offer (the server does not consume it on read) which must be
+                // skipped; poll 5 is the sender's reconnect offer (fresh SDP) and
+                // gets the second answer.
+                if (++offerPolls == 1 || offerPolls == 3) return {200, kOfferBody, "", {}};
+                if (offerPolls == 5) return {200, kReconnectOfferBody, "", {}};
+                return {404, "", "", {}};
+            }
+            if (r.method == "PUT" && r.url.ends_with("/answer")) return {204, "", "", {}};
+            return {0, "", "unexpected request", {}};
+        };
+        SignalingWorker worker(transport, "https://example.test/prefix/", rec.callbacks(), clock.source(), true);
+        CHECK(worker.start("macos-receiver"));
+        CHECK(waitFinished(worker, std::chrono::seconds(5)));
+        CHECK(!worker.cancel()); // age-out after success: quiet end, not an error phase
+        CHECK(rec.phases == (std::vector<P>{P::CreatingSession, P::SessionCreated, P::WaitingForOffer,
+                P::GeneratingAnswer, P::SendingAnswer, P::Succeeded,
+                P::GeneratingAnswer, P::SendingAnswer, P::Succeeded}));
+        CHECK(rec.answers == 2); // identical re-served offer skipped, reconnect answered
+        CHECK(rec.offerSdp == kReconnectOfferSdp); // the second answer is to the reconnect SDP
+        CHECK(transport.count("PUT", "/answer") == 2);
+        // Polls at 0/1000/.../15000, then the backoff schedule at 16000/17500;
+        // the run ends quietly when virtual time reaches the 18000ms timeout.
+        CHECK(offerPolls == 18);
+        CHECK(clock.nowNs == 19500 * kMs);
+    }
+    std::cout << "signaling_worker: session flow, backoff/timeout, failure phases, cancellation, "
+                 "reconnect re-answer and worker-thread-only blocking passed\n";
     return 0;
 }
