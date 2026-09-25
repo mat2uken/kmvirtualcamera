@@ -3,6 +3,8 @@
 #import "host_exec_publisher.h"
 #import "../receiver/cmio_sink_publisher.h"
 #import "../receiver/url_session_transport.h"
+#import "../receiver/video_pipeline.h"
+#include "km/bounded_video_queue.h"
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreMediaIO/CoreMediaIO.h>
 #include "receiver/signaling/signaling_worker.h"
@@ -151,14 +153,22 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
     NSTextField* _joinUrlLabel;
     NSImageView* _qrView;
     NSUInteger _signalingGeneration; // stale callbacks from a stopped run are dropped
-    NSTextField* _rtcLabel; // RTC peer state; extended with statistics later
+    NSTextField* _rtcLabel; // RTC peer state line
+    NSTextField* _statsLabel; // per-second receive/transmit statistics line
+    // The pipeline sits before _rtc: the video callback submits into it, and the
+    // teardown order (Close drains callbacks, then the pipeline stops) needs the
+    // pipeline to still exist while _rtc tears down.
+    std::unique_ptr<km::mac::VideoPipeline> _pipeline;
     // Declared before the worker so it outlives it (the worker borrows the transport;
     // transports are single-cancel, so every run gets a fresh one). _rtc outlives the
     // worker too: makeAnswer runs on the worker thread and Close() waits for it.
     std::unique_ptr<km::rtc_net::PeerConnectionManager> _rtc;
     std::unique_ptr<km::IHttpTransport> _signalingTransport;
     std::unique_ptr<km::signaling::SignalingWorker> _signalingWorker;
-    std::atomic<uint64_t> _videoFrames; // received AUs; statistics arrive later
+    std::atomic<uint64_t> _videoFrames; // received AUs (statistics source)
+    std::atomic<bool> _rtcTookSink; // first received frame swaps the sink source
+    uint64_t _statsFrames, _statsFramesNs, _statsPublished, _statsPublishedNs;
+    dispatch_source_t _statsTimer;
     KMCMSinkPublisher* _publisher;
     dispatch_queue_t _genQueue;
     dispatch_source_t _genTimer;
@@ -237,8 +247,48 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
         _signalingWorker.reset();
     }
     _signalingTransport.reset();
-    if (_rtc) _rtc->Close();
+    if (_rtc) _rtc->Close(); // drains the video callback before the pipeline stops
+    if (_pipeline) {
+        _pipeline->stop(); // joins the decoder; no handler runs after this
+        _pipeline.reset();
+    }
     ++_signalingGeneration;
+}
+
+// Statistics line: measured values only. Bitrate/loss come from the RTC
+// bandwidth estimator, fps/errors from the pipeline; "—" means no session.
+- (void)updateRTCStats {
+    if (!_signalingWorker && !_pipeline) {
+        _statsLabel.stringValue = @"統計: —";
+        return;
+    }
+    const uint64_t now = HostNanos();
+    const uint64_t received = _videoFrames.load();
+    km::mac::PipelineStats pipe{};
+    const bool havePipeline = _pipeline != nullptr;
+    if (havePipeline) pipe = _pipeline->stats();
+    const double receivedFps = (_statsFramesNs && now > _statsFramesNs)
+        ? double(received - _statsFrames) * 1e9 / double(now - _statsFramesNs)
+        : 0.0;
+    const double publishedFps = (_statsPublishedNs && now > _statsPublishedNs)
+        ? double(pipe.published - _statsPublished) * 1e9 / double(now - _statsPublishedNs)
+        : 0.0;
+    _statsFrames = received;
+    _statsFramesNs = now;
+    _statsPublished = pipe.published;
+    _statsPublishedNs = now;
+    NSMutableString* line = [NSMutableString stringWithString:@"統計: "];
+    if (_rtc) {
+        [line appendFormat:@"送信%.2fMbps｜loss%.1f%%｜",
+                                  _rtc->GetEstimatedBitrate() / 1e6, double(_rtc->GetLossRatio()) * 100.0];
+    }
+    if (havePipeline) {
+        [line appendFormat:@"受信%.1ffps｜配信%.1ffps｜decode失敗%llu",
+                                  receivedFps, publishedFps, (unsigned long long)pipe.decodeErrors];
+    } else {
+        [line appendString:@"受信待ち…"];
+    }
+    _statsLabel.stringValue = line;
 }
 
 - (void)startSignaling:(id)sender {
@@ -285,13 +335,26 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
                     strongSelf->_rtcLabel.stringValue = text;
                 });
             },
-            [strongSelf](const uint8_t* data, size_t size, int, int, int64_t) {
-                // Received H264 AU; the pipeline/sink supply lands with the
-                // next unit, so arrivals are counted for the log meanwhile.
+            [strongSelf, generation](const uint8_t* data, size_t size, int, int, int64_t timestampUs) {
+                // Media path (as on Windows): Annex-B AU → VideoPipeline (its own
+                // worker decodes with VideoToolbox) → the sink publisher. The
+                // caller's buffer only spans this call, so the AU is copied.
                 if (!data || size == 0) return;
                 const uint64_t frames = ++strongSelf->_videoFrames;
                 if (frames == 1 || frames % 300 == 0)
                     NSLog(@"KMAppDelegate: rtc video frames=%llu", (unsigned long long)frames);
+                km::mac::VideoPipeline* pipeline = strongSelf->_pipeline.get();
+                if (!pipeline) return;
+                km::EncodedVideoFrame frame;
+                frame.annexB.assign(data, data + size);
+                frame.mediaTicks = timestampUs; // unwrapped media time, microseconds
+                frame.timestampDomain = km::TimestampDomain::SenderMicroseconds;
+                frame.receivedMonotonicNs = HostNanos();
+                frame.generation = generation;
+                frame.randomAccess = km::BoundedVideoQueue::configuredIdr({data, size});
+                const km::SubmitResult result = pipeline->submit(std::move(frame));
+                if (result == km::SubmitResult::Backpressure || result == km::SubmitResult::NeedKeyframe)
+                    strongSelf->_rtc->RequestKeyframe(); // mirrors the Windows push failure path
             },
             [](const int16_t*, size_t, int, int) {
                 // Audio output is a later stage; nothing consumes it yet.
@@ -303,6 +366,27 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
         return answer;
     };
     _rtc = std::make_unique<km::rtc_net::PeerConnectionManager>();
+    _rtcTookSink = false;
+    // Media pipeline for this run is created here (main thread, before the worker
+    // and any RTC callback exist), so the video callback only ever reads it.
+    _pipeline = km::mac::MakeVideoPipeline([strongSelf](CVPixelBufferRef buffer) {
+        [strongSelf->_publisher publishPixelBuffer:buffer]; // non-blocking, newest wins
+        if (!strongSelf->_rtcTookSink.exchange(true)) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // First received frame replaces the known moving video.
+                [strongSelf stopGenerator];
+                [strongSelf->_publisher start]; // idempotent (_desired guard)
+            });
+        }
+    });
+    std::string pipelineError;
+    if (!_pipeline->start({}, uint64_t(generation), pipelineError)) {
+        NSLog(@"KMAppDelegate: pipeline start failed: %s", pipelineError.c_str());
+        _pipeline.reset();
+        _phaseLabel.stringValue = @"状態: 失敗 — 映像パイプラインを起動できません";
+        [self stopSignalingWorker];
+        return;
+    }
     const std::string url = _signalingUrlField.stringValue.UTF8String ?: "";
     try {
         _signalingTransport = km::mac::MakeUrlSessionTransport();
@@ -445,6 +529,9 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
     _videoFrames = 0;
+    _rtcTookSink = false;
+    _statsFrames = _statsFramesNs = _statsPublished = _statsPublishedNs = 0;
+    _statsTimer = nil;
     const NSRect frame = NSMakeRect(0, 0, 560, 680);
     _window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
@@ -496,8 +583,10 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
     _joinUrlLabel.stringValue = @"join URL: (未作成)";
     _qrView = [[NSImageView alloc] initWithFrame:NSMakeRect(410, 436, 130, 130)];
     _qrView.imageScaling = NSImageScaleProportionallyUpOrDown;
-    _rtcLabel = [self makeLabelWithFrame:NSMakeRect(20, 392, 520, 40) bold:YES];
+    _rtcLabel = [self makeLabelWithFrame:NSMakeRect(20, 412, 520, 22) bold:YES];
     _rtcLabel.stringValue = @"RTC: （未接続）";
+    _statsLabel = [self makeLabelWithFrame:NSMakeRect(20, 390, 520, 22) bold:NO];
+    _statsLabel.stringValue = @"統計: —";
 
     NSTextField* note = [self makeLabelWithFrame:NSMakeRect(20, 20, 520, 130) bold:NO];
     note.stringValue = @"開発用host（段階4–6）: 有効化要求の状態表示、device再列挙、"
@@ -508,7 +597,7 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
     for (NSView* view in @[ _stateLabel, _detailLabel, _devicesLabel, activate, deactivate,
              refresh, _sinkLabel, sinkStart, sinkStop, burst, joinTitle, urlTitle,
              _signalingUrlField, sessionStart, sessionStop, _phaseLabel, _joinUrlLabel,
-             _qrView, _rtcLabel, note ])
+             _qrView, _rtcLabel, _statsLabel, note ])
         [content addSubview:view];
 
     __weak KMAppDelegate* weakSelf = self;
@@ -533,6 +622,13 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
     [_window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 
+    // One-second statistics tick; every value shown is measured, never a claim.
+    _statsTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(_statsTimer, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC,
+                              NSEC_PER_SEC / 20);
+    dispatch_source_set_event_handler(_statsTimer, ^{ [weakSelf updateRTCStats]; });
+    dispatch_resume(_statsTimer);
+
     // Dev smoke only: -KMStartSignaling starts a session without UI scripting so
     // the phase flow lands in the launch log.
     if ([[[NSProcessInfo processInfo] arguments] containsObject:@"-KMStartSignaling"]) {
@@ -542,6 +638,7 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
 
 - (void)applicationWillTerminate:(NSNotification*)notification {
     (void)notification;
+    if (_statsTimer) dispatch_source_cancel(_statsTimer);
     [self stopSignalingWorker];
     [self stopGenerator];
     [_publisher stop];
