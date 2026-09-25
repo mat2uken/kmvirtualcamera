@@ -32,7 +32,7 @@ Browser WebCodecs/DC ─────┘                                ↓
 
 まずローカルのsignalingとブラウザでMediaTrackをつなぎ、host preview、publisher投入、source captureの各段階に同じ動く映像があるか確かめる。次にWebCodecs/DCで同じ順に確認する。ブラウザのカメラ切替、portrait/landscape、SPS/PPS変更、回線断、再接続、AU上限超過、音声無効設定も試す。Cloudflareを使用する構成では、secret値を残さずAPI応答、Offer/Answer、ICE状態、選択candidate pairを記録する。
 
-**試験状況（2026-09-25、[00-plan](00-macos-first-plan.md)のM4結果記録を参照）**: MediaTrack・WebCodecs/DC、カメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で実施済み。SPS/PPS変更の単独確認、Cloudflare運用構成でのAPI応答・ICE状態・candidate pair記録は未実施。
+**試験状況（2026-09-26、[00-plan](00-macos-first-plan.md)のM4結果記録を参照）**: MediaTrack・WebCodecs/DC、カメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で実施済み。ICE candidate pairは段階3で relay-only・TCP/TLS-only失敗の双方を記録済み。SPS/PPS変更の単独確認とCloudflare運用構成でのAPI応答・ICE状態記録は未実施。Windowsの同じ2経路は段階2・段階3で同一SHA `ebd51bd` の後退なしを確認。
 
 ## 完了条件
 

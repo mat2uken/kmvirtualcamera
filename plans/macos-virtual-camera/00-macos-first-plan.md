@@ -164,7 +164,7 @@ M4-aはM1–M3と並行して着手できる。M4-bはWindows端末がなけれ�
 - MediaTrack H.264／WebCodecs DCの2経路、Opus/WASAPI、Close競合、WinHTTP失敗経路、UDP TURN relay-onlyを記録する（段階3）。
 - 端末が用意できない場合は「未実施（端末なし）」と理由を記録し、M4の完了を保留にする。M1–M3は継続する。
 
-**結果（2026-09-25更新）**: Windows物理端末（Windows 11 Pro、Tailscale接続）を用意し、段階2の製品ビルド・限定CTestを同一SHA `d1b9f5f` で完了した。詳細は[段階2結果記録](02-03-windows-native.md)。CI 3 jobはbranchがremoteへ未公開のため未実施（公開判断待ち）。段階3（2経路・音声・WinHTTP・TURN）は未着手のため、M4の完了判定は保留のまま。
+**結果（2026-09-26更新）**: Windows物理端末（Windows 11 Pro、Tailscale接続）を用意し、段階2の製品ビルド・限定CTestを同一SHA `d1b9f5f` で完了した。段階3は映像2経路・音声・再接続・Close競合・WinHTTP失敗経路・UDP TURN relay-only・TCP/TLS-only設定の理由付き失敗の7項目を同一SHA `ebd51bd` で記録し完了（詳細は[段階3結果記録](02-03-windows-native.md)）。CI 3 jobは公開SHA `ebd51bd` で success（run 36150269346）。M4-bは完了。
 
 ## M4: 段階7 — ブラウザ映像接続
 
@@ -185,8 +185,8 @@ M3・M4-a・M4-bが揃ったら、[段階7の文書](07-live-receiver.md)の手�
 | 試験ゲート | 成功 | 各コミット前に `sh scripts/test_macos_foundation.sh` → **10/10 pass**、`sh scripts/build_macos_rtc.sh` → **12/12 pass**、`cloud` `npm test` → **17/17**、xcodebuild警告0（u1–u3時は `work/records/m4-u3-gate.txt`・`m4-u3-rtc-test.txt`・`m4-u3-xcodebuild.txt`、u4–u8時は `m4-u4-gate.txt`・`m4-u4-rtc-gate.txt`・`m4-u4-xcodebuild.txt`、本追記時は `m4-docs-gate.txt`、いずれも未追跡） |
 
 - **環境**: macOS 26.7（Apple Silicon Mac15,10）、Xcode 26.6、Chrome（CDP 9222・fake device）。受信consumerはAVFoundation。signalingはローカル `wrangler dev`（127.0.0.1 bind）のみで実Cloudflare運用は未検証。SDPはバイト数のみ記録し、認証情報は残さない。
-- **主張しない範囲**: M4-b（Windows 2経路の回帰）は未実施（端末なし）でM4の完了は保留。SPS/PPS変更の単独確認、ICE candidate pairの記録、Cloudflare運用構成での確認、音声（D08）は未実施。u6・u8は送信元にテストダブル（縦canvas・ノイズcanvas）を使い、その旨を各試験に明記する。fps以外の遅延・CPU測定は段階8へ送る。
-- **段階7への判定**: 必須証拠（実ブラウザ2経路・断線復旧・Mac capture）は揃った。[07の試験項目](07-live-receiver.md)のうちカメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で完了したが、SPS/PPS変更の単独確認とWindows後退確認（M4-b）が未了のため段階7の完了は主張しない。
+- **主張しない範囲**: SPS/PPS変更の単独確認、Cloudflare運用構成での確認、音声（D08）のWASAPI実マイク聴取は未実施。u6・u8は送信元にテストダブル（縦canvas・ノイズcanvas）を使い、その旨を各試験に明記する。fps以外の遅延・CPU測定は段階8へ送る。Windows側の実カメラ（OBSBOT）撮像は対話セッション1待ち。
+- **段階7への判定**: 必須証拠（実ブラウザ2経路・断線復旧・Mac capture）は揃った。[07の試験項目](07-live-receiver.md)のうちカメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で完了し、Windows後退確認（M4-b）も段階2・段階3を同一SHA `ebd51bd` で完了した。残件のSPS/PPS変更の単独確認は段階7完了の必須項目ではなく、段階8の長期試験（RTP wrap含む）へ送る。以上からM4（段階7）の完了を判定する。
 
 ## 共通ルール
 
