@@ -2,6 +2,9 @@ import { RtcConfigurationDto } from "./types";
 import { Env } from "../env";
 
 export async function getRtcConfiguration(env: Env): Promise<RtcConfigurationDto> {
+  // "relay" forces candidates through TURN (used for relay-only verification);
+  // any other value keeps the default full-candidate policy.
+  const iceTransportPolicy: "all" | "relay" = env.ICE_TRANSPORT_POLICY === "relay" ? "relay" : "all";
   const defaultIce: RtcConfigurationDto = {
     iceServers: [
       {
@@ -16,7 +19,7 @@ export async function getRtcConfiguration(env: Env): Promise<RtcConfigurationDto
         ]
       }
     ],
-    iceTransportPolicy: "all"
+    iceTransportPolicy
   };
 
   if (env.ENABLE_TURN === "true" && env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN) {
@@ -48,13 +51,26 @@ export async function getRtcConfiguration(env: Env): Promise<RtcConfigurationDto
 
         return {
           iceServers: [...defaultIce.iceServers, ...filteredServers],
-          iceTransportPolicy: "all"
+          iceTransportPolicy
         };
       }
     } catch (err) {
       console.error("Failed to generate TURN credentials:", err);
       throw new Error("TURN_CREDENTIALS_FAILED");
     }
+  }
+
+  // Self-hosted TURN endpoint with static credentials. Unlike the Cloudflare
+  // key API above this needs no per-request credential generation; with
+  // ENABLE_TURN unset (the deployment default) this is the path that applies.
+  if (env.TURN_STATIC_URL && env.TURN_STATIC_USERNAME && env.TURN_STATIC_CREDENTIAL) {
+    return {
+      iceServers: [
+        ...defaultIce.iceServers,
+        { urls: env.TURN_STATIC_URL, username: env.TURN_STATIC_USERNAME, credential: env.TURN_STATIC_CREDENTIAL }
+      ],
+      iceTransportPolicy
+    };
   }
 
   return defaultIce;

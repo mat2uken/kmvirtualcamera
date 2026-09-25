@@ -409,4 +409,24 @@ describe("Cloudflare Signaling & Durable Object (CF-001 - CF-022)", () => {
       }
     }
   });
+
+  it("static self-hosted TURN is appended and ICE_TRANSPORT_POLICY=relay is honored", async () => {
+    const rtcConfig = await getRtcConfiguration({
+      ...env,
+      TURN_STATIC_URL: "turn:192.0.2.10:3478",
+      TURN_STATIC_USERNAME: "kmuser",
+      TURN_STATIC_CREDENTIAL: "kmpass",
+      ICE_TRANSPORT_POLICY: "relay"
+    });
+    expect(rtcConfig.iceTransportPolicy).toBe("relay");
+    const turnServer = rtcConfig.iceServers.find(s => {
+      const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+      return urls.some(u => u.startsWith("turn:"));
+    });
+    expect(turnServer).toBeDefined();
+    expect(turnServer!.username).toBe("kmuser");
+    expect(turnServer!.credential).toBe("kmpass");
+    // The STUN list is preserved alongside the TURN entry.
+    expect(rtcConfig.iceServers.length).toBeGreaterThan(1);
+  });
 });
