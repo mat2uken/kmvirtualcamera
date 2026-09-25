@@ -24,6 +24,10 @@ Browser WebCodecs/DC ─────┘                                ↓
 5. AppKit hostへ接続操作、QR/join URL、接続状態、カメラ導入状態、映像供給状態、capture状態、エラー、fps・遅延統計を表示する。プレビューを閉じたり最小化したりしてもカメラ供給を継続し、明示的stopでは旧映像を破棄する。QR表示は既存Windows/ブラウザの入出力形式と照合する。
 6. TURN設定の `urls`、`username`、`credential`、policyをそのままMac RTCへ引き継ぐ。既定libjuiceにないTURN TCP/TLS対応をUIや資料で主張しない。relay-only時に使えるUDP TURNがない場合は理由付きで失敗させる。
 
+### Mac先行（M4-a）の到達
+
+手順1（`IHttpTransport`）、手順3–5の接続前部分（owning AU→Mac video worker、映像パイプラインとsink供給、join UI・接続状態・統計表示）、手順6（TURN引き継ぎ）はM4-a単位1–8で実装・試験済み。結果は[00-plan](00-macos-first-plan.md)のM4-a節に記録する。手順2の `ReceiverEngine` への集約はWindowsビルド回帰が必要なためM4-b依存で延期。接続後の実測（実映像のfps・遅延、統計のConnected時値）はこの段階で行う。
+
 ## 実映像の確認順
 
 まずローカルのsignalingとブラウザでMediaTrackをつなぎ、host preview、publisher投入、source captureの各段階に同じ動く映像があるか確かめる。次にWebCodecs/DCで同じ順に確認する。ブラウザのカメラ切替、portrait/landscape、SPS/PPS変更、回線断、再接続、AU上限超過、音声無効設定も試す。Cloudflareを使用する構成では、secret値を残さずAPI応答、Offer/Answer、ICE状態、選択candidate pairを記録する。
