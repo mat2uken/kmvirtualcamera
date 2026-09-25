@@ -110,7 +110,11 @@ function buildVideoConstraint(
   if (deviceIdOrFacing === "user" || deviceIdOrFacing === "environment") {
     constraint.facingMode = { ideal: deviceIdOrFacing };
   } else if (deviceIdOrFacing) {
-    constraint.deviceId = { ideal: deviceIdOrFacing };
+    // Bare value = hard constraint. Chrome ignores deviceId:{ideal} entirely and
+    // silently falls back to the default camera, which on a loopback machine is
+    // our own KM Virtual Camera (feedback loop). A hard constraint selects the
+    // requested device or fails into the caller's fallback chain.
+    constraint.deviceId = deviceIdOrFacing;
   } else {
     constraint.facingMode = { ideal: "environment" };
   }
@@ -526,6 +530,11 @@ export class WebRtcSender {
               summary.videoBytesSent = report.bytesSent;
               summary.videoWidth = report.frameWidth;
               summary.videoHeight = report.frameHeight;
+            }
+            if (report.type === "outbound-rtp" && report.kind === "audio") {
+              // Present only while the receiver accepted the audio m-line;
+              // an audio-disabled receiver rejects it and this stays absent.
+              summary.audioBytesSent = report.bytesSent;
             }
             if (report.type === "candidate-pair" && report.state === "succeeded") {
               summary.rtt = report.currentRoundTripTime;
