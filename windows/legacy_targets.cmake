@@ -188,6 +188,7 @@ add_test(NAME Nv12ConverterTest COMMAND test_nv12_converter)
 
 add_executable(test_pipe_integration
     tests/test_pipe_integration.cpp
+    receiver/media/d3d11_video_processor.cpp
     receiver/media/pipe_publisher.cpp
     virtual-camera/media-source/pipe_frame_receiver.cpp
 )
@@ -294,6 +295,7 @@ add_executable(test_receiver_startup
     receiver/codec/h264_decoder.cpp
     receiver/codec/h264_rtp_depacketizer.cpp
     receiver/media/nv12_converter.cpp
+    receiver/media/d3d11_video_processor.cpp
     receiver/media/pipe_publisher.cpp
     receiver/media/test_pattern_generator.cpp
     receiver/audio/audio_device_enumerator.cpp
@@ -382,6 +384,7 @@ add_test(NAME BandwidthEstimatorTest COMMAND test_bandwidth_estimator)
 # Test Target 8: test_virtual_camera_e2e
 add_executable(test_virtual_camera_e2e
     tests/test_virtual_camera_e2e.cpp
+    receiver/media/d3d11_video_processor.cpp
     receiver/media/pipe_publisher.cpp
     receiver/media/test_pattern_generator.cpp
     receiver/vcam/virtual_camera_registrar.cpp
@@ -413,6 +416,7 @@ add_test(NAME VirtualCameraE2ETest COMMAND test_virtual_camera_e2e)
 # Test Target 9: test_vcam_pixel_fidelity
 add_executable(test_vcam_pixel_fidelity
     tests/test_vcam_pixel_fidelity.cpp
+    receiver/media/d3d11_video_processor.cpp
     receiver/media/pipe_publisher.cpp
     receiver/media/test_pattern_generator.cpp
     virtual-camera/media-source/webrtc_bridge_media_source.cpp
@@ -443,6 +447,7 @@ add_test(NAME VirtualCameraPixelFidelityTest COMMAND test_vcam_pixel_fidelity)
 # Test Target 10: test_system_vcam_capture (Windows Device Enumeration Capture)
 add_executable(test_system_vcam_capture
     tests/test_system_vcam_capture.cpp
+    receiver/media/d3d11_video_processor.cpp
     receiver/media/pipe_publisher.cpp
     receiver/media/test_pattern_generator.cpp
     receiver/vcam/virtual_camera_registrar.cpp
@@ -468,6 +473,7 @@ add_test(NAME SystemVirtualCameraCaptureTest COMMAND test_system_vcam_capture)
 # Test Target 11: test_vcam_isolated (Minimal Standalone VCam Feeder & Capture Test)
 add_executable(test_vcam_isolated
     tests/test_vcam_isolated.cpp
+    receiver/media/d3d11_video_processor.cpp
     receiver/media/pipe_publisher.cpp
     receiver/media/test_pattern_generator.cpp
     receiver/vcam/virtual_camera_registrar.cpp
