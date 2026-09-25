@@ -164,7 +164,7 @@ M4-aはM1–M3と並行して着手できる。M4-bはWindows端末がなけれ�
 - MediaTrack H.264／WebCodecs DCの2経路、Opus/WASAPI、Close競合、WinHTTP失敗経路、UDP TURN relay-onlyを記録する（段階3）。
 - 端末が用意できない場合は「未実施（端末なし）」と理由を記録し、M4の完了を保留にする。M1–M3は継続する。
 
-**結果（2026-09-25記録）**: 未実施（端末なし）。作業環境はmacOS（Apple Silicon）のみでWindows SDK端末がない。M4の完了判定は保留のまま、M4のMac側作業（ローカルsignaling→実ブラウザ接続）は進める。
+**結果（2026-09-25更新）**: Windows物理端末（Windows 11 Pro、Tailscale接続）を用意し、段階2の製品ビルド・限定CTestを同一SHA `d1b9f5f` で完了した。詳細は[段階2結果記録](02-03-windows-native.md)。CI 3 jobはbranchがremoteへ未公開のため未実施（公開判断待ち）。段階3（2経路・音声・WinHTTP・TURN）は未着手のため、M4の完了判定は保留のまま。
 
 ## M4: 段階7 — ブラウザ映像接続
 
