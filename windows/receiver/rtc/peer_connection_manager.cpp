@@ -18,6 +18,11 @@ namespace km::rtc_net {
 namespace {
 int64_t nowUs() { return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 std::string lower(std::string s) { for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c))); return s; }
+// Codec this receiver answers with: H264 video always, Opus audio only in Opus builds.
+bool isAnsweredCodec(const rtc::Description::Media& media, const rtc::Description::Media::RtpMap* map) {
+    return map && ((media.type() == "video" && lower(map->format) == "h264" && map->clockRate == 90000) ||
+        (KM_ENABLE_OPUS && media.type() == "audio" && lower(map->format) == "opus" && map->clockRate == 48000));
+}
 template<class F> auto guarded(std::weak_ptr<km::CallbackGate> weak, F callback) {
     return [weak, callback = std::move(callback)](auto&&... args) {
         auto gate = weak.lock(); if (!gate) return;
@@ -183,36 +188,81 @@ bool PeerConnectionManager::Initialize(const signaling::RtcConfiguration& config
             }
         });
         return true;
-    } catch (const std::exception&) { CloseInternal(); return false; }
+    } catch (const std::exception& e) {
+        std::cerr << "[RTC] Initialize failed: " << e.what() << "\n";
+        CloseInternal();
+        return false;
+    }
 }
 bool PeerConnectionManager::ProcessOfferAndGenerateAnswer(const std::string& sdp, std::string& answer) {
     answer.clear(); std::shared_ptr<rtc::PeerConnection> peer; uint64_t serial = 0;
     { std::lock_guard lock(rtcMutex_); peer = pc_; serial = sessionSerial_.load(); gatheringComplete_ = false; }
-    if (!peer || cancelled_ || sdp.empty() || sdp.size() > 512 * 1024) return false;
+    if (!peer || cancelled_ || sdp.empty() || sdp.size() > 512 * 1024) {
+        std::cerr << "[RTC] answer generation rejected: peer=" << (peer ? "set" : "none")
+                  << " cancelled=" << (cancelled_ ? "yes" : "no") << " offerBytes=" << sdp.size() << "\n";
+        return false;
+    }
     try {
         rtc::Description offer(sdp, rtc::Description::Type::Offer, rtc::Description::Role::Active);
         for (int i = 0; i < offer.mediaCount(); ++i) {
             auto entry = offer.media(i);
             if (auto* m = std::get_if<rtc::Description::Media*>(&entry)) {
                 auto* media = *m;
+                // First decide per m-line: reject it whole, or keep it and drop
+                // the unwanted codecs. A rejected m-line must keep its payload
+                // types - the answer's format list derives from them and an
+                // empty list makes browsers reject the entire answer.
+                bool keepAny = false;
                 for (int pt : media->payloadTypes()) {
+                    if (!media->hasPayloadType(pt)) continue;
                     const auto* map = media->rtpMap(pt);
-                    const bool keep = map && ((media->type() == "video" && lower(map->format) == "h264" && map->clockRate == 90000) ||
-                        (KM_ENABLE_OPUS && media->type() == "audio" && lower(map->format) == "opus" && map->clockRate == 48000));
-                    if (!keep) media->removeRtpMap(pt);
+                    keepAny = keepAny || isAnsweredCodec(*media, map);
                 }
-                if (media->payloadTypes().empty()) media->markRemoved();
+                if (!keepAny) {
+                    media->markRemoved();
+                    continue;
+                }
+                for (int pt : media->payloadTypes()) {
+                    // removeRtpMap cascades into dependent entries (RTX apt=...);
+                    // a payload type the cascade already dropped is skipped.
+                    if (!media->hasPayloadType(pt)) continue;
+                    const auto* map = media->rtpMap(pt);
+                    if (map && !isAnsweredCodec(*media, map)) media->removeRtpMap(pt);
+                }
             }
         }
         peer->setRemoteDescription(offer);
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         while (!gatheringComplete_ && peer->gatheringState() != rtc::PeerConnection::GatheringState::Complete) {
-            if (cancelled_ || serial != sessionSerial_ || std::chrono::steady_clock::now() >= deadline) return false;
+            if (cancelled_ || serial != sessionSerial_) {
+                std::cerr << "[RTC] answer generation aborted: session changed\n";
+                return false;
+            }
+            if (std::chrono::steady_clock::now() >= deadline) {
+                std::cerr << "[RTC] answer generation timeout: ICE gathering\n";
+                return false;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
-        if (cancelled_ || serial != sessionSerial_) return false;
-        auto local = peer->localDescription(); if (!local) return false; answer = std::string(*local); return !answer.empty();
-    } catch (const std::exception&) { return false; }
+        if (cancelled_ || serial != sessionSerial_) {
+            std::cerr << "[RTC] answer generation aborted: session changed\n";
+            return false;
+        }
+        auto local = peer->localDescription();
+        if (!local) {
+            std::cerr << "[RTC] answer generation failed: no local description\n";
+            return false;
+        }
+        answer = std::string(*local);
+        if (answer.empty()) {
+            std::cerr << "[RTC] answer generation failed: empty local description\n";
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "[RTC] answer generation exception: " << e.what() << "\n";
+        return false;
+    }
 }
 void PeerConnectionManager::SendKeyframeRequest() {
     const auto now = nowUs(); if (lastKeyframeRequestUs_ >= 0 && now - lastKeyframeRequestUs_ < 50000) return;
