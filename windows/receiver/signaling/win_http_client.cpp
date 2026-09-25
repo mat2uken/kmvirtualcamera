@@ -5,6 +5,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <iostream>
 #include <stdexcept>
 namespace km::signaling {
 namespace {
@@ -90,7 +91,8 @@ public:
                 out.body.append(buffer.data(), count);
             }
             check(); out.status = int(status);
-        } catch (const std::exception& e) { out.status = 0; out.body.clear(); out.error = e.what(); }
+            if (status >= 300 && status != 404) std::cerr << "[HTTP] " << input.method << " status=" << status << "\n";
+        } catch (const std::exception& e) { out.status = 0; out.body.clear(); out.error = e.what(); std::cerr << "[HTTP] " << input.method << " failed: " << e.what() << "\n"; }
         return out;
     }
 private:

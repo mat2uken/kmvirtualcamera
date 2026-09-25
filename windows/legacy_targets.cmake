@@ -216,6 +216,22 @@ target_link_libraries(test_win_http_live PRIVATE
     winhttp
 )
 
+# Failure-path coverage for the signaling transport (in-process WinSock mock
+# server plus an expired-certificate host); registered so ctest records it.
+add_executable(test_win_http_paths
+    tests/test_win_http_paths.cpp
+    receiver/signaling/win_http_client.cpp
+)
+target_include_directories(test_win_http_paths PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/receiver/signaling
+)
+target_link_libraries(test_win_http_paths PRIVATE
+    winhttp
+    ws2_32
+)
+add_test(NAME WinHttpPathsTest COMMAND test_win_http_paths)
+
 add_executable(test_qr_generator
     tests/test_qr_generator.cpp
     third_party/qr/qrcodegen.cpp
