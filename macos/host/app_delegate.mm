@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include "../../windows/third_party/qr/qrcodegen.hpp"
 // Development identifier; must match PRODUCT_BUNDLE_IDENTIFIER of the extension target.
@@ -324,6 +325,32 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
     callbacks.makeAnswer = [strongSelf, generation](const std::string& offerSdp,
                                 const km::signaling::CreateSessionResponse& session)
         -> std::optional<std::string> {
+        // Offer structure as metadata only (m-line count + codec names). Never log SDP text:
+        // answers are logged as byte counts further below.
+        {
+            size_t mLines = 0;
+            std::string codecs;
+            for (size_t pos = 0; pos < offerSdp.size();) {
+                const size_t eol = offerSdp.find("\r\n", pos);
+                const size_t end = (eol == std::string::npos) ? offerSdp.size() : eol;
+                const std::string_view line(offerSdp.data() + pos, end - pos);
+                if (line.rfind("m=", 0) == 0) ++mLines;
+                if (line.rfind("a=rtpmap:", 0) == 0) {
+                    const size_t sp = line.find(' ');
+                    const size_t sl = (sp == std::string::npos) ? std::string::npos
+                                                                : line.find('/', sp + 1);
+                    if (sp != std::string::npos && sl != std::string::npos && sl > sp + 1) {
+                        const std::string name(line.substr(sp + 1, sl - sp - 1));
+                        if (codecs.find(name) == std::string::npos)
+                            codecs += (codecs.empty() ? "" : ",") + name;
+                    }
+                }
+                if (eol == std::string::npos) break;
+                pos = eol + 2;
+            }
+            NSLog(@"KMAppDelegate: offer metadata m-lines=%zu codecs=%s", mLines,
+                  codecs.c_str());
+        }
         km::rtc_net::PeerConnectionManager* rtc = strongSelf->_rtc.get();
         if (!rtc) return std::nullopt;
         const bool initialized = rtc->Initialize(session.rtcConfiguration,
