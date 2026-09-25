@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(WebRtcBridgeWindows VERSION 1.0.0 LANGUAGES C CXX)
+# CMake 4 removed compatibility with cmake_minimum_required() < 3.5; pinned
+# deps (libdatachannel's plog) still declare it. Harmless on CMake 3.x.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
 # Preserve the existing target definitions in one included file, without a second copy.
 # USE_NICE may be supplied to libdatachannel with -DUSE_NICE=ON; install libnice first.
 option(KM_ENABLE_OPUS "Decode browser Opus audio with pinned libopus" ON)
