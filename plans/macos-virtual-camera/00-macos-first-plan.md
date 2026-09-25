@@ -164,9 +164,24 @@ M4-aはM1–M3と並行して着手できる。M4-bはWindows端末がなけれ�
 - MediaTrack H.264／WebCodecs DCの2経路、Opus/WASAPI、Close競合、WinHTTP失敗経路、UDP TURN relay-onlyを記録する（段階3）。
 - 端末が用意できない場合は「未実施（端末なし）」と理由を記録し、M4の完了を保留にする。M1–M3は継続する。
 
+**結果（2026-09-25記録）**: 未実施（端末なし）。作業環境はmacOS（Apple Silicon）のみでWindows SDK端末がない。M4の完了判定は保留のまま、M4のMac側作業（ローカルsignaling→実ブラウザ接続）は進める。
+
 ## M4: 段階7 — ブラウザ映像接続
 
 M3・M4-a・M4-bが揃ったら、[段階7の文書](07-live-receiver.md)の手順でローカルsignaling→実ブラウザのMediaTrack、続いてWebCodecs/DCの順に確認する。この到達点がREADMEの最初の到達点（通常設定Macでブラウザ映像を仮想カメラ表示）である。検証は[記録様式](verification.md)に従い、実ブラウザ2経路・断線復旧・Mac captureの証拠を残す。
+
+### M4 結果記録（2026-09-25、HEAD `ffd4de2`（u1試験中のAnswer修正は `690e7c0`）、28コミット先行・未push）
+
+| 試験 | 結果 | 根拠 |
+|---|---|---|
+| M4-u1 実ブラウザ MediaTrack経路 | 成功 | Chrome（`--use-fake-device-for-media-stream` 等、CDP 9222）→ ローカルsignaling（実装コードの `wrangler dev`、127.0.0.1:8787）→ host RTC → VideoToolbox → sink publisher → Extension → AVFoundation consumer。phase 0→5、answer 4978 bytes、rtc state 1→2、受信frames 1→8400（約20fps）、統計「送信2.80Mbps｜loss0.0%｜受信20.0fps｜配信20.0fps｜decode失敗0」、「KM Virtual Camera」1280x720へのcaptureが実ブラウザ映像（`work/records/m4-u1-*`、未追跡）。試行でChromeのanswer拒否（rejected m-lineのPT保持不足）を発見し `690e7c0` で修正、`test_rtc_answer` シナリオ4で回帰固定 |
+| M4-u2 実ブラウザ WebCodecs/DC経路 | 成功 | 同一構成のDC経路。answer 1681 bytes → state 2 → 受信frames 2100超、統計「2.50Mbps｜20.0fps｜decode失敗0」、consumer captureが実ブラウザ映像（`work/records/m4-u2-*`、未追跡） |
+| M4-u3 断線復旧（停止→黒→再接続） | 成功 | 同一セッションで2回反復。送信停止 → rtc state 3/5 → 最終フレームから1.018秒・1.008秒で `no new frame … -> feeding black` → consumerが完全な黒（生フレームとの差19.12、黒同士の差0.00）。再接続 → phase 3 → 新規answer（1681・1682 bytes）→ phase 5 → state 2 → `new frame arrived -> resuming live feed` → 受信frames継続 → consumerが実映像（差1.76）、`answer send failed` 0件（`work/records/m4-u3-*`、未追跡）。試行で見つけたhost側2ギャップ（停止後の最終フレーム再投入で黒timeout不発、Succeeded後の監視終了で再Offer未回答）を `ffd4de2` で修正し、sink publisherの1秒新着なしで黒送出、signaling workerの継続監視と回答済み同一Offerスキップを `signaling_worker` シナリオ7で固定 |
+| 試験ゲート | 成功 | `sh scripts/test_macos_foundation.sh` → **10/10 pass**、`sh scripts/build_macos_rtc.sh` → **12/12 pass**、xcodebuild警告0（各コミット前、`work/records/m4-u3-gate.txt`・`m4-u3-rtc-test.txt`・`m4-u3-xcodebuild.txt`） |
+
+- **環境**: macOS 26.7（Apple Silicon Mac15,10）、Xcode 26.6、Chrome（CDP 9222・fake device）。受信consumerはAVFoundation。signalingはローカル `wrangler dev`（127.0.0.1 bind）のみで実Cloudflare運用は未検証。SDPはバイト数のみ記録し、認証情報は残さない。
+- **主張しない範囲**: M4-b（Windows 2経路の回帰）は未実施（端末なし）でM4の完了は保留。カメラ切替、portrait/landscape、SPS/PPS変更、AU上限超過、音声無効設定、ICE candidate pairの記録、音声（D08）は未実施。fps以外の遅延・CPU測定は段階8へ送る。
+- **段階7への判定**: 必須証拠（実ブラウザ2経路・断線復旧・Mac capture）は揃った。ただし完了条件のカメラ切替とWindows後退確認が未了のため段階7の完了は主張しない。
 
 ## 共通ルール
 
