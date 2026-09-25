@@ -11,6 +11,7 @@
 #include <vector>
 #include <cstdint>
 #include <iostream>
+#include <atomic>
 
 namespace km::codec {
 
@@ -56,6 +57,11 @@ public:
 
     bool IsInitialized() const { return isInitialized_; }
     bool IsHardwareAccelerated() const { return isHardwareAccelerated_; }
+
+    // Shutdown diagnostics: which internal call the decode is currently inside
+    // (0 = idle, 100-139 = stage markers set around MF/D3D11 calls in
+    // h264_decoder.cpp). Read by the app shutdown watchdog while a join stalls.
+    static std::atomic<int>& DebugStage() { static std::atomic<int> stage{0}; return stage; }
     void GetDecodedResolution(int& width, int& height) const {
         width = actualWidth_;
         height = actualHeight_;

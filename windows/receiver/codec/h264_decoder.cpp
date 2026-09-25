@@ -76,6 +76,13 @@ bool H264Decoder::Initialize(int width, int height, ID3D11Device* pD3DDevice) {
                 hr = decoderMft_->ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, reinterpret_cast<ULONG_PTR>(dxgiDeviceManager_.Get()));
                 if (SUCCEEDED(hr)) {
                     isHardwareAccelerated_ = true;
+                    MFT_OUTPUT_STREAM_INFO sinfo{};
+                    if (SUCCEEDED(decoderMft_->GetOutputStreamInfo(0, &sinfo))) {
+                        std::cout << "[H264Decoder] output stream flags=0x" << std::hex << sinfo.dwFlags << std::dec
+                                  << " providesSamples="
+                                  << ((sinfo.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES)) != 0)
+                                  << std::endl;
+                    }
                     std::cout << "[H264Decoder] Hardware Acceleration (D3D11 / DXVA) ENABLED for MFT H.264 Decoder." << std::endl;
                 }
             }
@@ -285,7 +292,9 @@ bool H264Decoder::ExtractSampleNv12(IMFSample* pSample, std::vector<uint8_t>& ou
     if (SUCCEEDED(mediaBuffer.As(&buffer2D)) && buffer2D) {
         BYTE* pScanline = nullptr;
         LONG pitch = 0;
+        DebugStage() = 131; // Lock2D on a hardware surface can wait on the GPU
         hr = buffer2D->Lock2D(&pScanline, &pitch);
+        DebugStage() = 132;
         if (SUCCEEDED(hr) && pScanline) {
             LONG absPitch = std::abs(pitch);
             // Y Plane
@@ -308,7 +317,9 @@ bool H264Decoder::ExtractSampleNv12(IMFSample* pSample, std::vector<uint8_t>& ou
     // 2. Standard 1D Buffer Lock (Software MFT buffers)
     BYTE* pSrc = nullptr;
     DWORD currentLen = 0;
+    DebugStage() = 134;
     hr = mediaBuffer->Lock(&pSrc, nullptr, &currentLen);
+    DebugStage() = 135;
     if (SUCCEEDED(hr) && pSrc) {
         if (dispW == codedW && dispH == codedH) {
             // Fast path: zero-copy direct memcpy
@@ -344,6 +355,7 @@ bool H264Decoder::DecodeAccessUnitEx(
 ) {
     outIsGpuDirect = false;
     if (!h264Data || size == 0) return false;
+    DebugStage() = 100;
 
     if (!isInitialized_ && !Initialize(targetWidth_, targetHeight_, d3dDevice_.Get())) {
         return false;
@@ -365,6 +377,7 @@ bool H264Decoder::DecodeAccessUnitEx(
 
     BYTE* pDst = nullptr;
     HRESULT hr = inBuffer_->Lock(&pDst, nullptr, nullptr);
+    DebugStage() = 102;
     if (FAILED(hr)) return false;
 
     memcpy(pDst, h264Data, size);
@@ -406,11 +419,25 @@ bool H264Decoder::DecodeAccessUnitEx(
             }
 
             DWORD dwStatus = 0;
+            DebugStage() = 120;
             ohr = decoderMft_->ProcessOutput(0, 1, &outputBuffer, &dwStatus);
+            DebugStage() = 121;
 
             if (outputBuffer.pEvents) {
                 outputBuffer.pEvents->Release();
+                outputBuffer.pEvents = nullptr;
             }
+
+            // Samples provided by the MFT belong to the caller only for the
+            // duration of the call: holding them starves the decoder's output
+            // pool and a later ProcessOutput blocks forever waiting for the
+            // sample to be returned (CDXVAFrameManager hang).
+            Microsoft::WRL::ComPtr<IMFSample> producedSample;
+            if (mftProvidesSamples && outputBuffer.pSample) {
+                producedSample.Attach(outputBuffer.pSample);
+                outputBuffer.pSample = nullptr;
+            }
+            IMFSample* producedRaw = producedSample ? producedSample.Get() : outputBuffer.pSample;
 
             if (ohr == MF_E_TRANSFORM_STREAM_CHANGE) {
                 Microsoft::WRL::ComPtr<IMFMediaType> availType;
@@ -429,9 +456,9 @@ bool H264Decoder::DecodeAccessUnitEx(
                 break;
             }
 
-            if (SUCCEEDED(ohr) && outputBuffer.pSample) {
+            if (SUCCEEDED(ohr) && producedRaw) {
                 Microsoft::WRL::ComPtr<IMFMediaBuffer> buf;
-                if (SUCCEEDED(outputBuffer.pSample->GetBufferByIndex(0, &buf)) && buf) {
+                if (SUCCEEDED(producedRaw->GetBufferByIndex(0, &buf)) && buf) {
                     Microsoft::WRL::ComPtr<IMFDXGIBuffer> dxgiBuf;
                     if (SUCCEEDED(buf.As(&dxgiBuf)) && dxgiBuf) {
                         Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
@@ -449,7 +476,8 @@ bool H264Decoder::DecodeAccessUnitEx(
                 }
 
                 int decW = 0, decH = 0;
-                if (ExtractSampleNv12(outputBuffer.pSample, outCpuNv12, decW, decH)) {
+                DebugStage() = 130;
+                if (ExtractSampleNv12(producedRaw, outCpuNv12, decW, decH)) {
                     gotAny = true;
                     ++sampleIndex_;
                 } else if (outIsGpuDirect) {
@@ -462,16 +490,21 @@ bool H264Decoder::DecodeAccessUnitEx(
     };
 
     // 3. Feed Sample to MFT with automatic drain retry
+    DebugStage() = 110;
     hr = decoderMft_->ProcessInput(0, inSample_.Get(), 0);
+    DebugStage() = 111;
     if (hr == MF_E_NOTACCEPTING) {
         DrainOutput();
+        DebugStage() = 112;
         hr = decoderMft_->ProcessInput(0, inSample_.Get(), 0);
+        DebugStage() = 113;
     }
     if (FAILED(hr)) {
         return false;
     }
 
     // 4. Drain output after feeding
+    DebugStage() = 114;
     return DrainOutput();
 }
 
@@ -485,7 +518,9 @@ bool H264Decoder::DecodeAccessUnit(
 ) {
     GpuDecodedFrame gpuFrame{};
     bool isGpuDirect = false;
-    if (!DecodeAccessUnitEx(h264Data, size, timestampUs, gpuFrame, outNv12, isGpuDirect)) {
+    const bool exOk = DecodeAccessUnitEx(h264Data, size, timestampUs, gpuFrame, outNv12, isGpuDirect);
+    DebugStage() = 0; // idle between frames; non-zero only while inside Ex
+    if (!exOk) {
         return false;
     }
     outWidth = displayWidth_ > 0 ? displayWidth_ : actualWidth_;

@@ -46,10 +46,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
     // Initialize COM and Media Foundation
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    if (FAILED(hr)) return 1;
+    if (FAILED(hr)) { std::cerr << "[Main] CoInitializeEx failed hr=0x" << std::hex << unsigned(hr) << std::dec << "\n"; return 1; }
 
     hr = MFStartup(MF_VERSION);
     if (FAILED(hr)) {
+        std::cerr << "[Main] MFStartup failed hr=0x" << std::hex << unsigned(hr) << std::dec << "\n";
         CoUninitialize();
         return 1;
     }

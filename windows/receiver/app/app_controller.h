@@ -47,6 +47,9 @@ private:
     std::atomic<bool> testPatternMode_{false}, acceptingUi_{false}, shuttingDown_{false};
     std::atomic<int> rotationDegrees_{0};
     std::atomic<unsigned> queuedUi_{0};
+    // Shutdown diagnostics: which call each worker is sitting in while a join stalls.
+    std::atomic<int> videoWorkerStep_{0}, outputWorkerStep_{0};
+    std::atomic<bool> videoWorkerJoined_{false}, outputWorkerJoined_{false};
     DWORD uiThread_ = 0;
     HWND uiDispatchWindow_ = nullptr;
     HANDLE videoReady_ = nullptr;
