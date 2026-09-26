@@ -1,0 +1,139 @@
+--- a/src/impl/dtlstransport.cpp
++++ b/src/impl/dtlstransport.cpp
+@@ -539,6 +539,7 @@
+ 					std::lock_guard lock(mSslMutex);
+ 					ret = mbedtls_ssl_handshake(&mSsl);
+ 				}
++				flushDemuxed(); // outside mSslMutex: dispatching reaches the application
+ 
+ 				if (ret == MBEDTLS_ERR_SSL_WANT_READ) {
+ 					ThreadPool::Instance().schedule(mTimerSetAt + milliseconds(mFinMs),
+@@ -573,6 +574,7 @@
+ 					ret = mbedtls_ssl_read(&mSsl, reinterpret_cast<unsigned char *>(buffer),
+ 					                       bufferSize);
+ 				}
++				flushDemuxed(); // outside mSslMutex: dispatching reaches the application
+ 
+ 				if (ret == MBEDTLS_ERR_SSL_WANT_READ) {
+ 					return;
+@@ -653,7 +655,7 @@
+ 			}
+ 
+ 			message_ptr message = std::move(*next);
+-			if (t->demuxMessage(message))
++			if (t->deferMessage(message))
+ 				continue;
+ 
+ 			auto bufMin = std::min(len, size_t(message->size()));
+@@ -1096,4 +1098,13 @@
+ 
+ #endif
+ 
++// Defined here so they are shared by every TLS backend.
++bool DtlsTransport::deferMessage(message_ptr) {
++	// A transport without SRTP demultiplexing feeds every message to the TLS
++	// stack, so there is nothing to defer.
++	return false;
++}
++
++void DtlsTransport::flushDemuxed() {}
++
+ } // namespace rtc::impl
+--- a/src/impl/dtlstransport.hpp
++++ b/src/impl/dtlstransport.hpp
+@@ -46,6 +46,12 @@
+ 	virtual void incoming(message_ptr message) override;
+ 	virtual bool outgoing(message_ptr message) override;
+ 	virtual bool demuxMessage(message_ptr message);
++	// deferMessage() recognises a non-DTLS message and queues it instead of
++	// dispatching it; flushDemuxed() dispatches the queue. Dispatch must not
++	// happen while doRecv() holds the SSL mutex: an application callback can
++	// call send(), which needs that same mutex (see the definitions).
++	virtual bool deferMessage(message_ptr message);
++	virtual void flushDemuxed();
+ 	virtual void postHandshake();
+ 
+ 	void enqueueRecv();
+--- a/src/impl/dtlssrtptransport.cpp
++++ b/src/impl/dtlssrtptransport.cpp
+@@ -228,9 +228,47 @@
+ 		PLOG_DEBUG << "Unknown packet type, value=" << unsigned(value1)
+ 		           << ", size=" << message->size();
+ 		return true;
++	}
++}
++
++bool DtlsSrtpTransport::deferMessage(message_ptr message) {
++	// Same classification as demuxMessage(), except that a non-DTLS message is
++	// queued instead of dispatched. ReadCallback runs inside mbedtls_ssl_read,
++	// which DtlsTransport::doRecv() calls while holding mSslMutex; dispatching
++	// from there inverts the lock order against a callback that calls send()
++	// (mSslMutex again), so the dispatch happens in flushDemuxed() instead.
++	if (!mInitDone)
++		return false;
++
++	if (message->size() == 0)
++		return false;
++
++	uint8_t value1 = to_integer<uint8_t>(*message->begin());
++	if (value1 >= 20 && value1 <= 63)
++		return false; // DTLS, feed it to the TLS stack
++
++	{
++		std::lock_guard lock(mDemuxMutex);
++		mDemuxedMessages.push_back(std::move(message));
+ 	}
++	return true;
+ }
+ 
++void DtlsSrtpTransport::flushDemuxed() {
++	std::vector<message_ptr> messages;
++	{
++		std::lock_guard lock(mDemuxMutex);
++		if (mDemuxedMessages.empty())
++			return;
++		messages = std::move(mDemuxedMessages);
++		mDemuxedMessages.clear();
++	}
++
++	// Outside mDemuxMutex: demuxMessage() dispatches up to the application.
++	for (auto &message : messages)
++		demuxMessage(std::move(message));
++}
++
+ void DtlsSrtpTransport::postHandshake() {
+ 	if (mInitDone)
+ 		return;
+--- a/src/impl/dtlssrtptransport.hpp
++++ b/src/impl/dtlssrtptransport.hpp
+@@ -21,6 +21,8 @@
+ #endif
+ 
+ #include <atomic>
++#include <mutex>
++#include <vector>
+ 
+ namespace rtc::impl {
+ 
+@@ -41,6 +43,8 @@
+ private:
+ 	void recvMedia(message_ptr message);
+ 	bool demuxMessage(message_ptr message) override;
++	bool deferMessage(message_ptr message) override;
++	void flushDemuxed() override;
+ 	void postHandshake() override;
+ 
+ #if !USE_GNUTLS && !USE_MBEDTLS
+@@ -55,6 +59,12 @@
+ 
+ 	message_callback mSrtpRecvCallback;
+ 	srtp_t mSrtpIn, mSrtpOut;
++	// Messages recognised as non-DTLS by deferMessage() and not yet dispatched.
++	// deferMessage() runs under DtlsTransport::mRecvMutex (it is called from
++	// ReadCallback inside mbedtls_ssl_read), but send() may reach it through the
++	// SSL write path, so it has its own mutex. Never held while dispatching.
++	std::mutex mDemuxMutex;
++	std::vector<message_ptr> mDemuxedMessages;
+ 	std::atomic<bool> mInitDone = false;
+ 	std::vector<unsigned char> mClientSessionKey;
+ 	std::vector<unsigned char> mServerSessionKey;

@@ -52,11 +52,30 @@ if(USE_EXTERNAL_DATACHANNEL)
     set(MbedCrypto_LIBRARY mbedcrypto CACHE STRING "" FORCE)
     set(MbedX509_LIBRARY mbedx509 CACHE STRING "" FORCE)
 
+    # Pinned at v0.22.4. The patch and its rationale are documented with the
+    # same patch in the top-level CMakeLists.txt; SRTP/RTCP must not be
+    # dispatched while doRecv() holds the SSL mutex. ExternalProject re-runs the
+    # patch step on later configures, so the helper restores the fetched tree to
+    # the pin before applying.
+    # The cache holds FETCHCONTENT_SOURCE_DIR_<UCNAME> empty by default, so the
+    # value must be tested for content, not for being defined.
+    if(FETCHCONTENT_SOURCE_DIR_LIBDATACHANNEL)
+        set(KM_LIBDATACHANNEL_SRC_DIR "${FETCHCONTENT_SOURCE_DIR_LIBDATACHANNEL}")
+    else()
+        if(NOT FETCHCONTENT_BASE_DIR)
+            set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps")
+        endif()
+        set(KM_LIBDATACHANNEL_SRC_DIR "${FETCHCONTENT_BASE_DIR}/libdatachannel-src")
+    endif()
     FetchContent_Declare(
         libdatachannel
         GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
         GIT_TAG v0.22.4
         GIT_SHALLOW TRUE
+        PATCH_COMMAND "${CMAKE_COMMAND}"
+                      "-DREPO=${KM_LIBDATACHANNEL_SRC_DIR}"
+                      "-DPATCH=${CMAKE_CURRENT_LIST_DIR}/../patches/libdatachannel-0.22.4-defer-demux.patch"
+                      -P "${CMAKE_CURRENT_LIST_DIR}/../cmake/apply_libdatachannel_patch.cmake"
     )
     FetchContent_MakeAvailable(libdatachannel)
 endif()
