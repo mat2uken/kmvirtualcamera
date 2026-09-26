@@ -7,13 +7,12 @@
 #include <thread>
 #include <vector>
 #include "../signaling/signaling_models.h"
-#include "../codec/h264_rtp_depacketizer.h"
-#include "../codec/dc_video_depacketizer.h"
 #include "bandwidth_estimator.h"
 #include "enhanced_rtcp_session.h"
 #include "../../../shared/km/callback_gate.h"
 #include "../../../shared/km/timing.h"
 #include "../../../shared/receiver/audio/opus_rtp_decoder.h"
+#include "../../../shared/receiver/engine/receiver_engine.h"
 namespace rtc { class PeerConnection; class Track; class DataChannel; }
 namespace km::rtc_net {
 enum class PeerState { New, Connecting, Connected, Disconnected, Failed, Closed };
@@ -40,7 +39,6 @@ public:
     void Close();
 private:
     void CloseInternal();
-    void SendKeyframeRequest();
     mutable std::recursive_mutex rtcMutex_;
     std::mutex lifecycleMutex_;
     std::shared_ptr<km::CallbackGate> gate_;
@@ -51,13 +49,11 @@ private:
     std::shared_ptr<EnhancedRtcpReceivingSession> videoRtcpSession_, audioRtcpSession_;
     std::shared_ptr<rtc::DataChannel> videoDc_, controlDc_;
     std::shared_ptr<BandwidthEstimator> bandwidthEstimator_;
-    codec::H264RtpDepacketizer h264Depacketizer_;
-    codec::DcVideoDepacketizer dcVideoDepacketizer_;
+    // Video path policy (payload filter, SSRC unwrap, RTP/DC arbitration, keyframe
+    // throttle, frame delivery) lives in the shared engine; this class keeps RTC,
+    // bandwidth, Opus and control wiring.
+    km::engine::ReceiverEngine engine_;
     audio::OpusRtpDecoder opusDecoder_;
-    km::TimestampUnwrapper32 rtpTime_, dcTime_;
-    uint32_t videoSsrc_ = 0;
-    bool haveVideoSsrc_ = false, dataChannelVideo_ = false, needKeyframe_ = true;
-    int64_t lastKeyframeRequestUs_ = -1;
     StateChangeCallback stateCallback_;
     VideoFrameCallback videoCallback_;
     AudioPcmCallback audioCallback_;

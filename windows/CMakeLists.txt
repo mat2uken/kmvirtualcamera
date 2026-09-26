@@ -10,6 +10,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/legacy_targets.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/opus.cmake)
 foreach(target IN ITEMS Receiver test_receiver_startup test_webrtc_dtls)
     target_sources(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../shared/receiver/audio/opus_rtp_decoder.cpp)
+    # peer_connection_manager delegates the video path to the shared engine.
+    target_sources(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../shared/receiver/engine/receiver_engine.cpp)
     target_compile_definitions(${target} PRIVATE KM_TURN_TCP_TLS=$<BOOL:${USE_NICE}>)
     km_configure_audio(${target})
 endforeach()

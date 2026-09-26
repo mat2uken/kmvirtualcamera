@@ -37,7 +37,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: config/Host.entitlements
         GENERATE_INFOPLIST_FILE: NO
         LIBRARY_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../build/macos-rtc/macos $(SRCROOT)/../build/macos-rtc $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libjuice $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libsrtp $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/usrsctp/usrsctplib $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/library $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/everest $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/p256-m"
-        OTHER_LDFLAGS: "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker -lkm_macos_pipeline -lkm_macos_decoder -lkm_rtc_shared -lkm_audio -lkm_media_core -ldatachannel-static -lusrsctp -lsrtp2 -lmbedtls -lmbedcrypto -lmbedx509 -ljuice-static -leverest -lp256m -framework VideoToolbox"
+        OTHER_LDFLAGS: "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker -lkm_macos_pipeline -lkm_macos_decoder -lkm_rtc_shared -lkm_receiver_engine -lkm_audio -lkm_media_core -ldatachannel-static -lusrsctp -lsrtp2 -lmbedtls -lmbedcrypto -lmbedx509 -ljuice-static -leverest -lp256m -framework VideoToolbox"
         OTHER_CFLAGS: "$(inherited) -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/include -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/deps/plog/include"
         HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../shared"
     preBuildScripts:

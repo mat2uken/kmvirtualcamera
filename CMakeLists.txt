@@ -154,7 +154,8 @@ if(KM_BUILD_RTC_SHARED)
         shared/receiver/rtc/enhanced_rtcp_session.cpp
         windows/receiver/rtc/peer_connection_manager.cpp)
     target_include_directories(km_rtc_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/shared)
-    target_link_libraries(km_rtc_shared PUBLIC km_media_core km_audio ${KM_RTC_LIBS})
+    # peer_connection_manager delegates the video path to the shared engine.
+    target_link_libraries(km_rtc_shared PUBLIC km_media_core km_receiver_engine km_audio ${KM_RTC_LIBS})
     if(KM_FETCH_DATACHANNEL)
         # Same as windows/legacy_targets.cmake: name the fetched mbedTLS targets on
         # the consumer (resolves to real files and fixes build order) and add their
