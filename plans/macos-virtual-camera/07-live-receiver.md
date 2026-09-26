@@ -26,13 +26,13 @@ Browser WebCodecs/DC ─────┘                                ↓
 
 ### Mac先行（M4-a）の到達
 
-手順1（`IHttpTransport`）、手順3–5の接続前部分（owning AU→Mac video worker、映像パイプラインとsink供給、join UI・接続状態・統計表示）、手順6（TURN引き継ぎ）はM4-a単位1–8で実装・試験済み。結果は[00-plan](00-macos-first-plan.md)のM4-a節に記録する。手順2の `ReceiverEngine` への集約はWindowsビルド回帰が必要なためM4-b依存で延期。接続後の実測（実映像のfps・遅延、統計のConnected時値）はこの段階で行う。
+手順1（`IHttpTransport`）、手順3–5の接続前部分（owning AU→Mac video worker、映像パイプラインとsink供給、join UI・接続状態・統計表示）、手順6（TURN引き継ぎ）はM4-a単位1–8で実装・試験済み。結果は[00-plan](00-macos-first-plan.md)のM4-a節に記録する。手順2の `ReceiverEngine` への集約はA3（`6cfd7c6`）で実施し、段階3の回帰項目のうち映像2経路とmid-stream Close競合を同一SHAで再確認した（[02-03のA3節](02-03-windows-native.md)）。接続後の実測（実映像のfps・遅延、統計のConnected時値）はこの段階で行う。
 
 ## 実映像の確認順
 
 まずローカルのsignalingとブラウザでMediaTrackをつなぎ、host preview、publisher投入、source captureの各段階に同じ動く映像があるか確かめる。次にWebCodecs/DCで同じ順に確認する。ブラウザのカメラ切替、portrait/landscape、SPS/PPS変更、回線断、再接続、AU上限超過、音声無効設定も試す。Cloudflareを使用する構成では、secret値を残さずAPI応答、Offer/Answer、ICE状態、選択candidate pairを記録する。
 
-**試験状況（2026-09-26、[00-plan](00-macos-first-plan.md)のM4結果記録を参照）**: MediaTrack・WebCodecs/DC、カメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で実施済み。ICE candidate pairは段階3で relay-only・TCP/TLS-only失敗の双方を記録済み。SPS/PPS変更の単独確認とCloudflare運用構成でのAPI応答・ICE状態記録は未実施。Windowsの同じ2経路は段階2・段階3で同一SHA `ebd51bd` の後退なしを確認。
+**試験状況（2026-09-26、[00-plan](00-macos-first-plan.md)のM4結果記録を参照）**: MediaTrack・WebCodecs/DC、カメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で実施済み。ICE candidate pairは段階3で relay-only・TCP/TLS-only失敗の双方を記録済み。SPS/PPS変更の単独確認とCloudflare運用構成でのAPI応答・ICE状態記録は未実施。Windowsの同じ2経路は段階2・段階3で同一SHA `ebd51bd` の後退なしを確認し、ReceiverEngine切替後（A3）は `6cfd7c6` で再確認した。
 
 ## 完了条件
 

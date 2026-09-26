@@ -96,3 +96,23 @@ configure/build失敗は依存取得、SDK API、コンパイル、リンク、�
 - **失敗時の再現条件 / 修正SHA / 再試験結果**: mid-stream WM_CLOSEで `video step=30 decoder stage=120` が50秒間固定（ProcessOutput無限待機）→ `c5dee20`（提供サンプルの `Attach` とループ毎Release）で修正。修正前は3回連続でshutdown hang、修正後は2回連続で complete/process-gone 1秒以内。watchdogとstep/stageカウンタは再発監視のため残置。
 - **段階7への影響**: なし（段階3の完了条件7項目を同一SHA `ebd51bd` で充足）。TCP/TLS-onlyの失敗はフラグ起因ではなくlibjuice非対応という理由付きで実測、UDP TURN relay-onlyの成功と対で確認済み。残る未実施（RTP wrapの長期試験＝段階8、実マイク/WASAPI聴取＝対話セッション1）は段階7の判定に影響しない。
 
+
+## A3（ReceiverEngine切替）後の段階3相当回帰（2026-09-26）
+
+- **結果**: 成功。要求範囲の映像2経路とmid-stream Close競合を同一SHA `6cfd7c6` で再確認した。
+- **同時に確認した項目**: 両回帰とも `ICE_TRANSPORT_POLICY=relay` で relay↔relay が成立した。Opus RTPも受信した。
+- **repo / branch**: `feature/macos-coremediaio-foundation`（push済み）。`work/` は未追跡。
+- **HEAD**: `6cfd7c64848b894a026b8d4e1be168fbfdffb7a3`。
+- **同期**: Windowsクローン `C:\Users\ku\kmvirtualcamera` はbundle同期で同一SHA・clean。
+- **変更内容（A3）**: pcmのvideo経路を `km::engine::ReceiverEngine` に置換した。payload型の絞り込み、SSRC unwrap、RTP/DC仲裁、キーフレームの50msスロットルと経路選択をengine側へ移した。フレーム配布とcontrol送信もengine側に移し、bandwidth estimator・Opus・RTCP flushはpcm側に残した。RTPの二重パースは許容方針どおり行う。
+- **配線（Windows）**: pcmを含む3ターゲットへengineの `.cpp` を追加した。ターゲットは Receiver、test_receiver_startup、test_webrtc_dtls である。
+- **配線（Mac）**: ルート `CMakeLists.txt` の `km_rtc_shared` は `km_receiver_engine` をlinkする。`macos/project.yml` のOTHER_LDFLAGSに `-lkm_receiver_engine` を追記した。project.pbxprojはxcodegenで再生成した。Windows転送 `.cpp` と共通ライブラリの二重リンクはない。
+- **gate（最終tree）**: `sh scripts/test_macos_foundation.sh` → 0（10/10・警告0）。`sh scripts/build_macos_rtc.sh` → 0（12/12・警告0）。`cloud` `npm test` → 0（18/18）。ログは `work/records/a3-gate-*.txt`（未追跡）。
+- **Windowsビルド・全ctest**: `cmake --build build/windows --config Release` は製品コード警告0件。`ctest -C Release` は15/16だった。`VirtualCameraSmoothnessTest` のみ環境起因で既存失敗する。証跡は `work/win/records/a3-build-ctest-6cfd7c6.txt`。
+- **実機回帰（要求2経路）**: `work/win/run-regression.ps1` を使う。wrangler dev・Chrome CDP 9222・drive-and-flag・close-cycleを同一sshセッション内で起動する手順である。
+  1. **MediaTrack/RTP**（`-Mode mt`）: `CONNECTED +10s`。getStatsは `local=relay / remote=relay / state=succeeded / nominated=true`。送信は640x480@20fpsだった。受信側は `[RTC] state=2` と `[MEDIA] video frames=90 bytes=202681 gen=2` を記録した。`[APP] video worker decoded=90` と `[MEDIA] audio callbacks=250 samples=480000` も出た。ストリーム中のWM_CLOSEは0.5sで shutdown-complete / process-gone に到達した。終了コードは0（`work/win/records/a3-regression-mt.txt`）。
+  2. **WebCodecs/DC**（`-Mode dc`）: `CONNECTED +10s`、relay↔relay。`dc-km-video-stream` はopenでsent 294522 bytes / 306 msgs。`dc-km-control` は双方向（sent 213 / recv 201）。受信側は `[RTC] datachannel open: video` と `control` を記録した。`[MEDIA] video frames=90 bytes=191658 gen=2`、`decoded=90`。WM_CLOSEは0.5s、終了コード0（`work/win/records/a3-regression-dc.txt`）。
+- **環境の是正（失敗試行の証跡）**: 当日、ローカルwranglerの `cloud/.dev.vars` は段階3のTCP/TLS-only確認用の設定のまま残っていた。`TURN_STATIC_URL=turns:100.83.174.3:5349` の資格情報はcoturn設定と不一致だった。coturnログは `user kmturn credentials are incorrect` を出した。受信側は `Initialize failed: relay policy has no supported TURN endpoint` で止まった。ブラウザ側は `TURN allocate request timed out` で候補0個だった。
+- **是正内容**: `TURN_STATIC_URL` を `turn:100.83.174.3:3478`（Mac coturn 4.18.0 UDP、firewall disabled）へ戻した。STUN Bindingの応答をWindowsからMacで実測して到達を確かめた。`TURN_STATIC_CREDENTIAL` をcoturn設定値に一致させた（値はログ・リポジトリに書かない）。以後は relay↔relay が成立した。①driver先行起動時の旧 `join.txt` 取得は事前削除で解消した。②wranglerのssh切断による停止は同一sshセッション内への集約で解消した。
+- **既存失敗の切り分け**: `VirtualCameraSmoothnessTest` は `MFEnumDeviceSources` が "WebRTC Bridge" を列挙できない環境要因で失敗する。対象コード（pcm）には依存しない。`git stash` でA3差分を外したtreeで同じターゲットを再ビルド・再実行しても同じ失敗になった。`test_system_vcam_capture` はStartVirtualCamera後に直接COM経由で成功した。
+- **未再実施（本回帰の対象外）**: 再接続、WinHTTP失敗経路、TCP/TLS-only設定の理由付き失敗は段階3（`ebd51bd`）の記録を維持する（A3は未変更箇所）。RTP wrap・AU上限の長期試験は段階8へ送る。実マイク/WASAPI聴取は対話セッション1へ送る。
