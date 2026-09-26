@@ -185,8 +185,8 @@ M3・M4-a・M4-bが揃ったら、[段階7の文書](07-live-receiver.md)の手�
 | 試験ゲート | 成功 | 各コミット前に `sh scripts/test_macos_foundation.sh` → **10/10 pass**、`sh scripts/build_macos_rtc.sh` → **12/12 pass**、`cloud` `npm test` → **17/17**、xcodebuild警告0（u1–u3時は `work/records/m4-u3-gate.txt`・`m4-u3-rtc-test.txt`・`m4-u3-xcodebuild.txt`、u4–u8時は `m4-u4-gate.txt`・`m4-u4-rtc-gate.txt`・`m4-u4-xcodebuild.txt`、本追記時は `m4-docs-gate.txt`、いずれも未追跡） |
 
 - **環境**: macOS 26.7（Apple Silicon Mac15,10）、Xcode 26.6、Chrome（CDP 9222・fake device）。受信consumerはAVFoundation。signalingはローカル `wrangler dev`（127.0.0.1 bind）のみで実Cloudflare運用は未検証。SDPはバイト数のみ記録し、認証情報は残さない。
-- **主張しない範囲**: SPS/PPS変更の単独確認、Cloudflare運用構成での確認、音声（D08）のWASAPI実マイク聴取は未実施。u6・u8は送信元にテストダブル（縦canvas・ノイズcanvas）を使い、その旨を各試験に明記する。fps以外の遅延・CPU測定は段階8へ送る。Windows側の実カメラ（OBSBOT）撮像は対話セッション1待ち。
-- **段階7への判定**: 必須証拠（実ブラウザ2経路・断線復旧・Mac capture）は揃った。[07の試験項目](07-live-receiver.md)のうちカメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で完了し、Windows後退確認（M4-b）も段階2・段階3を同一SHA `ebd51bd` で完了した。残件のSPS/PPS変更の単独確認は段階7完了の必須項目ではなく、段階8の長期試験（RTP wrap含む）へ送る。以上からM4（段階7）の完了を判定する。
+- **主張しない範囲**: Cloudflare運用構成での確認、音声（D08）のWASAPI実マイク聴取、30分の長時間試験は未実施。u6・u8は送信元にテストダブル（縦canvas・ノイズcanvas）を使い、その旨を各試験に明記する。fps以外の遅延・CPU測定は段階8へ送る。Windows側の実カメラ（OBSBOT）撮像は対話セッション1待ち。
+- **段階7への判定**: 必須証拠（実ブラウザ2経路・断線復旧・Mac capture）は揃った。[07の試験項目](07-live-receiver.md)のうちカメラ切替、portrait/landscape、回線断・再接続、AU上限超過、音声無効設定はM4-u1–u8で完了し、Windows後退確認（M4-b）も段階2・段階3を同一SHA `ebd51bd` で完了した。残件だったSPS/PPS変更の単独確認はA1で完了した（[02-03のA1節](02-03-windows-native.md)）。段階8へ送るのは長期試験（RTP wrap含む）だけ。以上からM4（段階7）の完了を判定する。
 
 ## 共通ルール
 

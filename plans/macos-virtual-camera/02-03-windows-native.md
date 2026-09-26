@@ -116,3 +116,63 @@ configure/build失敗は依存取得、SDK API、コンパイル、リンク、�
 - **是正内容**: `TURN_STATIC_URL` を `turn:100.83.174.3:3478`（Mac coturn 4.18.0 UDP、firewall disabled）へ戻した。STUN Bindingの応答をWindowsからMacで実測して到達を確かめた。`TURN_STATIC_CREDENTIAL` をcoturn設定値に一致させた（値はログ・リポジトリに書かない）。以後は relay↔relay が成立した。①driver先行起動時の旧 `join.txt` 取得は事前削除で解消した。②wranglerのssh切断による停止は同一sshセッション内への集約で解消した。
 - **既存失敗の切り分け**: `VirtualCameraSmoothnessTest` は `MFEnumDeviceSources` が "WebRTC Bridge" を列挙できない環境要因で失敗する。対象コード（pcm）には依存しない。`git stash` でA3差分を外したtreeで同じターゲットを再ビルド・再実行しても同じ失敗になった。`test_system_vcam_capture` はStartVirtualCamera後に直接COM経由で成功した。
 - **未再実施（本回帰の対象外）**: 再接続、WinHTTP失敗経路、TCP/TLS-only設定の理由付き失敗は段階3（`ebd51bd`）の記録を維持する（A3は未変更箇所）。RTP wrap・AU上限の長期試験は段階8へ送る。実マイク/WASAPI聴取は対話セッション1へ送る。
+
+
+## A1（SPS/PPS変更の単独確認）と受信側停止の修正（2026-09-27）
+
+### A1の方法
+
+- **結果**: 成功。SPS、PPS、both、none の4モードで注入し、受信側の `frames` と `decoded` は同数、`errors=0` のまま復号が続いた。
+- **目的**: エンコーダ再構成ではSPS/PPSが変わらないことを見た上で、wire上だけを書き換え、受信側の挙動が変わらないことを確認する。
+- **repo / branch**: `feature/macos-coremediaio-foundation`。
+- **修正のHEAD**: `a0daa8b`（patchと配線）。
+- **network**: ICEはrelay-only。TURNは自前のturnserver。
+- **実行形態**: 送信ブラウザへCDPで `work/win/a1-cdp2.mjs` を注入する。`RTCDataChannel.prototype.send` の先で、KMヘッダ（`0x4d 0x4b`）付きAUのAnnex-B NALを書き換える。
+- **注入内容**: SPSはlevel_idc `0x1f`→`0x28`、PPSはweighted_bipred_idc `0`→`2`。NAL長と解像度640x480は変えない。
+- **注入の実測**: mode=sps は `wire-patched sps=11 pps=0`、mode=pps は `wire-patched sps=0 pps=11`。
+- **wireのhex**: SPSは `6742c01f8c680a03da6a0c0c0c0f08846a00`→`6742c0288c680a03da6a0c0c0c0f08846a00`。PPSは `68ce3c8000`→`68cebc8000`。
+- **再構成でも不変**: `encoder-cfg-before`、`variant 0/1/2 after`、`encoder-cfg-after` のSPS/PPSは同一。値は `6742c01f8c680a03da6a0c0c0c0f08846a00` と `68ce3c8000`。変わったのはbitrate（2600000→5900000）だけ。
+- **受信側の実測**: none/sps/pps/both の4件とも `state=2` で接続した。`frames=540` と `decoded=540` は同数、`audio=1250`、`errors=0`、`decoderConfigured=2`。
+- **終了**: WM_CLOSE後の `shutdown-complete` は1.0〜1.1秒。
+- **証跡（none/sps）**: `work/win/records/a1-run-500-none.txt`、`a1-run-510-sps.txt`（未追跡）。
+- **証跡（pps/both）**: `a1-run-520-pps.txt`、`a1-run-530-both.txt`（同ディレクトリ、未追跡）。
+- **ログ保存先**: 受信ログは `build\windows\Release\receiver_debug.log`。試験ごとの原本は `work/win/records/`（未追跡）。
+
+### 試行中に見つかった受信側停止
+
+- **現象**: 同一ハーネスで、WM_CLOSE後400秒以内に `shutdown-complete` が出ないまま止まった。`shutdown-begin` は0.5秒で出る。
+- **数え方**: `state=2` で媒体が流れていたランだけを対象にした。ICE失敗などで接続しなかったランは除外した。
+- **修正前の実測**: 接続53件のうち28件が停止（53%）。`work/win/records/a1-run-*.txt` から集計した。
+- **原因**: ABBAデッドロック。アプリの `rtcMutex_` と、libdatachannel `DtlsTransport` の `mSslMutex` の取り合い。
+- **経路1**: `doRecv` が `mSslMutex` と `mRecvMutex` を保持したまま `mbedtls_ssl_read` を呼ぶ。そこから `ReadCallback` → `demuxMessage` → `recvMedia` → アプリのlambda が `rtcMutex_` を待つ。
+- **経路2**: 別スレッドが `rtcMutex_` を保持したまま `DataChannel::send` を呼ぶ。`SctpTransport::handleWrite` → `DtlsTransport::send` の順に進み、`mSslMutex` を待つ。
+- **証跡**: `work/win/records/` の `stacks-250.out.txt` と `a1-run-250-both-cdb.txt`。run250時点の全39スレッドをcdbで取得したもの、未追跡。
+- **mbedTLS固有**: GNUTLSは `gnutls_record_recv` を `mSslMutex` 外で呼び、OPENSSLは `doRecv` 内で先に `demuxMessage` を処理する。どちらも同じロック順序にならない。
+
+### 修正と再試験
+
+- **修正**: `patches/libdatachannel-0.22.4-defer-demux.patch`。mbedTLSの `ReadCallback` は受信メッセージを `deferMessage` で退避し、`doRecv` が `mSslMutex` を外した直後の `flushDemuxed` が配送する。
+- **変更範囲**: libdatachannelの4ファイル、+66/-1行。pin `v0.22.4` 自体は変えない。
+- **配線**: `cmake/apply_libdatachannel_patch.cmake` がPATCH_COMMANDを担う。ExternalProjectは毎configureでpatch手順を再実行するため、逆適用を確認して既適用なら何もしない。
+- **接続箇所**: ルート `CMakeLists.txt` と `windows/legacy_targets.cmake` の `FetchContent_Declare(libdatachannel …)`。
+- **修正後の実測**: patchありで媒体が流れた11件（400〜440、500〜530、660・670）はすべて正常。停止は0件。
+- **対照**: patchを外してpristineのpinでビルドしなおし、6件を同じ手順で実施した。停止は4件、正常は2件だった。
+- **復元**: `windows/legacy_targets.cmake` の更新時刻を変えて再configureし、patchを戻した。`git diff --stat` がpatchの4ファイル・+66/-1と一致し、続けて2件とも正常だった。
+- **証跡（ビルド）**: `work/win/control-build-*.txt` はpatchなし時と復元時の2件（未追跡）。
+- **証跡（実行）**: `work/win/records/a1-run-6*-both-postfix.txt` は対照6件と復元後2件（未追跡）。
+
+### 失敗試行と是正
+
+- **無効な5件**: 修正直後の300〜340はMacのcoturnが停止していてICEが失敗し、`state=5` で媒体が流れていなかった。停止しなかったことの証拠にはならない。
+- **是正**: coturnを再起動してから、媒体フローを判定条件に含む `work/win/hangcheck-media.sh` でやり直した。
+
+### この範囲で言わないこと
+
+- **未実施**: 30分の長時間試験、実ブラウザの連続切断・再接続の長期版は段階8へ送る。Cloudflare運用構成でのAPI応答とICE状態の記録は未実施。
+- **未判断**: この修正をupstreamへ報告するかは決めていない。当面はpinへのpatchとして維持する。
+
+### ゲート（最終tree）
+
+- **実行**: `sh scripts/test_macos_foundation.sh` は0（10/10）、`cloud` の `npm test` は0（18/18）。
+- **実行（rtc）**: `sh scripts/build_macos_rtc.sh` は0（12/12）。compiler warning 0。rtc gateはpristine→適用と既適用の両方で2回通した。
+- **診断コードの去留**: `peer_connection_manager.{h,cpp}` と `app_controller.cpp` をHEADに戻し、`rtc_debug_trace.h` を削除した。原因特定に使ったスタックとstall reportは `work/` に残す。
