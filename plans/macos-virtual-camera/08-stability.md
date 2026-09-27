@@ -9,14 +9,14 @@
 | repo | `kmvirtualcamera-macos-coremediaio-foundation` |
 | branch | `feature/macos-coremediaio-foundation` |
 | HEAD | 開始 `c67916f`、S1〜S6は各単位の記録コミット |
-| 未コミット差分 | 開始時=`work/`（未追跡）、S1〜S6も同じ |
+| 未コミット差分 | 開始時=`work/`（未追跡）、S4〜S6も同じ |
 | OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
 | Xcode / SDK | Xcode 26.6 (17F113) / macOS SDK 26.5 |
 | compiler / CMake | Apple clang 21.0.0 / CMake 4.3.4 |
 | 導入状態 | `KM Virtual Camera` が `system_profiler SPCameraDataType` の一覧に出る |
 | 決定待ち | fps・遅延・CPU/GPU・メモリ・対象OSの許容値は未決定（製品判断待ち） |
 
-S1〜S6の記録コミットは順に `17576ad`、`5301bdf`、`380ec0e`、`22dff79`、`140eefc`、`6c27a65` である。製品コードの差分は各単位で0件だった。
+S1〜S6の記録コミットは順に `17576ad`、`5301bdf`、`380ec0e`、`22dff79`、`140eefc`、`6c27a65` である。製品コードの差分はS4〜S6で0件で、S1〜S3には計測器とdecode・attachmentの変更がある。
 
 この表のHEAD・差分・環境を単位を始めるたびに更新し、[記録様式](verification.md)に試験結果を紐付ける。
 
