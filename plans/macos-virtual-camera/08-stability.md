@@ -341,6 +341,70 @@ PTSは両試行とも下がる区間が0で、平均は30fps相当である。�
 
 製品コードの差分はS4で0件である。3ゲートを本記録のtreeで再実行し、いずれも終了コード0になった。
 
+### S5 30分以上の連続送信
+
+| 項目 | 内容 |
+|---|---|
+| 段階・試験ID | 段階8 S5（30分以上の連続送信のfps・遅延・queue・drop・CPU・メモリ） |
+| 目的・合格条件 | 30分以上、queue増加と資源増加を出さずに送り続けることを時系列で残す |
+| 結果 | 成功（1869秒・55664枚、PTS違反0、CPUとメモリ横ばい、3ゲート通過） |
+| repo | `kmvirtualcamera-macos-coremediaio-foundation` |
+| branch | `feature/macos-coremediaio-foundation` |
+| HEAD | 製品コードの差分なし、本記録は次コミット |
+| 未コミット差分 | 本記録と `work/`（未追跡）のみ |
+| 日時 | 2026-09-27 20:24–21:05 JST |
+| OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
+| Xcode・SDK / compiler | Xcode 26.6 (17F113) / macOS SDK 26.5 / Apple clang 21.0.0 |
+| ブラウザ | Google Chrome 153.0.8010.53（CDP 9222） |
+| network | `wrangler dev` 127.0.0.1:8787 と `turnserver` |
+| 計測構成 | Debug（`-O0`）、CDP送信とAVFoundation consumer、ps 30秒間隔 |
+
+送信は `s5-run.sh` でhostを起動し、CDPの `s4-cdp.mjs` を30分動かした。consumerは `s4-consumer.swift` を30分、30秒ごとhostと拡張のCPU時間とRSSも取る。
+
+consumerはPTS計数だけにした。画素走査を続けるとプローブがキャプチャを塞いで欠落を作るためである。
+
+#### S5-a 毎秒の時系列（300秒ごと）
+
+| 経過 | fps | published | decodeUs avg | toPublishUs avg | queueMax |
+|---|---|---|---|---|---|
+| 300秒 | 0–31 | 8639 | 1386.1 | 1743.2 | 2 |
+| 600秒 | 23–31 | 17632 | 1151.9 | 1205.0 | 3 |
+| 900秒 | 25–31 | 26627 | 1179.3 | 1213.8 | 3 |
+| 1200秒 | 19–31 | 35615 | 1308.7 | 1352.9 | 3 |
+| 1500秒 | 21–31 | 44599 | 1576.8 | 1626.5 | 3 |
+| 1800秒 | 25–31 | 53594 | 1548.7 | 1597.2 | 3 |
+
+`pipe` 行は1870件、経過1869秒（31分10秒）、acceptedとpublishedは55664枚で差は0である。表のdecodeとtoPublishは各5分の区間平均である。
+
+毎秒fpsは平均29.78、p05が30、最大31、25枚未満は18区間である。起動直後の12区間（20:24:37〜20:24:48）を除くと5回で、いずれも1秒だけ19〜23枚に落ちた。
+
+backpressure・needKeyframe・staleGen・decodeErr・normalizeErr は0である。queueMaxが3、feedのdroppedとsink統計のfailedも0件である。
+
+consumerは1800秒で53997枚、平均30.00枚/秒だった。PTSが下がる区間は0件、deltaMsの範囲が33.33〜66.67である。
+
+#### S5-b 資源（30秒間隔）
+
+| 対象 | CPU% min/avg/max | RSS MB min/avg/max |
+|---|---|---|
+| hostアプリ | 3.48 / 4.53 / 11.87 | 71.1 / 86.2 / 97.7 |
+| 拡張 | 1.55 / 2.03 / 2.87 | 10.3 / 10.6 / 10.9 |
+
+hostのRSSは経過603秒で93.3MB、1809秒で71.3MBと下がり、増え方は出ていない。拡張は10.3〜10.9MBで横ばいである。
+
+証跡は `s5-host.txt`、`s5-sender.txt`、`s5-consumer.txt`、`s5-ps-raw.txt`、`s5-analysis.txt` である。`-12743` と `sample create failed` は31分のログで0件、S3の修正が30分経過でも保たれた。
+
+host起動時の `KMEvidence` 書き込みで権限エラーが2件出る。S1・S3・S4のログにも同じ2件があり、送信経路は止まらない。
+
+#### ゲート（現tree）
+
+| ゲート | 結果 | 証跡 |
+|---|---|---|
+| `sh scripts/test_macos_foundation.sh` | 10/10 pass、警告0 | `work/records/s5-gate-foundation.txt` |
+| `sh scripts/build_macos_rtc.sh` | 12/12 pass、警告0 | `work/records/s5-gate-rtc.txt` |
+| `cloud` `npm test` | 18/18 pass | `work/records/s5-gate-cloud.txt` |
+
+製品コードの差分はS5で0件である。3ゲートを本記録のtreeで再実行し、いずれも終了コード0になった。
+
 ## デコードとメモリ
 
 1. 現在の `VideoToolboxDecoder` はAUごとに `VTDecompressionSessionWaitForAsynchronousFrames` を呼ぶ。実映像でdecode時間、queue深さ、遅延を測ったうえで、bounded outstanding decodeと世代付きcallbackへ変える。完了順が前後する場合の表示順を決め、入力を無制限に保持しない。
