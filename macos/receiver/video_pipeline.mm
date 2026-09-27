@@ -2,8 +2,22 @@
 #include "native_media.h"
 #include "km/h264.h"
 #import <Foundation/Foundation.h>
+#include <chrono>
 
 namespace km::mac {
+namespace {
+int64_t NowNs() {
+    const auto sinceEpoch = std::chrono::steady_clock::now().time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(sinceEpoch).count();
+}
+// Concurrent submits may interleave; losing a lower sample is acceptable, so
+// this only ever moves the maximum upwards.
+void RaiseMax(std::atomic<uint64_t>& slot, uint64_t value) {
+    uint64_t seen = slot.load(std::memory_order_relaxed);
+    while (value > seen && !slot.compare_exchange_weak(seen, value, std::memory_order_relaxed)) {
+    }
+}
+} // namespace
 VideoPipeline::VideoPipeline(NormalizedFrameHandler onFrame, size_t queueCapacity)
     : onFrame_(std::move(onFrame)), capacity_(queueCapacity ? queueCapacity : 1) {}
 
@@ -31,6 +45,8 @@ bool VideoPipeline::start(OutputFormat format, uint64_t generation, std::string&
     needKeyframe_ = true; // a fresh pipeline must see SPS/PPS+IDR before any dependent frame
     accepted_ = backpressure_ = needKeyframeCount_ = rejected_ = staleGeneration_ =
         decodeErrors_ = normalizeErrors_ = published_ = 0;
+    queueHighWater_ = decodeUsCount_ = decodeUsTotal_ = decodeUsMax_ = 0;
+    submitToPublishUsCount_ = submitToPublishUsTotal_ = submitToPublishUsMax_ = 0;
     worker_ = std::thread(&VideoPipeline::worker, this);
     return true;
 }
@@ -60,7 +76,9 @@ SubmitResult VideoPipeline::submit(EncodedVideoFrame frame) {
         return SubmitResult::NeedKeyframe;
     }
     if (frame.randomAccess) needKeyframe_ = false; // it precedes every later frame in FIFO order
-    queue_.push_back(QueuedAu{std::move(frame), epoch_});
+    const int64_t submittedNs = NowNs();
+    queue_.push_back(QueuedAu{std::move(frame), epoch_, submittedNs});
+    RaiseMax(queueHighWater_, uint64_t(queue_.size()));
     ++accepted_;
     work_.notify_one();
     return SubmitResult::Accepted;
@@ -100,6 +118,13 @@ PipelineStats VideoPipeline::stats() const {
     out.decodeErrors = decodeErrors_;
     out.normalizeErrors = normalizeErrors_;
     out.published = published_;
+    out.queueHighWater = queueHighWater_;
+    out.decodeUsCount = decodeUsCount_;
+    out.decodeUsTotal = decodeUsTotal_;
+    out.decodeUsMax = decodeUsMax_;
+    out.submitToPublishUsCount = submitToPublishUsCount_;
+    out.submitToPublishUsTotal = submitToPublishUsTotal_;
+    out.submitToPublishUsMax = submitToPublishUsMax_;
     return out;
 }
 
@@ -123,7 +148,12 @@ void VideoPipeline::worker() {
             else
                 ptsUs = frame.mediaTicks;
             std::string error;
+            const int64_t decodeStartNs = NowNs();
             PixelBuffer image = decoder.decode(frame.annexB, ptsUs, error);
+            const uint64_t decodeUs = uint64_t(NowNs() - decodeStartNs) / 1000;
+            ++decodeUsCount_;
+            decodeUsTotal_ += decodeUs;
+            RaiseMax(decodeUsMax_, decodeUs);
             if (!image) {
                 // State first, counter last: a reader that observes the counter
                 // observes every preceding state update. An empty error means a
@@ -134,6 +164,9 @@ void VideoPipeline::worker() {
                         std::lock_guard lock(mutex_);
                         if (item.epoch == epoch_) needKeyframe_ = true;
                     }
+                    // The counter alone cannot explain a stall, so the reason
+                    // goes to the host log where the stage-8 records read it.
+                    NSLog(@"KMVideoPipeline: decode failed: %s", error.c_str());
                     ++decodeErrors_;
                 }
                 continue;
@@ -142,9 +175,16 @@ void VideoPipeline::worker() {
             if (!normalized) {
                 // The decoder already advanced; the dependency chain survives a
                 // normalization failure, so only the frame is lost.
+                NSLog(@"KMVideoPipeline: normalize failed: %s", error.c_str());
                 ++normalizeErrors_;
                 continue;
             }
+            // Counters first, then the handler, then published: a reader that
+            // observes published already sees every timing sample for that frame.
+            const uint64_t submitToPublishUs = uint64_t(NowNs() - item.submittedNs) / 1000;
+            ++submitToPublishUsCount_;
+            submitToPublishUsTotal_ += submitToPublishUs;
+            RaiseMax(submitToPublishUsMax_, submitToPublishUs);
             if (onFrame_) onFrame_(normalized.get());
             ++published_;
         }

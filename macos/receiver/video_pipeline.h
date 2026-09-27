@@ -21,6 +21,16 @@ using NormalizedFrameHandler = std::function<void(CVPixelBufferRef)>;
 struct PipelineStats {
     uint64_t accepted = 0, backpressure = 0, needKeyframe = 0, rejected = 0,
              staleGeneration = 0, decodeErrors = 0, normalizeErrors = 0, published = 0;
+    // Stage-8 timing, all on the pipeline's own steady clock.
+    // queueHighWater: largest number of AUs waiting in the queue after a push.
+    // decodeUs*: every VideoToolboxDecoder::decode() call the worker executed,
+    //   including the ones that fail; configuration-only AUs are not skipped.
+    // submitToPublishUs*: submit() entry to the frame handler call, counted
+    //   once per delivered frame (so the count equals published).
+    uint64_t queueHighWater = 0;
+    uint64_t decodeUsCount = 0, decodeUsTotal = 0, decodeUsMax = 0;
+    uint64_t submitToPublishUsCount = 0, submitToPublishUsTotal = 0,
+             submitToPublishUsMax = 0;
 };
 
 // Owner-executor IVideoPipeline: one worker thread owns the VideoToolbox
@@ -52,6 +62,7 @@ private:
     struct QueuedAu {
         EncodedVideoFrame frame;
         uint64_t epoch = 0;
+        int64_t submittedNs = 0; // steady_clock at the submit() entry
     };
     void worker();
 
@@ -71,6 +82,10 @@ private:
     std::atomic<uint64_t> accepted_{0}, backpressure_{0}, needKeyframeCount_{0},
         rejected_{0}, staleGeneration_{0}, decodeErrors_{0}, normalizeErrors_{0},
         published_{0};
+    std::atomic<uint64_t> queueHighWater_{0};
+    std::atomic<uint64_t> decodeUsCount_{0}, decodeUsTotal_{0}, decodeUsMax_{0};
+    std::atomic<uint64_t> submitToPublishUsCount_{0}, submitToPublishUsTotal_{0},
+        submitToPublishUsMax_{0};
 };
 
 std::unique_ptr<VideoPipeline> MakeVideoPipeline(NormalizedFrameHandler onFrame,

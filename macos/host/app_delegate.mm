@@ -284,8 +284,29 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
                                   _rtc->GetEstimatedBitrate() / 1e6, double(_rtc->GetLossRatio()) * 100.0];
     }
     if (havePipeline) {
-        [line appendFormat:@"受信%.1ffps｜配信%.1ffps｜decode失敗%llu",
-                                  receivedFps, publishedFps, (unsigned long long)pipe.decodeErrors];
+        const double decodeAvgMs = pipe.decodeUsCount
+            ? double(pipe.decodeUsTotal) / double(pipe.decodeUsCount) / 1000.0 : 0.0;
+        const double publishAvgMs = pipe.submitToPublishUsCount
+            ? double(pipe.submitToPublishUsTotal) / double(pipe.submitToPublishUsCount) / 1000.0
+            : 0.0;
+        [line appendFormat:@"受信%.1ffps｜配信%.1ffps｜decode失敗%llu｜decode均値%.2fms｜遅延均値%.2fms",
+                                  receivedFps, publishedFps, (unsigned long long)pipe.decodeErrors,
+                                  decodeAvgMs, publishAvgMs];
+        // One line per tick: the stage-8 records need a time series, not a
+        // final average, so the counters land in the host log as well.
+        NSLog(@"KMAppDelegate: pipe accepted=%llu published=%llu backpressure=%llu needKeyframe=%llu "
+              "staleGen=%llu decodeErr=%llu normalizeErr=%llu queueMax=%llu "
+              "decodeUs avg=%.1f max=%llu n=%llu toPublishUs avg=%.1f max=%llu n=%llu",
+            (unsigned long long)pipe.accepted, (unsigned long long)pipe.published,
+            (unsigned long long)pipe.backpressure, (unsigned long long)pipe.needKeyframe,
+            (unsigned long long)pipe.staleGeneration, (unsigned long long)pipe.decodeErrors,
+            (unsigned long long)pipe.normalizeErrors, (unsigned long long)pipe.queueHighWater,
+            pipe.decodeUsCount ? double(pipe.decodeUsTotal) / double(pipe.decodeUsCount) : 0.0,
+            (unsigned long long)pipe.decodeUsMax, (unsigned long long)pipe.decodeUsCount,
+            pipe.submitToPublishUsCount
+                ? double(pipe.submitToPublishUsTotal) / double(pipe.submitToPublishUsCount) : 0.0,
+            (unsigned long long)pipe.submitToPublishUsMax,
+            (unsigned long long)pipe.submitToPublishUsCount);
     } else {
         [line appendString:@"受信待ち…"];
     }
