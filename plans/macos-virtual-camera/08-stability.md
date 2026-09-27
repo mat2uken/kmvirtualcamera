@@ -296,6 +296,51 @@ pool枯渇は1枚を保持したまま補充を要求し、`refill=-6689` で拒
 
 `xcodebuild` は exit 0、`BUILD SUCCEEDED`、警告0で、証跡は `work/records/s3-xcodebuild.txt` である。ASanのCPU基準だけがletterboxで27968.8µsに伸び、Metalは500.4µsのままである。
 
+### S4 幾何・色・時刻
+
+| 項目 | 内容 |
+|---|---|
+| 段階・試験ID | 段階8 S4（向き・画角・色・PTS単調の実画像） |
+| 目的・合格条件 | 送信した図形と同じ画角・向き・色を、consumer側PTSが下がらない状態で残す |
+| 結果 | 成功（2入力とも11項目PASS、PTS違反0、3ゲート通過） |
+| repo | `kmvirtualcamera-macos-coremediaio-foundation` |
+| branch | `feature/macos-coremediaio-foundation` |
+| HEAD | 製品コードの差分なし、本記録は次コミット |
+| 未コミット差分 | 本記録と `work/`（未追跡）のみ |
+| 日時 | 2026-09-27 19:47–20:15 JST |
+| OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
+| Xcode・SDK / compiler | Xcode 26.6 (17F113) / macOS SDK 26.5 / Apple clang 21.0.0 |
+| ブラウザ | Google Chrome 153.0.8010.53（CDP 9222） |
+| network | `wrangler dev` 127.0.0.1:8787 と `turnserver` |
+| 計測構成 | Debug（`-O0`）、CDP送信とAVFoundation consumer probe |
+
+送信側は `s4-cdp.mjs`、consumer側は `s4-consumer.swift` である。送信はcanvas test doubleの大きさを切り替える。consumerは仮想カメラをAVFoundationで開き、PTSと画素を得る。
+
+#### S4-a PTSと画素（各20秒）
+
+| 試行 | 入力 | PTS frames | 違反 | deltaMs min/max/avg | consumerログ |
+|---|---|---|---|---|---|
+| A | 1280x720 | 600 | 0 | 33.33 / 33.34 / 33.33 | `s4-a-consumer.txt` |
+| B | 1440x1080 | 598 | 0 | 33.33 / 66.67 / 33.39 | `s4-b-consumer.txt` |
+
+PTSは両試行とも下がる区間が0で、平均は30fps相当である。試行Bの最大66.67は1フレーム分の間隔で、順序は保たれている。
+
+試行Aは16:9入力なので帯がなく、四隅・左右中点・中心の画素は送信側グラデーションの対角投影と1以内で一致した。試行Bは4:3入力なので左右160pxの帯が入り、四隅と左右中点は40回すべて0、中心だけ128である。
+
+赤マーカーのx範囲は試行A=40..158、試行B=186..266で、期待値40..160と187..267から6px以内に収まる。赤の値は(255,48,32)と(251,48,32)である。送信側 `#ff3020` がBT.709で往復した値に一致する。
+
+証跡は `s4-a-consumer.txt`、`s4-b-consumer.txt`、PNG2点、送信ログ2点である。Chromeは `--use-fake-device-for-media-stream` で起動しており、カメラ一覧に仮想カメラが出ないためconsumerには使わなかった。
+
+#### ゲート（現tree）
+
+| ゲート | 結果 | 証跡 |
+|---|---|---|
+| `sh scripts/test_macos_foundation.sh` | 10/10 pass、警告0 | `work/records/s4-gate-foundation.txt` |
+| `sh scripts/build_macos_rtc.sh` | 12/12 pass、警告0 | `work/records/s4-gate-rtc.txt` |
+| `cloud` `npm test` | 18/18 pass | `work/records/s4-gate-cloud.txt` |
+
+製品コードの差分はS4で0件である。3ゲートを本記録のtreeで再実行し、いずれも終了コード0になった。
+
 ## デコードとメモリ
 
 1. 現在の `VideoToolboxDecoder` はAUごとに `VTDecompressionSessionWaitForAsynchronousFrames` を呼ぶ。実映像でdecode時間、queue深さ、遅延を測ったうえで、bounded outstanding decodeと世代付きcallbackへ変える。完了順が前後する場合の表示順を決め、入力を無制限に保持しない。
