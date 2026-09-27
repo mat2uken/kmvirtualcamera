@@ -21,17 +21,18 @@ DataChannelの現行12-byteヘッダーはlittle-endianです。
 現ブラウザのpayload上限1180、アプリケーションpacket長1192です。
 これはSCTP／DTLS／IP等のヘッダーを加えたUDPデータグラム長でも、IP非断片化の保証でもありません。
 現wireの1AU最大は255×1180=300900bytes。共通H.264 helperの4MiB上限とは別の制限です。
-送信側はこのサイズ超過時にAU全体を送らず、bitrate／解像度を見直してIDR復旧するガードが未追加です。
+送信側はAUがこのサイズを超えると送信前に取りやめ、bitrateを0.75倍にしてIDRを要求する。
+連続3回で停止する（`cloud/web/src/webcodecs_sender.ts`）。
 
 同じframeSeqのchunk数・timestamp・固定flagsは一致させます。重複chunkは同一内容だけを許可します。
 受信側は32pending frame／2MiB payload上限。管理構造・出力vector・SPS/PPS cacheも別のメモリを使うため、2MiBをプロセス総使用量とは表現しません。
 reorder待ち10ms、保持期限60ms、PLI間隔50msは今回の基準値です。ネットワーク条件ごとの性能保証ではありません。
-独立timerから `OnTimerTick` を20ms程度で呼ぶ配線を次段階で追加し、無通信時にも掃除・復旧させます。
+独立timerから `DcVideoDepacketizer::OnTimerTick` を20ms程度で呼び、無通信時にも掃除・復旧させる（`receiver_engine.cpp`）。
 
 ## H.264とデコーダ
 
 共通側の標準入力はAnnex-BのAccess Unitです。1callback＝1AUが成立するかをRTP/DC双方で試験します。
-NAL spanは元入力を借用するため、非同期に渡す前に入力全体の所有権を確保します。
+NAL spanは元入力を借用するため、非同期で渡す前に、入力全体の所有権を確保します。
 Annex-B / length-prefixの判定は厳格に行い、不完全なバッファを推測修復しません。
 
 受信key flagだけで復旧せず、IDR NALとSPS/PPSを確認します。
@@ -39,10 +40,10 @@ Annex-B / length-prefixの判定は厳格に行い、不完全なバッファを
 カメラ切替でSPSだけ変化した際に古いPPSを組み合わせないことを優先し、部分ペアを拒否します。
 実ブラウザのfixtureで同じAUに必要ペアが存在するか確認し、必要ならID参照を解釈するキャッシュへ拡張します。
 
-VideoToolbox経路はSPS/PPS→CMVideoFormatDescription、4-byte NAL-length付きpayload→CMSampleBuffer→VTDecompressionSessionです。
+VideoToolbox経路はSPS/PPS→CMVideoFormatDescription、payload→CMSampleBuffer→VTDecompressionSession です。payloadは4-byteのNAL長prefixを持つ。
 hardware decodeは有効化希望であり、必須指定ではありません。`hardwareActive()`で実際の使用状態を報告します。
-現在の実装はAUごとにwaitするスモーク用です。本番はbounded outstanding decodeとgenerationつきcallbackへ移行します。
-無期限に大量submitしないこと、stop時のcallback寿命、format変更時のdrain/invalidateが必須です。
+現在の実装はbounded outstanding（1AU）と世代つきcallbackで、未完了callbackをdrainしてからsessionを破棄する。
+無期限に大量submitしないこと、stop時のcallback寿命、format変更時のdrain/invalidateを満たす。
 
 ## 時刻を3種類に分離
 
@@ -58,7 +59,7 @@ DataChannelの32bit microsecondsは約71.58分でwrapします。RTPとDCでunwr
 `RationalPacer` は絶対締切を有理数で作り、30fpsを33msや16666usの累積にしません。
 遅れたtimerが復帰したとき、過去フレームを一気に全送信せず過去の締切を捨てます。
 output durationは1/30、PTSは同じhost clockに揃え、時刻が前へ進むことを確認します。
-現在のWindows count×16666を置き換える配線はまだありません。
+`shared/km/timing.h` に実装し、`camera-extension/frame_relay.mm` が使う。
 
 ## キューと所有権
 

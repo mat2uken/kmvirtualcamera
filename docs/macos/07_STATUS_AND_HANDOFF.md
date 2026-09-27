@@ -1,59 +1,45 @@
-# 07 状態と引き継ぎ（R01–R13追加修正版）
+# 07 状態と引き継ぎ
 
-作成日: 2026-09-23。適用基準は `f7c7eb3777a00924e8498fb2ca1d0d277b1b5951`。
-macOSアプリ完成版ではなく、共通受信とWindows側の問題修正を追加した実装土台です。
+作成日: 2026-09-23。最終更新: 2026-09-28。適用基準は `47ce46e`（段階9 A6の記録コミット）。
+macOS仮想カメラの実装土台。段階0–9が完了し、段階10（署名・配布）が未着手である。
 
-## 今回の実装
+## 実施済み
 
-R01–R13の対策コードを追加しました。詳細は [09_REVIEW_FIXES.md](09_REVIEW_FIXES.md)。
-パケット検証、JSON/HTTP処理、Opus復号、bounded queueを変更しました。
-decoder操作の単一owner、pacing、timer、callback終了待ちも追加しました。
-ブラウザではAU上限と旧世代の結果の破棄を実装しました。
+| 段階 | 内容 | 結果 |
+|---|---|---|
+| 0–1 | R01–R13対策の適用と共通試験 | CTest全通過 |
+| 2–3 | Windows Receiver/RTC・WASAPI・TURN | 実測済み（段階3） |
+| 4–5 | Mac native componentsのビルド | VideoToolbox decoder・CoreVideo buffer |
+| 6–8 | sink publisher・host・RTC接続・映像安定化 | 実ブラウザの映像受信・30分連続 |
+| 9 | 音声（Opus復号・Core Audio出力） | 実ブラウザの音声受信・実endpoint出力 |
 
-## パッケージ作成時の試験
+## Macでの実測
 
-Linuxの作業環境で、下記のソースを直接コンパイル/実行しました。
-新しいテストを実行したことと、完全なリポジトリのCMakeビルドが成功したことを混同しないでください。
-
-| 試験 | 結果 |
-|---|---|
-| `test_review.cpp` + H264 RTP reassembler / Clang / ASan+UBSan | Passed。固定seedの不正datagram 50,000件を含む |
-| 同上 / GCC / Release | Passed |
-| `test_session.cpp` / Clang / ASan+UBSan | Passed。mock HTTP/JSON/ICE/escape/応答上限 |
-| `test_opus.cpp` + OpusRtpDecoder / Clang / ASan+UBSan | Passed。Linuxにインストール済みの実libopus.so.0へリンク |
-| browser sender/helper / `tsc --strict` | Passed |
-| `tests/browser/test_packetizer.cjs` / Node 22 | Passed。255境界、oversize send0回、失敗、IDR/世代 |
-
-パッケージ作成時のOpus試験はLinuxのシステムライブラリを使いました。
-GitHub Actions workflowを同梱していますが、CI成功は確認していません。
-
-## Macでの適用と再確認
-
-Apple Silicon Mac、Xcode 26.6、macOS SDK 26.5で、基準コミット`f7c7eb3`へ修正を適用しました。
-`sh scripts/test_foundation.sh`はCTest 4/4、Opus有効構成は5/5、ASan/UBSan構成は4/4で成功しました。
-Opus有効構成では、CMakeが取得したlibopus 1.6.1をビルドしています。
-
-`npm ci --prefix cloud`、`sh scripts/test_browser_protocol.sh`、`npm run --prefix cloud build`も成功しました。
-最初の型検査でWebCodecsの`SharedArrayBuffer`型を扱えない箇所を検出したため、
-設定情報の読み取りを修正し、SPS/PPSを取得できる回帰試験を追加して再実行しました。
-ソース、共通試験、ブラウザ試験の結果であり、OSへのカメラ登録や実映像の確認ではありません。
+| 項目 | 値 | 証跡 |
+|---|---|---|
+| foundation CTest | 12/12 pass、警告0 | `work/records/09c-gate-foundation.txt` |
+| rtc CTest | 15/15 pass、警告0 | `work/records/09c-gate-rtc.txt` |
+| cloud npm test | 18/18 pass | `work/records/09c-gate-cloud.txt` |
+| xcodebuild Debug | BUILD SUCCEEDED、警告0 | `work/records/09c-gate-xcodebuild.txt` |
+| 映像受信 | 720p 30fps、30分連続 | [08-stability](08-stability.md) |
+| 音声受信 | Opus 48kHz stereo、mean 26.8ms | [09-10-audio-release](09-10-audio-release.md) |
+| 音声出力 | 定常 underrun=0、rate比0.9997 | 同上 |
 
 ## 未検証
 
-WindowsではSDK全体ビルド、WinHTTPの実TLSとキャンセル、WASAPI出力、仮想カメラE2Eを未確認です。
-libdatachannelをリンクしたRTC経路はMacでビルド、オフライン設定試験、オフラインAnswer生成とローカルsignaling実行でのTURN設定引き継ぎ・映像パイプライン配線まで確認し、接続（ICE candidate pair確立）・TURN relay・実ブラウザの送信・実映像受信は未確認です。
-MacではObjective-C++部品のSDKビルド、署名、実機動作を未確認です。
-今回の修正でMacの仮想カメラがインストールできるようになったわけではありません。
+- 署名、notarization、stapling、パッケージ化（段階10）
+- 通常設定のMacでの導入と、一般アプリからの実camera capture（B1–B4）
+- 実マイク（WASAPI）・Windows実カメラ・端末QR走査・配布前目視
+- 仮想マイク（C4で対象外）
 
 ## 依然として未実装のmacOS機能
 
-署名済みhost app、Xcodeプロジェクト、Provider/Device/StreamSource、host-side sink publisherは未実装です。
-ReceiverEngine/UI統合の接続と仮想マイクは未実装です（共通ReceiverEngine部・シグナリング専用ワーカー・NSURLSession adapter・producer認証は各単位で試験済み、AppKit join UI・QRとローカルsignalingでのセッション作成・Offer受信・RTC未実装の失敗表示も確認済み、libdatachannel導入とオフライン試験は単位6、makeAnswerのRTC配線とTURN設定引き継ぎは単位7、映像AU→VideoPipeline→sink publisherの供給と統計表示は単位8で確認済み。残りは実ブラウザとの接続確立・実映像受信の測定（段階7）です）。
-VideoToolbox受信パイプライン（bounded queue＋直列worker）は単位2で実装し単位8でhostへ配線済みですが、接続後の実測（fps・遅延）は未実施です。
+署名済みhost app、Camera ExtensionのProvider/Device/StreamSource、配布物の作成と導入である。
+host・sink publisher・VideoToolbox受信パイプライン・Core Audio出力は実装・実測済みだが、
+署名と導入を伴わない。仮想マイクはC4で対象外とした。
 
 ## 次の担当者
 
-[CODEX_CONTINUE_PROMPT.md](CODEX_CONTINUE_PROMPT.md) を開始点とし、まずWindows/native依存の
-コンパイルエラーを解消・記録してください。その後、Mac部品のビルド → 署名した生成映像カメラ →
-host→sink→source → RTC受信接続と進めます。
-対策コードを「全試験に通過した既存仕様」と見なして追加修正を避けないでください。
+段階10の署名・配布へ進む。対象OS・CPU・配布方式・Team ID・bundle ID・App Groupを確定し、
+開発用署名での動作と配布物の導入結果を分けて記録する。
+資格情報、署名秘密鍵、TURN credentialをrepo・ログ・配布物へ混入させない。
