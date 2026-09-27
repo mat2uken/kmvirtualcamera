@@ -8,8 +8,8 @@
 |---|---|
 | repo | `kmvirtualcamera-macos-coremediaio-foundation` |
 | branch | `feature/macos-coremediaio-foundation` |
-| HEAD | `c67916f`（段階8開始時）、S1 `17576ad`、S2 `5301bdf` |
-| 未コミット差分 | 開始時は `work/`（未追跡）のみ。S1=`17576ad`、S2実装=`5301bdf` |
+| HEAD | 開始 `c67916f`、S1 `17576ad`、S2 `5301bdf`、S3 `380ec0e` |
+| 未コミット差分 | 開始時=`work/`（未追跡）。S1=`17576ad` S2=`5301bdf` S3=`380ec0e` |
 | OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
 | Xcode / SDK | Xcode 26.6 (17F113) / macOS SDK 26.5 |
 | compiler / CMake | Apple clang 21.0.0 / CMake 4.3.4 |
@@ -224,6 +224,77 @@ decoderとpipelineも対象に入り、unit 10項目・`--decodeprobe 300`・回
 3試行とも backpressure・needKeyframe・staleGen は0、decodeErrとnormalizeErrも0である。実映像の比較はS1-b試行5の2312.8とS2-b試行1の2355.4で、差は42.6µsである。
 
 証跡は `work/records/` にあるCDP出力3点、hostログ3点、consumer画像3点である。試行1と試行2の画像は黒、`s2-b3-consumer.png` が実映像の証拠である。consumer黒の原因はS1で特定した恒等パスの `-12743` で、S2の対象外のままである。
+
+### S3 attachment集合の一致と正規化候補の比較
+
+| 項目 | 内容 |
+|---|---|
+| 段階・試験ID | 段階8 S3（attachment集合の一致、Normalize720p候補の比較） |
+| 目的・合格条件 | 恒等パスの `-12743` を消し、候補ごとにcopy回数とCPU負荷を実測する |
+| 結果 | 成功（実映像で `-12743` ゼロ、MetalがCPU比17.7倍、3ゲート通過） |
+| repo | `kmvirtualcamera-macos-coremediaio-foundation` |
+| branch | `feature/macos-coremediaio-foundation` |
+| HEAD | コードは `380ec0e`、本記録は次コミット |
+| 未コミット差分 | 本記録と `work/`（未追跡）のみ |
+| 日時 | 2026-09-27 18:05–19:45 JST |
+| OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
+| Xcode・SDK / compiler | Xcode 26.6 (17F113) / macOS SDK 26.5 / Apple clang 21.0.0 |
+| ブラウザ | Google Chrome 153.0.8010.53（CDP 9222） |
+| network | `wrangler dev` 127.0.0.1:8787 と `turnserver` |
+| 計測構成 | Debug（`-O0`）、in-process bench と実ブラウザ MediaTrack |
+
+修正は `cmio_sink_publisher.mm` 1ファイルである。pool引数は `native_media.h` と `cv_nv12.mm`、Metalリンクは `macos/CMakeLists.txt` に足した。計測器は `video_pipeline_test.mm` の `--normbench` である。
+
+`feedFrame` は全attachmentを取り除いてからBT.709の3キーだけを付け直す。書式表現の3キーと集合が一致するので、恒等パスの入力で起きていた失敗が消えた。キューに乗る全フレームが同じ書式を名乗るため、黒フレームと実フレームの書式は同じである。
+
+#### S3-a 実映像（1280x720、恒等パス）
+
+| 試行 | StartStream | `-12743` | published | consumer | hostログ |
+|---|---|---|---|---|---|
+| 1 | 成功 | 0件 | 2730 | 実映像 | `s3-a-host.txt` |
+| 2 | status=-4 | 0件 | 2758 | 黒 | `s3-a2-host.txt` |
+| 3 | 成功 | 0件 | 2745 | 実映像 | `s3-a3-host.txt` |
+
+試行1と試行3はsample creationまで通り、`-12743` と `sample create failed` がともに0件である。decodeErr・normalizeErr・backpressure・needKeyframe・staleGen も0である。試行3は accepted=2746・published=2745、decodeUs avg=1198.4、toPublishUs avg=2174.0 である。
+
+試行2は `StartStream` が status=-4 で失敗し続け、samples created=0 のまま黒だった。開始段階の失敗で、S1で特定したsample creationとは別の事象である。証跡は `s3-a2-host.txt` に残した。
+
+consumer画像は `s3-a-consumer.png` と `s3-a3-consumer.png` に実映像、`s3-a2-consumer.png` に黒が写る。S3-aの証跡はhostログ3点、consumer画像3点、CDP出力3点である。
+
+#### S3-b Normalize720p候補の比較（各600回）
+
+| 入力 | 区分 | wallAvgUs | cpuUs | gpuAvgUs | copies |
+|---|---|---|---|---|---|
+| 1280x720 恒等 | CPU基準 | 0.53 | 0.64 | | 0 |
+| 1280x720 恒等 | pool | 0.50 | 0.62 | | 0 |
+| 960x540→720p | CPU基準 | 8756.81 | 8785.05 | | 1 |
+| 960x540→720p | pool | 8574.61 | 8560.91 | | 1 |
+| 960x540→720p | Metal | 494.90 | 299.71 | 64.48 | 1 |
+| 1280x720 回転90 | CPU基準 | 3659.51 | 3680.51 | | 1 |
+| 1280x720 回転90 | pool | 3496.95 | 3485.53 | | 1 |
+| 1280x720 回転90 | Metal | 393.12 | 285.92 | 21.93 | 1 |
+
+MetalはCPU基準よりletterboxで17.7倍、回転90度で9.3倍速い。GPU時間はletterboxで64.5µs、回転90度で21.9µsである。両経路とも出力はCPU基準とバイト単位で一致し、差分は0バイトである。
+
+poolはallocationだけを差し替え、letterboxで2.1%、回転90度で4.4%の短縮にとどまる。変換ループのほうが大半を占める。identityはpoolを通っても入力をそのまま返し、copyは0本である。
+
+入力のstrideは1280幅で1536、960幅で1024に作った。MetalとCPUの出力が一致したため、strideを読まない実装なら食い違うところまで確認できた。420f入力は `Expected video-range bi-planar 420v and quadrant rotation` という理由で拒否され、黙って変換されない。
+
+pool枯渇は1枚を保持したまま補充を要求し、`refill=-6689` で拒否された。上限を超えて増えることはない。証跡は `work/records/s3-normbench.txt` と `work/records/s3-asan-normbench.txt` である。
+
+採用は本単位の到達点でないため決めず、測定値と選択肢だけを残した。プロダクトのXcode構成がDebugのため、上表の値がそのまま実行時の値になる。
+
+#### ゲート（最終tree）
+
+| ゲート | 結果 | 証跡 |
+|---|---|---|
+| `sh scripts/test_macos_foundation.sh` | 10/10 pass、警告0 | `work/records/s3-gate-foundation.txt` |
+| `sh scripts/build_macos_rtc.sh` | 12/12 pass、警告0 | `work/records/s3-gate-rtc.txt` |
+| `cloud` `npm test` | 18/18 pass | `work/records/s3-gate-cloud.txt` |
+| ASan/UBSan `ctest` | 10/10 pass、指摘0 | `work/records/s3-asan-gate.txt` |
+| ASan `--normbench 120` | exit 0、指摘0、diffBytes=0 | `work/records/s3-asan-normbench.txt` |
+
+`xcodebuild` は exit 0、`BUILD SUCCEEDED`、警告0で、証跡は `work/records/s3-xcodebuild.txt` である。ASanのCPU基準だけがletterboxで27968.8µsに伸び、Metalは500.4µsのままである。
 
 ## デコードとメモリ
 
