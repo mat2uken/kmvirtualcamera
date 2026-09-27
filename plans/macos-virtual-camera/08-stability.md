@@ -8,8 +8,8 @@
 |---|---|
 | repo | `kmvirtualcamera-macos-coremediaio-foundation` |
 | branch | `feature/macos-coremediaio-foundation` |
-| HEAD | `c67916f`（段階8開始時、remoteと同一） |
-| 未コミット差分 | 開始時は `work/`（未追跡）のみ。S1は `17576ad` でコミット |
+| HEAD | `c67916f`（段階8開始時）、S1 `17576ad`、S2 `5301bdf` |
+| 未コミット差分 | 開始時は `work/`（未追跡）のみ。S1=`17576ad`、S2実装=`5301bdf` |
 | OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
 | Xcode / SDK | Xcode 26.6 (17F113) / macOS SDK 26.5 |
 | compiler / CMake | Apple clang 21.0.0 / CMake 4.3.4 |
@@ -138,6 +138,92 @@ Xcode build は `BUILD SUCCEEDED`・警告0である。最終treeの証跡は `w
 修正は `Normalize720p` とformat description のどちらかをattachment集合で一致させる。担当はS3である。
 
 診断コードは製品コードに一時追加しただけである。全件を除去し、xcodebuild警告0と3ゲートを最終treeで再実行した。
+
+### S2 boundedな非同期decode
+
+| 項目 | 内容 |
+|---|---|
+| 段階・試験ID | 段階8 S2（boundedな非同期decode、世代付きcallback、drain） |
+| 目的・合格条件 | 未完了callbackをdrainしてからsessionを破棄し、S1の値と遅延を比べる |
+| 結果 | 成功（3ゲートとASan/UBSan通過、benchで遅延改善、実映像の到達も確認） |
+| repo | `kmvirtualcamera-macos-coremediaio-foundation` |
+| branch | `feature/macos-coremediaio-foundation` |
+| HEAD | 実装は `5301bdf`、本記録は次コミット |
+| 未コミット差分 | 本記録と `work/`（未追跡）のみ |
+| 日時 | 2026-09-27 17:00–17:45 JST |
+| OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
+| Xcode・SDK / compiler | Xcode 26.6 (17F113) / macOS SDK 26.5 / Apple clang 21.0.0 |
+| ブラウザ | Google Chrome 153.0.8010.53（CDP 9222） |
+| network | `wrangler dev` 127.0.0.1:8787 と `turnserver` |
+| 計測経路 | in-process bench と実ブラウザ MediaTrack |
+
+対象は6ファイルである。decoder側は `native_media.h` と `video_toolbox_decoder.mm` である。pipeline側は `video_pipeline.h` と `video_pipeline.mm` である。残りは `video_pipeline_test.mm` と `macos/CMakeLists.txt` である。
+
+decoderは上限4枚のoutstandingウィンドウを持ち、`submit()` が投入、`takeOldest()` が結果を投入順に返す。投入順はPTS順なので、完了が前後しても後ろのフレームが先にhandlerへ出ることはない。
+
+sessionは破棄前にdrainして世代を進めるため、未完了callbackが解放済みのslotへ書き込むことはない。slotは `reset()` でも捨てず、slotと `CMSampleBuffer` はcallback完了後にownerだけが解放する。
+
+backpressureやstopで捨てられた連鎖の結果はhandler前に落とし、`staleEpoch` として数える。decoderの `needIdr` は投入側で下げ、取り出し側では上げるだけにした。tools用の `decode()` は1対1ラッパで、S1と同じ挙動のままである。
+
+`macos/CMakeLists.txt` は `KM_ENABLE_SANITIZERS` のときだけdecoderとpipelineへASan/UBSanを付ける。既定はOFFで通常のビルドは変わらない。
+
+testは `FillWindow` と `TakeOldestInOrder` の2ヘルパを足し、ウィンドウ上限・投入順・`reset()`時のdrainを検証する。既存10項目は維持した。
+
+#### S2-a bench比較（300枚、いずれも exit 0）
+
+| 指標 | S1 | S2 | 差 |
+|---|---|---|---|
+| decodeprobe images / failed | 300 / 0 | 300 / 0 | 0 |
+| paced30 decodeUs avg | 1530.59 | 1506.34 | -24.25 |
+| paced30 toPublishUs avg | 1803.86 | 1654.9 | -148.96 |
+| paced30 queueHighWater | 2 | 1 | -1 |
+| paced30 workerResidualUs avg | 273.27 | 148.567 | -124.70 |
+| burst decodeUs avg | 817.037 | 920.777 | +103.74 |
+| burst toPublishUs avg | 153619 | 89929.2 | -63689.8 |
+| burst drainWallMs | 250 | 121 | -129 |
+| burst queueHighWater | 299 | 299 | 0 |
+| 回転90 decodeUs avg | 1224.78 | 1189.53 | -35.25 |
+| 回転90 toPublishUs avg | 12823.8 | 8580.42 | -4243.4 |
+| 回転90 workerResidualUs avg | 11599 | 7390.89 | -4208.11 |
+
+`decodeUs` はS2以降、`submit()` 入口から取り出しまでを測る。ウィンドウ内の滞留を含む点が、S1の `decode()` 呼び出し直前の時間と異なる。burstの増加は遅延の悪化ではない。
+
+3構成とも published=300・decodeErrors=0・normalizeErrors=0 である。burstのdrainWallMsは250→121で、300枚を吐き出す時間は半分になった。
+
+証跡は `work/records/` の4ファイルである。`s2-decodeprobe.txt`、`s2-bench-paced30.txt`、`s2-bench-burst.txt`、`s2-bench-rot90.txt` を使った。Xcode buildの証跡は `s2-xcodebuild.txt` で、`BUILD SUCCEEDED`・警告0である。
+
+#### ゲート（最終tree）
+
+| ゲート | 結果 | 証跡 |
+|---|---|---|
+| `sh scripts/test_macos_foundation.sh` | 10/10 pass、警告0 | `work/records/s2-gate-foundation.txt` |
+| `sh scripts/build_macos_rtc.sh` | 12/12 pass、自社コード警告0 | `work/records/s2-gate-rtc.txt` |
+| `cloud` `npm test` | 18/18 pass | `work/records/s2-gate-cloud.txt` |
+| ASan/UBSan `ctest` | 10/10 pass、指摘0 | `work/records/s2-asan-gate.txt` |
+
+4ゲートはS2実装の最終treeで実行し、終了コードはいずれも0である。ASan/UBSanは `build/foundation-asan-macos` で、`detect_leaks` はこの環境で非対応のため外した。
+
+decoderとpipelineも対象に入り、unit 10項目・`--decodeprobe 300`・回転90のbenchで指摘0である。
+
+#### S2-b 実ブラウザ映像経路
+
+| 試行 | 送信側 | 結果 | 証跡 |
+|---|---|---|---|
+| 1 | 1280x720 | published=2768、`-12743`=2550件、consumer黒 | `s2-b-host.txt` |
+| 2 | UI解像度854x480 | 入力は1280x720のまま、`-12743`=2400件で黒 | `s2-b2-host.txt` |
+| 3 | 960x540 | `-12743`=0件、published=2739、実映像 | `s2-b3-host.txt` |
+
+試行1は accepted=2768・published=2768、decodeErr=0、normalizeErr=0、queueMax=2 である。decodeUs avg=1356.9 max=84404、toPublishUs avg=2355.4 max=84419 である。
+
+試行2はUIの解像度を854x480へ変えたが、テストダブルが1280x720固定のため入力は変わらず、`-12743`が2400件で黒のままだった。published=2732・decodeErr=0・normalizeErr=0 である。失敗の証跡として残した。
+
+試行3はテストダブルを960x540へ変えた。letterbox経路になり、`-12743`は0件でconsumerに実映像が出た。accepted=2739・published=2739、decodeErr=0、normalizeErr=0、queueMax=1 である。
+
+試行3のdecodeUs avg=731.1 max=97414、toPublishUs avg=10030.5 max=106224 である。toPublishUs が高いのはletterbox copyが約11ms入るためで、S1の回転90度と同型である。
+
+3試行とも backpressure・needKeyframe・staleGen は0、decodeErrとnormalizeErrも0である。実映像の比較はS1-b試行5の2312.8とS2-b試行1の2355.4で、差は42.6µsである。
+
+証跡は `work/records/` にあるCDP出力3点、hostログ3点、consumer画像3点である。試行1と試行2の画像は黒、`s2-b3-consumer.png` が実映像の証拠である。consumer黒の原因はS1で特定した恒等パスの `-12743` で、S2の対象外のままである。
 
 ## デコードとメモリ
 
