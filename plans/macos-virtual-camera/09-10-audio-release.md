@@ -1,6 +1,6 @@
 # 段階9–10: 音声、配布、資料更新
 
-映像の初回到達点は段階7、安定化の判定は段階8で行う。この文書は、音声を製品へ含める判断と、署名済みアプリの配布判断に必要な残作業を管理する。音声の追加有無、製品対応OS・CPU、配布方式は現時点で未決定である。
+映像の初回到達点は段階7、安定化の判定は段階8で行う。この文書は、音声を製品へ含める判断と、署名済みアプリの配布判断に必要な残作業を管理する。音声は同じ版でCore Audio出力まで含める（C4）。製品対応OS・CPU、配布方式は現時点で未決定である。
 
 ## 段階9: 音声
 
@@ -44,10 +44,23 @@ Windows側のOpus復号とWASAPI実測は段階3で済み、共通の `opus_rtp_
 | A3 | 実経路のPCM計測 | 要素数・frames・channels・rate |
 | A4 | PLCと再接続時reset | 欠損と再接続の挙動 |
 | A5 | 音声と映像の時刻差 | 動画とのずれの実測値 |
-| A6 | Core Audio出力 | 要件が決まれば実装と実音 |
-| A7 | 仮想マイク方式 | 要件が決まれば方式調査と設計 |
+| A6 | Core Audio出力 | 採用。実装と実音で手順2を満たす |
+| A7 | 仮想マイク方式 | 対象外（C4で含めない）。手順3は行わない |
 
-A1からA5は音声の製品範囲が未決定でも、判断材料になる実測として進める。A6とA7は利用先の要件が決まるまで着手しない。手順2・3に対応する。
+A1からA5は音声の製品範囲が未決定でも、判断材料になる実測として進める。C4の決定後はA6を着手し、A7は公開仕様とUIに含めない。
+
+### 段階9 C4決定（2026-09-28）
+
+| 項目 | 内容 |
+|---|---|
+| 決定 | 同じ版で音声（Core Audio出力まで） |
+| 対象外 | 仮想マイク（A7）。Camera Extensionは映像のみ |
+| 手順 | 手順2を実装・実音で確認する。手順3は行わない |
+| 完了条件への効き方 | 音質・映像とのずれ・停止復帰を実音で実測する |
+| 未決定のまま | 製品対応OS・CPU、配布方式 |
+| 出典 | 2026-09-28の確認。回答は「同じ版で音声（A6まで）」 |
+
+この決定により、段階10へはA6の実測を添えて進む。A7を含めない点は公開仕様とUIにも反映する。
 
 ## 結果記録
 
@@ -192,6 +205,56 @@ max 50.8ms は最初の3件で出て、残り2997件でこれを超える値は�
 
 2つは異なる区間である。音声出力が未実装のため、出力時の映像とのずれはまだ測れない。
 
+### A6 Core Audio出力
+
+| 項目 | 内容 |
+|---|---|
+| 段階・試験ID | 段階9 A6（Core Audio出力） |
+| 目的・合格条件 | RTC callbackがdevice待ちをしないbounded queue経由の出力を実音で残す |
+| 結果 | 成功（定常区間 underrun=0、device rate比0.9997） |
+| 実装 | `macos/receiver/audio_pcm_queue.h`・`audio_output.cpp` |
+| ログ | `work/records/09-a6-device-test.txt`・`a6-host.log`・`a6-run.txt` |
+
+実装は3点に分ける。`AudioPcmQueue` は bounded PCM queue で、overflowはoldestを落とし、underrunはempty popを数える。`AudioOutput` は専用workerがAudioQueueを所有し、create/prime/start/device変更/disposeを担当する。RTC callbackは `push` のみでdevice呼び出しをしない。
+
+workerは `AudioQueueStop`/`Dispose` を状態lockの外で呼ぶ。これらは完了callbackを待ち、callbackが同じlockを取るため、lock内ではデッドロックする。完了callbackは現queue以外のbufferを捨てる。
+
+#### A6-a 実endpointでの動作（device test）
+
+| 区間 | wall | rate比 | underrun | dropped | 証跡 |
+|---|---|---|---|---|---|
+| steady 4.0s | 4.00 | 0.9939 | 0 | 0 | `09-a6-device-test` |
+| muted 2.0s | 2.00 | 1.0086 | 0 | 0 | 同上 |
+| unmute 1.0s | 1.00 | 0.9962 | 0 | 0 | 同上 |
+| burst 500ms一括 | — | — | 0 | 48000 | 同上 |
+| gap 1.5s | 1.51 | — | 73 | 0 | 同上 |
+| restart後 1.5s | 1.50 | 0.9854 | 0 | 0 | 同上 |
+| device変更 2.0s | 2.00 | 0.9889 | 0 | 0 | 同上 |
+| 44.1kHz endpoint 3.0s | 3.00 | 0.9924 | 0 | 0 | 同上 |
+
+rate比は device が再生したbuffer数×20ms / wall である。1.0なら client frame のまま実時間で再生される。44.1kHz endpoint は client format 48kHz のまま device rate を44100に変え、rate比0.9924で AudioQueue が変換した。rate は48000へ戻した。
+
+device変更は `kAudioQueueProperty_CurrentDevice` に device UID を渡す。AudioDeviceID を渡すと `kAudioQueueErr_InvalidDevice` (-66683) になる。
+
+全checkは通過した。1kHz tone を選択した endpoint へ再生する。
+
+#### A6-b 実経路E2E（browser→RTC→device）
+
+| 項目 | 値 |
+|---|---|
+| session | 08:08:34 作成、device=89 (MacBook Proのスピーカー) 48kHz |
+| 定常区間 | 08:09:02→08:09:38（36秒） |
+| 定常 underrun | 0（depth 3840〜5760 を維持） |
+| 音声 pushed | 3934080 elements（41秒分）= popped |
+| device playSec/wallSec | 0.9997（実時間で消費） |
+| pushMaxUs | 153.5（RTC callbackの最大待ち） |
+| dropped | 0 |
+| 映像 | accepted=1065 published=1064 backpressure=0（影響なし） |
+
+session作成からRTC接続まで24秒あり、その間は音源なしでdeviceが無音を再生する（underrun 50/s）。接続後の最初の4秒は queue が空からの再建で underrun 113件だった。その後は36秒間 underrun 0 である。
+
+track が ended になった後は再び underrun 50/s になる（A5と同じ現象）。session 開始時に device 名が空文字だったが、現在は同じ device で名が取得できるため起動直後の一時的な値とみなす。
+
 ### ゲート（計測後のtree）
 
 | ゲート | 結果 | 証跡 |
@@ -205,7 +268,18 @@ max 50.8ms は最初の3件で出て、残り2997件でこれを超える値は�
 
 A5までのtreeでも同じ4件を通しており、証跡は `work/records/09-gate-*.txt` である。
 
-A6とA7は音声の製品範囲（C4）の決定待ちで未実施である。A1からA5の値は、範囲決定の判断材料として残す。
+### ゲート（A6計測後のtree）
+
+| ゲート | 結果 | 証跡 |
+|---|---|---|
+| `sh scripts/test_macos_foundation.sh` | 12/12 pass、警告0 | `work/records/09c-gate-foundation.txt` |
+| `sh scripts/build_macos_rtc.sh` | 15/15 pass、警告0 | `work/records/09c-gate-rtc.txt` |
+| `cloud` `npm test` | 18/18 pass | `work/records/09c-gate-cloud.txt` |
+| `xcodebuild` Debug | BUILD SUCCEEDED、警告0 | `work/records/09c-gate-xcodebuild.txt` |
+
+A6の新規test2件が両treeで通った。rtc 15件は既存13件へ音声2件を足した数である。rtcのdeprecation警告は再configureが無く0件だった。
+
+C4は「同じ版で音声（Core Audio出力まで）」で決まり、A6を実施した。A7は対象外である。A1からA5の値は、A6の比較基準として残す。
 
 ## 段階10: 署名・更新・配布
 

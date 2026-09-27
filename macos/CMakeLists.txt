@@ -46,6 +46,16 @@ target_include_directories(km_macos_pipeline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} 
 target_compile_options(km_macos_pipeline PRIVATE -fobjc-arc -Wall -Wextra)
 target_link_libraries(km_macos_pipeline PUBLIC km_macos_decoder Threads::Threads)
 km_macos_sanitize_lib(km_macos_pipeline)
+# Stage-9 audio output: bounded PCM queue -> dedicated worker -> AudioQueue ->
+# the selected output endpoint. Common C++ plus AudioToolbox, no RTC and no
+# Objective-C, so the contract tests link it directly.
+add_library(km_macos_audio_output STATIC receiver/audio_output.cpp)
+target_include_directories(km_macos_audio_output PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../shared)
+target_compile_options(km_macos_audio_output PRIVATE -Wall -Wextra)
+target_link_libraries(km_macos_audio_output PUBLIC Threads::Threads "-framework AudioToolbox"
+    "-framework CoreAudio" "-framework CoreFoundation")
+km_macos_sanitize_lib(km_macos_audio_output)
 add_executable(km_macos_media_smoke tools/media_smoke.mm)
 target_compile_options(km_macos_media_smoke PRIVATE -fobjc-arc)
 target_link_libraries(km_macos_media_smoke PRIVATE km_macos_decoder)
@@ -73,4 +83,19 @@ if(KM_BUILD_TESTS)
     target_link_libraries(km_macos_qr_test PRIVATE
         "-framework Vision" "-framework CoreGraphics" "-framework Foundation")
     add_test(NAME macos_qr_roundtrip COMMAND km_macos_qr_test)
+    # Stage-9 bounded PCM queue: ring wrap, drop accounting, underruns, threads.
+    add_executable(km_macos_audio_pcm_queue_test tests/audio_pcm_queue_test.cpp)
+    target_include_directories(km_macos_audio_pcm_queue_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_options(km_macos_audio_pcm_queue_test PRIVATE -Wall -Wextra)
+    target_link_libraries(km_macos_audio_pcm_queue_test PRIVATE Threads::Threads)
+    add_test(NAME macos_audio_pcm_queue COMMAND km_macos_audio_pcm_queue_test)
+    km_macos_sanitize(km_macos_audio_pcm_queue_test)
+    # Stage-9 real endpoint: tone, mute, burst, gap, restart, device change and
+    # a 44.1 kHz endpoint when a device offers one. Skips when no device exists.
+    add_executable(km_macos_audio_output_test tests/audio_output_test.cpp)
+    target_include_directories(km_macos_audio_output_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_options(km_macos_audio_output_test PRIVATE -Wall -Wextra)
+    target_link_libraries(km_macos_audio_output_test PRIVATE km_macos_audio_output)
+    add_test(NAME macos_audio_output COMMAND km_macos_audio_output_test)
+    km_macos_sanitize(km_macos_audio_output_test)
 endif()

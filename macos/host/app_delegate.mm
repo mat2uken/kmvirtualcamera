@@ -1,6 +1,7 @@
 #import "app_delegate.h"
 #import "generated_video.h"
 #import "host_exec_publisher.h"
+#import "../receiver/audio_output.h"
 #import "../receiver/cmio_sink_publisher.h"
 #import "../receiver/url_session_transport.h"
 #import "../receiver/video_pipeline.h"
@@ -160,6 +161,9 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
     // teardown order (Close drains callbacks, then the pipeline stops) needs the
     // pipeline to still exist while _rtc tears down.
     std::unique_ptr<km::mac::VideoPipeline> _pipeline;
+    // Stage-9 audio output: opened on the session thread, fed by the RTC
+    // callback through the bounded queue, drained by its own worker.
+    std::unique_ptr<km::mac::AudioOutput> _audioOut;
     // Declared before the worker so it outlives it (the worker borrows the transport;
     // transports are single-cancel, so every run gets a fresh one). _rtc outlives the
     // worker too: makeAnswer runs on the worker thread and Close() waits for it.
@@ -249,6 +253,7 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
     }
     _signalingTransport.reset();
     if (_rtc) _rtc->Close(); // drains the video callback before the pipeline stops
+    if (_audioOut) _audioOut->stop(); // callbacks are gone; release the endpoint
     if (_pipeline) {
         _pipeline->stop(); // joins the decoder; no handler runs after this
         _pipeline.reset();
@@ -307,6 +312,20 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
                 ? double(pipe.submitToPublishUsTotal) / double(pipe.submitToPublishUsCount) : 0.0,
             (unsigned long long)pipe.submitToPublishUsMax,
             (unsigned long long)pipe.submitToPublishUsCount);
+        if (_audioOut) {
+            const km::mac::AudioOutput::Stats audio = _audioOut->stats();
+            if (audio.running || audio.pushedElements)
+                NSLog(@"KMAppDelegate: audio pushed=%llu popped=%llu dropped=%llu depth=%zu "
+                      "depthHigh=%zu pushMaxUs=%.1f underrun=%llu muted=%llu completed=%llu "
+                      "device=%u/%.0f playSec=%.3f wallSec=%.3f",
+                    (unsigned long long)audio.pushedElements,
+                    (unsigned long long)audio.poppedElements,
+                    (unsigned long long)audio.droppedElements, audio.depth, audio.depthHigh,
+                    double(audio.pushMaxNs) / 1000.0, (unsigned long long)audio.underruns,
+                    (unsigned long long)audio.mutedBuffers,
+                    (unsigned long long)audio.buffersCompleted, audio.deviceID, audio.deviceRate,
+                    audio.playSeconds, audio.wallSeconds);
+        }
     } else {
         [line appendString:@"受信待ち…"];
     }
@@ -404,8 +423,20 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
                 if (result == km::SubmitResult::Backpressure || result == km::SubmitResult::NeedKeyframe)
                     strongSelf->_rtc->RequestKeyframe(); // mirrors the Windows push failure path
             },
-            [](const int16_t*, size_t, int, int) {
-                // Audio output is a later stage; nothing consumes it yet.
+            [strongSelf](const int16_t* pcm, size_t elements, int channels, int rate) {
+                // Stage-9 A6: the RTC callback only copies into the bounded
+                // queue. The endpoint wait lives on the audio worker, so a
+                // stalled device cannot hold the RTC thread.
+                km::mac::AudioOutput* output = strongSelf->_audioOut.get();
+                if (!output || !pcm || elements == 0) return;
+                if (channels != 2 || rate != 48000) {
+                    static std::atomic<bool> reported{false};
+                    if (!reported.exchange(true))
+                        NSLog(@"KMAppDelegate: unexpected audio format channels=%d rate=%d",
+                            channels, rate);
+                    return;
+                }
+                output->push(pcm, elements);
             });
         if (!initialized) return std::nullopt;
         std::string answer;
@@ -434,6 +465,18 @@ static NSArray<NSString*>* KMEnumerateCameraDeviceNames(void) {
         _phaseLabel.stringValue = @"状態: 失敗 — 映像パイプラインを起動できません";
         [self stopSignalingWorker];
         return;
+    }
+    // Open the endpoint before the session runs: device work happens here on
+    // the session thread, never inside an RTC callback.
+    if (_audioOut) {
+        std::string audioError;
+        if (!_audioOut->start(audioError)) {
+            NSLog(@"KMAppDelegate: audio output start failed: %s", audioError.c_str());
+        } else {
+            const km::mac::AudioOutput::Stats audio = _audioOut->stats();
+            NSLog(@"KMAppDelegate: audio output started device=%u rate=%.0f \"%s\"",
+                audio.deviceID, audio.deviceRate, audio.deviceName.c_str());
+        }
     }
     const std::string url = _signalingUrlField.stringValue.UTF8String ?: "";
     try {
@@ -656,6 +699,9 @@ static NSString* KMSinkStateText(KMSinkPublisherState state) {
     self.extensionManager.statusHandler = ^(NSString* state, NSString* detail) {
         dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf reportState:state detail:detail]; });
     };
+
+    // Constructed at launch, opened with a session (startSignaling).
+    _audioOut = std::make_unique<km::mac::AudioOutput>();
 
     _publisher = [[KMCMSinkPublisher alloc] init];
     _publisher.stateHandler = ^(KMSinkPublisherState state, NSString* detail) {
