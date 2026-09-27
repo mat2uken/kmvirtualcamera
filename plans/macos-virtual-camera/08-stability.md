@@ -8,8 +8,8 @@
 |---|---|
 | repo | `kmvirtualcamera-macos-coremediaio-foundation` |
 | branch | `feature/macos-coremediaio-foundation` |
-| HEAD | `c67916f`（remoteと同一、push済み） |
-| 未コミット差分 | S1計測器4ファイルと本記録、`work/`（未追跡） |
+| HEAD | `c67916f`（段階8開始時、remoteと同一） |
+| 未コミット差分 | 開始時は `work/`（未追跡）のみ。S1は `17576ad` でコミット |
 | OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
 | Xcode / SDK | Xcode 26.6 (17F113) / macOS SDK 26.5 |
 | compiler / CMake | Apple clang 21.0.0 / CMake 4.3.4 |
@@ -42,8 +42,8 @@ S2はS1の値がなければ着手しない。S3もS1の値が基準になる。
 | 結果 | 成功（計測器と基準値を取得。実映像経路で不具合1件を発見し、後に記す） |
 | repo | `kmvirtualcamera-macos-coremediaio-foundation` |
 | branch | `feature/macos-coremediaio-foundation` |
-| HEAD | `c67916f`（計測器は未コミット差分） |
-| 未コミット差分 | 計測器4ファイル、本記録、`work/`（未追跡） |
+| HEAD | 計測は `c67916f`＋未コミット差分、commitは `17576ad` |
+| 未コミット差分 | 計測時点: 計測器4ファイルと本記録、`work/`（未追跡） |
 | 日時 | 2026-09-27 10:58–16:46 JST |
 | OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
 | Xcode・SDK / compiler | Xcode 26.6 (17F113) / macOS SDK 26.5 / Apple clang 21.0.0 |
