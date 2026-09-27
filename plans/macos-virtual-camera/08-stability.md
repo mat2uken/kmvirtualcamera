@@ -8,13 +8,15 @@
 |---|---|
 | repo | `kmvirtualcamera-macos-coremediaio-foundation` |
 | branch | `feature/macos-coremediaio-foundation` |
-| HEAD | 開始 `c67916f`、S1 `17576ad`、S2 `5301bdf`、S3 `380ec0e` |
-| 未コミット差分 | 開始時=`work/`（未追跡）。S1=`17576ad` S2=`5301bdf` S3=`380ec0e` |
+| HEAD | 開始 `c67916f`、S1〜S6は各単位の記録コミット |
+| 未コミット差分 | 開始時=`work/`（未追跡）、S1〜S6も同じ |
 | OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
 | Xcode / SDK | Xcode 26.6 (17F113) / macOS SDK 26.5 |
 | compiler / CMake | Apple clang 21.0.0 / CMake 4.3.4 |
 | 導入状態 | `KM Virtual Camera` が `system_profiler SPCameraDataType` の一覧に出る |
 | 決定待ち | fps・遅延・CPU/GPU・メモリ・対象OSの許容値は未決定（製品判断待ち） |
+
+S1〜S6の記録コミットは順に `17576ad`、`5301bdf`、`380ec0e`、`22dff79`、`140eefc`、`6c27a65` である。製品コードの差分は各単位で0件だった。
 
 この表のHEAD・差分・環境を単位を始めるたびに更新し、[記録様式](verification.md)に試験結果を紐付ける。
 
@@ -411,19 +413,19 @@ host起動時の `KMEvidence` 書き込みで権限エラーが2件出る。S1�
 |---|---|
 | 段階・試験ID | 段階8 S6（停止・再開、送信タブ強制終了、3 consumer） |
 | 目的・合格条件 | 停止・再開と障害後も古い映像を出さず、3 consumerでqueue増加とfps低下を出さないこと |
-| 結果 | 成功（停止再開3回、障害は新規セッションで復帰、3 consumerでdropped 0） |
+| 結果 | 成功（停止再開3回、障害は新規セッションで復帰、host停止でも黒、3 consumerでdropped 0） |
 | repo | `kmvirtualcamera-macos-coremediaio-foundation` |
 | branch | `feature/macos-coremediaio-foundation` |
 | HEAD | 製品コードの差分なし、本記録は次コミット |
 | 未コミット差分 | 本記録と `work/`（未追跡）のみ |
-| 日時 | 2026-09-27 21:07–21:41 JST |
+| 日時 | 2026-09-27 21:07–22:05 JST |
 | OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
 | Xcode・SDK / compiler | Xcode 26.6 (17F113) / macOS SDK 26.5 / Apple clang 21.0.0 |
 | ブラウザ | Google Chrome 153.0.8010.53（CDP 9222） |
 | network | `wrangler dev` 127.0.0.1:8787 と `turnserver` |
 | 計測構成 | Debug（`-O0`）、CDP送信の停止再開とタブ強制終了、consumer 3並列 |
 
-送信は `s6-sender.mjs` で、`cycle` が停止再開、`fault` がタブ強制終了後の再開封を動かす。consumerは `s4-consumer.swift` を使い、PTS計数だけの run と15枚おきの画素走査を分けた。hostのログは起動ごとに別ファイルへ切り出した。
+送信は `s6-sender.mjs` で、`cycle` が停止再開、`fault` がタブ強制終了後の再開封を動かす。consumerは `s4-consumer.swift` を使い、PTS計数だけの run と15枚おきの画素走査を分けた。ページの監視は `s6-watch.mjs` と `s6-net.mjs`、hostのログは起動ごとに別ファイルへ切り出した。
 
 #### S6-a 停止と再開（送信20秒・停止10秒を3回）
 
@@ -512,6 +514,43 @@ consumerの切替は21:36:14で、hostの最初のフレーム21:36:14.198と0.2
 
 hostの計測区間は21:39:43–21:40:56（73秒）である。consumer3の最大delta 300.00は1回の300ms間隔で、他の2件は33.34以内だった。3並列でもqueueとdropは増えない。
 
+#### S6-b5 送信側のオフライン条件（25秒）
+
+| 項目 | 実測 |
+|---|---|
+| CDPオフライン25秒 | ページ表示は `接続中 (送信中)` のまま |
+| consumer 130秒 | 3896枚、PTS違反0、delta 33.33–133.33 |
+| 黒サンプル | 0件（260サンプルすべて実映像） |
+| 判定 | WebRTCの経路は切れず、通信断は再現できなかった |
+
+`Network.emulateNetworkConditions` で25秒オフラインにしても、表示と映像は変わらなかった。同一マシンのWebRTC経路には効かず、理由は調べていない。証跡は `s6-b5-sender.txt` と `s6-b5-consumer.txt` である。
+
+#### S6-d hostプロセスの一時停止（25秒）
+
+| 時刻 | 処理 |
+|---|---|
+| 22:01:43 | hostをSIGSTOP（25秒） |
+| 22:01:44.68 | consumerが黒へ切替（停止から1.2〜1.7秒後） |
+| 22:01:51 | ページ `接続再試行中...` |
+| 22:02:01 | ページ `接続失敗 (failed)` |
+| 22:02:08 | hostをSIGCONT |
+| 22:02:09.692 | rtc state 4→5 |
+| 22:02:10.265 | `no new frame for 27122 ms -> feeding black` |
+
+| 項目 | 実測 |
+|---|---|
+| consumer 110秒 | 3300枚、PTS違反0、黒は24サンプル目から最後まで |
+| 再接続ボタン | 1秒後に `Signaling session has expired or does not exist.` |
+| host counter | accepted=45739 / published=45730 が22:02:08以降止まる |
+| queueMax・backpressure | 8・1 |
+| needKeyframe・`-12743` | 120・0件 |
+
+停止中にhostはログを書かず、consumerは30fpsで黒を受け続けた。生産側が止まっても拡張が1秒で黒へ切り替え、古い映像は残らない。
+
+`cloud/wrangler.jsonc` の `SESSION_TTL_SECONDS` は600で、21:36:05作成のセッションは21:46:05に失効する。22:02:01の再接続が410になったのはこの期限による。
+
+復帰はhost再起動による新セッションだけ（S6-b4）である。同一プロセスで2度目の接続を作れないため、queueに残った9枚が次回接続で公開されるかは未確認である。
+
 #### ゲート（現tree）
 
 | ゲート | 結果 | 証跡 |
@@ -547,3 +586,5 @@ source consumerが0でもproducerがいる間は古いsampleを滞留させな�
 ## 完了条件
 
 段階7の両映像経路を保ったまま、非同期decodeのbounded容量と破棄規則、正しい向き・画角・色、時刻の単調性、30分連続時の資源推移を証拠付きで示せる。停止・再開や複数consumerで古い映像、持続的なqueue増加、クラッシュ、解放漏れがない。製品のfps・遅延・CPU/GPU・メモリの許容値と対象OSは、測定後に明記し、その値に照らして判定する。
+
+**記録時点（2026-09-27）**: S1〜S6の実測は揃い、3ゲートは現treeで通過した。許容値が未決定のため判定は保留する。通信断の実再現、Extension再起動、スリープ復帰、ユーザー切替、更新は未実施である。
