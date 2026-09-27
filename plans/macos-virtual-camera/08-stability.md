@@ -405,6 +405,123 @@ host起動時の `KMEvidence` 書き込みで権限エラーが2件出る。S1�
 
 製品コードの差分はS5で0件である。3ゲートを本記録のtreeで再実行し、いずれも終了コード0になった。
 
+### S6 停止・再開、障害、3 consumer
+
+| 項目 | 内容 |
+|---|---|
+| 段階・試験ID | 段階8 S6（停止・再開、送信タブ強制終了、3 consumer） |
+| 目的・合格条件 | 停止・再開と障害後も古い映像を出さず、3 consumerでqueue増加とfps低下を出さないこと |
+| 結果 | 成功（停止再開3回、障害は新規セッションで復帰、3 consumerでdropped 0） |
+| repo | `kmvirtualcamera-macos-coremediaio-foundation` |
+| branch | `feature/macos-coremediaio-foundation` |
+| HEAD | 製品コードの差分なし、本記録は次コミット |
+| 未コミット差分 | 本記録と `work/`（未追跡）のみ |
+| 日時 | 2026-09-27 21:07–21:41 JST |
+| OS / CPU | macOS 26.7 (25G229) / Apple M3 Max (arm64) |
+| Xcode・SDK / compiler | Xcode 26.6 (17F113) / macOS SDK 26.5 / Apple clang 21.0.0 |
+| ブラウザ | Google Chrome 153.0.8010.53（CDP 9222） |
+| network | `wrangler dev` 127.0.0.1:8787 と `turnserver` |
+| 計測構成 | Debug（`-O0`）、CDP送信の停止再開とタブ強制終了、consumer 3並列 |
+
+送信は `s6-sender.mjs` で、`cycle` が停止再開、`fault` がタブ強制終了後の再開封を動かす。consumerは `s4-consumer.swift` を使い、PTS計数だけの run と15枚おきの画素走査を分けた。hostのログは起動ごとに別ファイルへ切り出した。
+
+#### S6-a 停止と再開（送信20秒・停止10秒を3回）
+
+| 項目 | 実測 |
+|---|---|
+| host `pipe` 行 | 129行、accepted=published=2372 |
+| 停止中のcounter増分 | 0（acceptedとpublishedが止まる） |
+| queueMax | 0が10行、1が119行で最大1 |
+| 黒→生の切替 | 4回（停止3回と再開直後の1回） |
+| 黒の長さ | 10.3秒・11.3秒・11.3秒・0.03秒 |
+| consumer 105秒・3148枚 | PTS違反0、delta 33.33–66.66 |
+| `-12743` | 0件 |
+
+停止を押すと送信が止まり、hostに `no new frame for N ms -> feeding black` が出る。再開では `new frame arrived -> resuming live feed` が出て実映像に戻る。黒の間もconsumerは30fpsでフレームを受け取り、PTSが下がる区間は0件である。
+
+3回目の再開直後だけ、最初のフレームから次のフレームまで1.012秒空き、黒が0.033秒出た。他の2回の再開では1秒を超える無フレームがなかった。
+
+#### S6-a2 黒区間の画素（走査間隔15枚、210サンプル）
+
+| 区間 | consumerの黒 | hostの黒区間 |
+|---|---|---|
+| 1回目 | t=19.0–36.0秒（17.0秒） | 21:16:02.215–21:16:19.481（17.3秒） |
+| 2回目 | t=58.0–80.0秒（22.0秒） | 21:16:41.213–21:17:03.381（22.2秒） |
+
+210サンプルのうち黒は80件で、残る130件は四隅・左右中点・中心・赤マーカーが送信側の値と一致する。黒の長さはhost側の17.3秒・22.2秒と1秒以内で一致し、PTS違反は0件である。
+
+#### S6-b 送信タブの強制終了
+
+| 項目 | 実測 |
+|---|---|
+| rtc state | 4（Failed）→5（Closed）、21:29:19 |
+| 同一join URLの再開封 | 90秒待っても接続せず |
+| ページ表示 | 接続失敗 Session has already been claimed by another sender. |
+| host counter | accepted=published=593で21:29:18以降止まる |
+| consumer 5399枚 | PTS違反0、delta 33.33–66.66 |
+| queueMax・`-12743` | 最大1・0件 |
+
+タブ強制終了でrtc stateが4→5になり、再開封したタブは同じURLでも繋がらない。`claimNonce` はsessionStorageに置かれており、新しいタブは別の値でclaimするため409になる。
+
+`docs/03_session_and_signaling_protocol.md` の10節は、v1ではICE Restartと再Offerを行わない。
+失敗したらReceiverが新Sessionを作る方針で、同一URLでの復帰なしはこの設計どおりである。
+
+#### S6-b3 再接続ボタン（45秒）
+
+| 項目 | 実測 |
+|---|---|
+| 押下後の表示 | 1秒で同じ409、45秒で変化なし |
+| consumer 2100枚 | PTS違反0、delta 33.33–33.34 |
+| 走査140サンプル | 全件が (0,0,0) の黒 |
+| host | 新offer 0件、queueMax=1、`-12743` 0件 |
+
+失敗表示の `再接続` を押すと1秒で同じ文言に戻る。45秒の間、hostには新しいofferが届かず、consumerには黒だけが届いた。古い映像の再表示は0件である。
+
+#### S6-b4 新規セッションでの復帰
+
+| 時刻 | 処理 |
+|---|---|
+| 21:36:04 | host再起動 |
+| 21:36:05 | 新しいjoin URL |
+| 21:36:12.951 | offer受信（signaling phase=3） |
+| 21:36:13.933 | rtc state=2 |
+| 21:36:14.198 | 最初のフレーム投入（feed n=1） |
+| 21:36:15.131 | 入力1.024秒無しで黒（0.268秒） |
+| 21:36:15.399 | `resuming live feed` |
+
+host再起動から最初の実映像までが10秒である。consumerは160秒で4800枚、PTS違反0で、先頭32サンプル（16.0秒相当）が黒、33件目から四隅・中点・赤マーカーがPASSする。
+
+consumerの切替は21:36:14で、hostの最初のフレーム21:36:14.198と0.2秒で一致する。次の入力まで1.024秒空いたため、hostは21:36:15.131に0.268秒の黒を出した。host側はaccepted=published、queueMax=2、`-12743` 0件、`answer send failed` 0件だった。
+
+#### S6-c 3 consumer同時（60秒）
+
+| consumer | frames | fps | PTS違反 | deltaMs |
+|---|---|---|---|---|
+| 1 | 1800 | 30.00 | 0 | 33.33–33.34 |
+| 2 | 1799 | 29.98 | 0 | 33.33–33.34 |
+| 3 | 1792 | 29.87 | 0 | 33.33–300.00 |
+
+| 項目 | 実測 |
+|---|---|
+| accepted/published | 6192→8377（+2185、29.9/秒） |
+| queueMax | 2のみ（74行） |
+| feed dropped | 0（73行） |
+| 他カウンタ | backpressure等5項目すべて0 |
+| `-12743`・黒切替 | 0件・0件 |
+| `consume observed` | スレッドID3種（3 client） |
+
+hostの計測区間は21:39:43–21:40:56（73秒）である。consumer3の最大delta 300.00は1回の300ms間隔で、他の2件は33.34以内だった。3並列でもqueueとdropは増えない。
+
+#### ゲート（現tree）
+
+| ゲート | 結果 | 証跡 |
+|---|---|---|
+| `sh scripts/test_macos_foundation.sh` | 10/10 pass、警告0 | `work/records/s6-gate-foundation.txt` |
+| `sh scripts/build_macos_rtc.sh` | 12/12 pass、警告0 | `work/records/s6-gate-rtc.txt` |
+| `cloud` `npm test` | 18/18 pass | `work/records/s6-gate-cloud.txt` |
+
+製品コードの差分はS6で0件である。3ゲートを本記録のtreeで再実行し、いずれも終了コード0になった。
+
 ## デコードとメモリ
 
 1. 現在の `VideoToolboxDecoder` はAUごとに `VTDecompressionSessionWaitForAsynchronousFrames` を呼ぶ。実映像でdecode時間、queue深さ、遅延を測ったうえで、bounded outstanding decodeと世代付きcallbackへ変える。完了順が前後する場合の表示順を決め、入力を無制限に保持しない。
