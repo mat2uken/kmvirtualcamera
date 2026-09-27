@@ -44,7 +44,7 @@ bool VideoPipeline::start(OutputFormat format, uint64_t generation, std::string&
     queue_.clear();
     needKeyframe_ = true; // a fresh pipeline must see SPS/PPS+IDR before any dependent frame
     accepted_ = backpressure_ = needKeyframeCount_ = rejected_ = staleGeneration_ =
-        decodeErrors_ = normalizeErrors_ = published_ = 0;
+        staleEpoch_ = decodeErrors_ = normalizeErrors_ = published_ = 0;
     queueHighWater_ = decodeUsCount_ = decodeUsTotal_ = decodeUsMax_ = 0;
     submitToPublishUsCount_ = submitToPublishUsTotal_ = submitToPublishUsMax_ = 0;
     worker_ = std::thread(&VideoPipeline::worker, this);
@@ -115,6 +115,7 @@ PipelineStats VideoPipeline::stats() const {
     out.needKeyframe = needKeyframeCount_;
     out.rejected = rejected_;
     out.staleGeneration = staleGeneration_;
+    out.staleEpoch = staleEpoch_;
     out.decodeErrors = decodeErrors_;
     out.normalizeErrors = normalizeErrors_;
     out.published = published_;
@@ -131,35 +132,56 @@ PipelineStats VideoPipeline::stats() const {
 void VideoPipeline::worker() {
     // The decoder and every decoded surface live and die on this thread only.
     VideoToolboxDecoder decoder;
-    for (;;) {
+    // AUs already handed to the decoder, in submission order. Results leave in
+    // that same order, which is presentation order, so a frame that completes
+    // early can never reach the handler before an earlier one.
+    struct InFlight {
         QueuedAu item;
-        {
-            std::unique_lock lock(mutex_);
-            work_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
-            if (stopping_) return; // stop() invalidated all queued work
-            item = std::move(queue_.front());
-            queue_.pop_front();
-        }
+        int64_t ptsUs = 0;
+        int64_t enteredNs = 0; // steady_clock at the decoder submit() entry
+    };
+    std::deque<InFlight> inflight;
+    for (;;) {
         @autoreleasepool {
-            const EncodedVideoFrame& frame = item.frame;
-            int64_t ptsUs = 0;
-            if (frame.timestampDomain == TimestampDomain::Rtp90kHz)
-                ptsUs = frame.mediaTicks * 1000000 / 90000;
-            else
-                ptsUs = frame.mediaTicks;
-            std::string error;
-            const int64_t decodeStartNs = NowNs();
-            PixelBuffer image = decoder.decode(frame.annexB, ptsUs, error);
-            const uint64_t decodeUs = uint64_t(NowNs() - decodeStartNs) / 1000;
-            ++decodeUsCount_;
-            decodeUsTotal_ += decodeUs;
-            RaiseMax(decodeUsMax_, decodeUs);
-            if (!image) {
-                // State first, counter last: a reader that observes the counter
-                // observes every preceding state update. An empty error means a
-                // configuration-only AU, which is not a failure. An item from a
-                // superseded epoch must not clobber the current requirement.
-                if (!error.empty()) {
+            // Fill the bounded window before taking anything: handing frame
+            // k+1 to VideoToolbox while the worker normalizes frame k is what
+            // lets both overlap, and the window bound keeps the inputs from
+            // being held without limit.
+            for (;;) {
+                QueuedAu item;
+                {
+                    std::unique_lock lock(mutex_);
+                    if (stopping_) return; // stop() invalidated all queued work
+                    if (queue_.empty()) break;
+                    if (decoder.outstanding() >= VideoToolboxDecoder::kMaxOutstanding) break;
+                    item = std::move(queue_.front());
+                    queue_.pop_front();
+                }
+                const EncodedVideoFrame& frame = item.frame;
+                int64_t ptsUs = 0;
+                if (frame.timestampDomain == TimestampDomain::Rtp90kHz)
+                    ptsUs = frame.mediaTicks * 1000000 / 90000;
+                else
+                    ptsUs = frame.mediaTicks;
+                const int64_t enteredNs = NowNs();
+                std::string error;
+                const auto outcome = decoder.submit(frame.annexB, ptsUs, error);
+                if (outcome == VideoToolboxDecoder::SubmitOutcome::Queued) {
+                    inflight.push_back(InFlight{std::move(item), ptsUs, enteredNs});
+                    continue;
+                }
+                // NoOutput and Failed both finish inside submit(), so that call
+                // is the whole decoder span for this AU.
+                const uint64_t decodeUs = uint64_t(NowNs() - enteredNs) / 1000;
+                ++decodeUsCount_;
+                decodeUsTotal_ += decodeUs;
+                RaiseMax(decodeUsMax_, decodeUs);
+                if (outcome == VideoToolboxDecoder::SubmitOutcome::Failed) {
+                    // State first, counter last: a reader that observes the
+                    // counter observes every preceding state update. An empty
+                    // error would be a configuration-only AU, which is not a
+                    // failure, and an item from a superseded epoch must not
+                    // clobber the current requirement.
                     {
                         std::lock_guard lock(mutex_);
                         if (item.epoch == epoch_) needKeyframe_ = true;
@@ -171,6 +193,53 @@ void VideoPipeline::worker() {
                 }
                 continue;
             }
+            if (inflight.empty()) {
+                std::unique_lock lock(mutex_);
+                work_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+                if (stopping_) return;
+                continue;
+            }
+            {
+                std::unique_lock lock(mutex_);
+                if (stopping_) return; // results still in the window die with the stop
+            }
+            InFlight head = std::move(inflight.front());
+            inflight.pop_front();
+            PixelBuffer image;
+            std::string error;
+            decoder.takeOldest(image, error);
+            const uint64_t decodeUs = uint64_t(NowNs() - head.enteredNs) / 1000;
+            ++decodeUsCount_;
+            decodeUsTotal_ += decodeUs;
+            RaiseMax(decodeUsMax_, decodeUs);
+            {
+                std::unique_lock lock(mutex_);
+                if (stopping_) return; // stop() landed while this AU was decoding
+            }
+            if (!error.empty()) {
+                {
+                    std::lock_guard lock(mutex_);
+                    if (head.item.epoch == epoch_) needKeyframe_ = true;
+                }
+                // The counter alone cannot explain a stall, so the reason
+                // goes to the host log where the stage-8 records read it.
+                NSLog(@"KMVideoPipeline: decode failed: %s", error.c_str());
+                ++decodeErrors_;
+                continue;
+            }
+            bool current;
+            {
+                std::lock_guard lock(mutex_);
+                current = head.item.epoch == epoch_;
+            }
+            if (!current) {
+                // Backpressure or a restart discarded this AU's chain after it
+                // was submitted: drop the result instead of showing a frame
+                // from a chain nobody is waiting for.
+                ++staleEpoch_;
+                continue;
+            }
+            if (!image) continue; // decoder dropped the frame; nothing to show
             PixelBuffer normalized = Normalize720p(image.get(), rotation_.load(), error);
             if (!normalized) {
                 // The decoder already advanced; the dependency chain survives a
@@ -181,7 +250,7 @@ void VideoPipeline::worker() {
             }
             // Counters first, then the handler, then published: a reader that
             // observes published already sees every timing sample for that frame.
-            const uint64_t submitToPublishUs = uint64_t(NowNs() - item.submittedNs) / 1000;
+            const uint64_t submitToPublishUs = uint64_t(NowNs() - head.item.submittedNs) / 1000;
             ++submitToPublishUsCount_;
             submitToPublishUsTotal_ += submitToPublishUs;
             RaiseMax(submitToPublishUsMax_, submitToPublishUs);

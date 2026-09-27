@@ -35,6 +35,7 @@ using km::SubmitResult;
 using km::h264::AppendAnnexB;
 using km::h264::Bytes;
 using km::mac::VideoPipeline;
+using km::mac::VideoToolboxDecoder;
 
 constexpr int kWidth = 1280, kHeight = 720;
 
@@ -98,6 +99,43 @@ struct EncodedAu {
     std::vector<uint8_t> annexB;
     bool keyframe = false;
 };
+
+// Stage-8 S2 helpers: the owner fills the decoder's bounded window exactly the
+// way the pipeline worker does, only while the window has room.
+bool FillWindow(km::mac::VideoToolboxDecoder& decoder, const std::vector<EncodedAu>& aus,
+                size_t& next, std::vector<int64_t>& submittedPts, size_t& maxOutstanding,
+                std::string& error) {
+    while (next < aus.size() &&
+           decoder.outstanding() < km::mac::VideoToolboxDecoder::kMaxOutstanding) {
+        const int64_t pts = int64_t(next) * 33333;
+        const auto outcome = decoder.submit(aus[next].annexB, pts, error);
+        if (outcome != km::mac::VideoToolboxDecoder::SubmitOutcome::Queued) {
+            std::vector<Bytes> nalus;
+            const bool ok = km::h264::SplitAnnexB(aus[next].annexB, nalus);
+            std::cerr << "fill fail au=" << next << " outcome=" << int(outcome) << " err=" << error
+                      << " nalus=" << DescribeNalus(ok, nalus) << "\n";
+            return false;
+        }
+        submittedPts.push_back(pts);
+        ++next;
+        if (decoder.outstanding() > maxOutstanding) maxOutstanding = decoder.outstanding();
+    }
+    return true;
+}
+
+// One take: the frame belongs to the AU that entered the window first, so the
+// results really do leave in submission order.
+bool TakeOldestInOrder(km::mac::VideoToolboxDecoder& decoder,
+                       const std::vector<int64_t>& submittedPts, size_t& taken,
+                       std::string& error) {
+    km::mac::PixelBuffer image;
+    int64_t pts = -1;
+    decoder.takeOldest(image, error, &pts);
+    if (!error.empty() || !image) return false;
+    if (taken >= submittedPts.size() || pts != submittedPts[taken]) return false;
+    ++taken;
+    return true;
+}
 
 // Encodes 720p H.264 on demand: first frame forced to IDR, second frame a
 // dependent P frame. The AU always starts with the session SPS/PPS parameter
@@ -661,6 +699,46 @@ int main(int argc, char** argv) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         CHECK(pipe.stats().published == 1);
         CHECK(pipe.submit(frameFrom(idr, true, 10, 3)) == SubmitResult::Stopped);
+    }
+
+    // Stage-8 S2: bounded outstanding decode. The window never grows past its
+    // bound, every result leaves in submission order, and reset() with a full
+    // window drains the outstanding callbacks instead of hanging or losing one.
+    {
+        std::string error;
+        // One coherent chain: the stored IDR, the stored P frame, then the six
+        // P frames the encoder produced right after them.
+        std::vector<EncodedAu> windowAus{idr, pframe};
+        for (int i = 2; i <= 7; ++i) {
+            EncodedAu au;
+            CHECK(encoder.encode(i, false, au, error));
+            CHECK(!au.annexB.empty());
+            windowAus.push_back(std::move(au));
+        }
+
+        VideoToolboxDecoder decoder;
+        std::vector<int64_t> submittedPts;
+        size_t next = 0, taken = 0, maxOutstanding = 0;
+
+        // More AUs are waiting than the window can hold: submission stops at
+        // the bound and the owner takes results instead of queueing more.
+        CHECK(FillWindow(decoder, windowAus, next, submittedPts, maxOutstanding, error));
+        CHECK(next == VideoToolboxDecoder::kMaxOutstanding);
+        CHECK(maxOutstanding <= VideoToolboxDecoder::kMaxOutstanding);
+        while (decoder.outstanding() > 0)
+            CHECK(TakeOldestInOrder(decoder, submittedPts, taken, error));
+        CHECK(taken == next);
+
+        // reset() with four AUs still decoding: the session is drained and
+        // invalidated, and each slot still comes back with its own frame.
+        CHECK(FillWindow(decoder, windowAus, next, submittedPts, maxOutstanding, error));
+        CHECK(decoder.outstanding() == VideoToolboxDecoder::kMaxOutstanding);
+        CHECK(maxOutstanding <= VideoToolboxDecoder::kMaxOutstanding);
+        decoder.reset();
+        while (decoder.outstanding() > 0)
+            CHECK(TakeOldestInOrder(decoder, submittedPts, taken, error));
+        CHECK(next == windowAus.size());
+        CHECK(taken == windowAus.size());
     }
 
     std::cout << "video_pipeline: all checks passed\n";

@@ -1,13 +1,31 @@
 # Native foundation: requires an actual macOS SDK. No install/sign/network operations.
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+# Stage-8 item 2: the shared-code tests already build with ASan/UBSan behind
+# KM_ENABLE_SANITIZERS, and the Mac decoder/pipeline own the stage-8 windowed
+# callbacks, so they carry the same flags. Off by default. Static libraries
+# only need the compile flag; the executable that links them also needs the
+# runtime at link time.
+function(km_macos_sanitize target)
+    if(KM_ENABLE_SANITIZERS)
+        target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(${target} PRIVATE -fsanitize=address,undefined)
+    endif()
+endfunction()
+function(km_macos_sanitize_lib target)
+    if(KM_ENABLE_SANITIZERS)
+        target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+    endif()
+endfunction()
 add_library(km_macos_buffers STATIC receiver/cv_nv12.mm)
 target_include_directories(km_macos_buffers PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../shared)
 target_compile_options(km_macos_buffers PRIVATE -fobjc-arc)
 target_link_libraries(km_macos_buffers PUBLIC "-framework Foundation" "-framework CoreVideo" "-framework CoreMedia")
+km_macos_sanitize_lib(km_macos_buffers)
 add_library(km_macos_decoder STATIC receiver/video_toolbox_decoder.mm)
 target_compile_options(km_macos_decoder PRIVATE -fobjc-arc)
 target_link_libraries(km_macos_decoder PUBLIC km_macos_buffers "-framework VideoToolbox")
+km_macos_sanitize_lib(km_macos_decoder)
 add_library(km_camera_relay STATIC camera-extension/frame_relay.mm)
 target_compile_options(km_camera_relay PRIVATE -fobjc-arc)
 target_link_libraries(km_camera_relay PUBLIC km_macos_buffers "-framework CoreMediaIO")
@@ -27,9 +45,11 @@ add_library(km_macos_pipeline STATIC receiver/video_pipeline.mm)
 target_include_directories(km_macos_pipeline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../shared)
 target_compile_options(km_macos_pipeline PRIVATE -fobjc-arc -Wall -Wextra)
 target_link_libraries(km_macos_pipeline PUBLIC km_macos_decoder Threads::Threads)
+km_macos_sanitize_lib(km_macos_pipeline)
 add_executable(km_macos_media_smoke tools/media_smoke.mm)
 target_compile_options(km_macos_media_smoke PRIVATE -fobjc-arc)
 target_link_libraries(km_macos_media_smoke PRIVATE km_macos_decoder)
+km_macos_sanitize(km_macos_media_smoke)
 if(KM_BUILD_TESTS)
     add_test(NAME macos_media_allocation COMMAND km_macos_media_smoke)
     # Loopback-only HTTP transport test; binds 127.0.0.1, no external network.
@@ -42,6 +62,7 @@ if(KM_BUILD_TESTS)
     add_executable(km_macos_pipeline_test tests/video_pipeline_test.mm)
     target_compile_options(km_macos_pipeline_test PRIVATE -fobjc-arc -Wall -Wextra)
     target_link_libraries(km_macos_pipeline_test PRIVATE km_macos_pipeline Threads::Threads)
+    km_macos_sanitize(km_macos_pipeline_test)
     add_test(NAME macos_video_pipeline COMMAND km_macos_pipeline_test)
     # Join-QR round trip: the Windows UI's generator -> bitmap -> Vision decode.
     # Independent decoder, no scanner hardware and no fixture images.
