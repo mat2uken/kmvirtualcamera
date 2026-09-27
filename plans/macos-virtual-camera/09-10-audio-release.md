@@ -66,7 +66,7 @@ A1からA5は音声の製品範囲が未決定でも、判断材料になる実�
 | network | `wrangler dev` 127.0.0.1:8787、ローカル `turnserver` |
 | 計測構成 | Debug、CDP送信、hostと受信側の臨時計測 |
 
-臨時計測は `macos/host/app_delegate.mm` と `shared/receiver/audio/opus_rtp_decoder.cpp` に置き、A5後に撤去した。撤去後の再ビルドで該当文字列は0件である。ログは `work/records/` に原本を残す。
+臨時計測は `macos/host/app_delegate.mm` と `shared/receiver/audio/opus_rtp_decoder.cpp` に置き、各計測後に撤去した。撤去後の再ビルドで該当文字列は0件である。ログは `work/records/` に原本を残す。
 
 ### A1 Opus無効の現状で音声付き送信
 
@@ -171,16 +171,39 @@ CDP照会の `work/records/a5-tail.mjs` は audio `ready=ended`・video `ready=l
 
 この差は到着時刻の差であり、音声と映像のメディア時計の差ではない。時計の差は送信側の時刻を受信側で突き合わせる計測が別途必要である。
 
-### ゲート（A1〜A5後のtree）
+#### A5-b 受信側の遅延（60秒）
+
+| 項目 | 内容 |
+|---|---|
+| 目的・合格条件 | 受信側で触れる音声・映像の遅延を実測で残す |
+| 結果 | 成功（音声 mean 26.8ms、映像 mean 3.3ms） |
+| ログ | `work/records/a5c-host.log`・`a5c-run.txt` |
+
+| 区間 | n | min | mean | max |
+|---|---|---|---|---|
+| 音声 到着→PCM callback | 3000 | 20.0ms | 26.8ms | 50.8ms |
+| 映像 submit→publish | 1746 | — | 3.3ms | 238.2ms |
+
+音声は `OpusRtpDecoder::Receive` の到着から PCM callback までの時間である。下限20.0msは `Tick` の20ms待ちと一致する。
+
+max 50.8ms は最初の3件で出て、残り2997件でこれを超える値は無い。
+
+映像は `VideoPipeline::submit` から sink publish までで、mean 3.3ms である。max 238.2ms は接続開始時の値である。
+
+2つは異なる区間である。音声出力が未実装のため、出力時の映像とのずれはまだ測れない。
+
+### ゲート（計測後のtree）
 
 | ゲート | 結果 | 証跡 |
 |---|---|---|
-| `sh scripts/test_macos_foundation.sh` | 10/10 pass、警告0 | `work/records/09-gate-foundation.txt` |
-| `sh scripts/build_macos_rtc.sh` | 13/13 pass、資材のCMake警告4件 | `work/records/09-gate-rtc.txt` |
-| `cloud` `npm test` | 18/18 pass | `work/records/09-gate-cloud.txt` |
-| `xcodebuild` Debug | BUILD SUCCEEDED、警告0 | `work/records/09-gate-xcodebuild.txt` |
+| `sh scripts/test_macos_foundation.sh` | 10/10 pass、警告0 | `work/records/09b-gate-foundation.txt` |
+| `sh scripts/build_macos_rtc.sh` | 13/13 pass、資材のCMake警告4件 | `work/records/09b-gate-rtc.txt` |
+| `cloud` `npm test` | 18/18 pass | `work/records/09b-gate-cloud.txt` |
+| `xcodebuild` Debug | BUILD SUCCEEDED、警告0 | `work/records/09b-gate-xcodebuild.txt` |
 
-3ゲートとxcodebuildは臨時計測の撤去後treeで終了コード0である。rtcの警告4件は pinned 資材の CMake deprecation で、自社コードは0件である。
+3ゲートとxcodebuildは臨時計測を外したtreeで終了コード0である。rtcの警告4件は pinned 資材の CMake deprecation で、自社コードは0件である。
+
+A5までのtreeでも同じ4件を通しており、証跡は `work/records/09-gate-*.txt` である。
 
 A6とA7は音声の製品範囲（C4）の決定待ちで未実施である。A1からA5の値は、範囲決定の判断材料として残す。
 
