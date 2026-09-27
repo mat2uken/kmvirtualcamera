@@ -61,7 +61,7 @@ if(KM_BUILD_TESTS)
     # IVideoPipeline contract test; encodes real H.264 in-process, no fixtures.
     add_executable(km_macos_pipeline_test tests/video_pipeline_test.mm)
     target_compile_options(km_macos_pipeline_test PRIVATE -fobjc-arc -Wall -Wextra)
-    target_link_libraries(km_macos_pipeline_test PRIVATE km_macos_pipeline Threads::Threads)
+    target_link_libraries(km_macos_pipeline_test PRIVATE km_macos_pipeline Threads::Threads "-framework Metal")
     km_macos_sanitize(km_macos_pipeline_test)
     add_test(NAME macos_video_pipeline COMMAND km_macos_pipeline_test)
     # Join-QR round trip: the Windows UI's generator -> bitmap -> Vision decode.

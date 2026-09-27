@@ -533,8 +533,16 @@ static void KMSinkQueueAltered(CMIOStreamID streamID, void* token, void* refCon)
             NSLog(@"KMSinkPublisher: Normalize720p failed (%llu): %s", _failed, error.c_str());
         return;
     }
-    // Buffer attachments must exactly match the format description extensions
-    // (stage 5 lesson: mismatch = kCMSampleBufferError_InvalidMediaFormat -12743).
+    // The fixed format description carries exactly these three extensions, and
+    // sample creation requires the buffer's attachments to be that same set:
+    // one extra VideoToolbox attachment (CGColorSpace, field count, either
+    // chroma location) is enough for CMSampleBufferCreateForImageBuffer to fail
+    // with kCMSampleBufferError_InvalidMediaFormat (-12743), the stage-8 defect
+    // found in S1. Resetting the set each frame makes the identity path (a
+    // decoded 1280x720 handed through unchanged) behave like the letterbox path
+    // that already worked. Every frame reaching the queue then advertises one
+    // constant format, which is what the stream format promises.
+    CVBufferRemoveAllAttachments(normalized.get());
     CVBufferSetAttachment(normalized.get(), kCVImageBufferYCbCrMatrixKey,
         kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(normalized.get(), kCVImageBufferColorPrimariesKey,

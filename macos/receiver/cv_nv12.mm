@@ -4,7 +4,24 @@
 
 namespace km::mac {
 namespace {
-PixelBuffer Allocate(std::string& error) {
+PixelBuffer Allocate(std::string& error, CVPixelBufferPoolRef pool = nullptr) {
+    if (pool) {
+        CVPixelBufferRef raw = nullptr;
+        const CVReturn status =
+            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &raw);
+        if (status != kCVReturnSuccess || !raw) {
+            error = "CVPixelBufferPoolCreatePixelBuffer: " + std::to_string(status);
+            return {};
+        }
+        PixelBuffer out(raw);
+        if (CVPixelBufferGetWidth(out.get()) != 1280 || CVPixelBufferGetHeight(out.get()) != 720 ||
+            CVPixelBufferGetPixelFormatType(out.get()) !=
+                kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
+            error = "Pool buffer is not 1280x720 video-range bi-planar 420v";
+            return {};
+        }
+        return out;
+    }
     CVPixelBufferRef raw = nullptr;
     NSDictionary* attrs = @{
         (__bridge NSString*)kCVPixelBufferIOSurfacePropertiesKey: @{},
@@ -49,7 +66,8 @@ PixelBuffer MakeBlack720p(std::string& error) {
         kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
     return out;
 }
-PixelBuffer Normalize720p(CVPixelBufferRef input, int rotation, std::string& error) {
+PixelBuffer Normalize720p(CVPixelBufferRef input, int rotation, std::string& error,
+                          CVPixelBufferPoolRef pool) {
     error.clear();
     if (!input || CVPixelBufferGetPixelFormatType(input) != kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
         CVPixelBufferGetPlaneCount(input) != 2 ||
@@ -97,7 +115,7 @@ PixelBuffer Normalize720p(CVPixelBufferRef input, int rotation, std::string& err
     }
     if (rotation == 0 && CVPixelBufferGetWidth(input) == 1280 && CVPixelBufferGetHeight(input) == 720)
         return PixelBuffer::retain(input);
-    auto out = Allocate(error);
+    auto out = Allocate(error, pool);
     if (!out) return {};
     Lock srcLock(input, kCVPixelBufferLock_ReadOnly), dstLock(out.get(), 0);
     if (srcLock.status != kCVReturnSuccess || dstLock.status != kCVReturnSuccess) {

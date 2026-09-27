@@ -8,7 +8,12 @@
 #include "receiver/native_media.h"
 #include "km/h264.h"
 #include <CoreMedia/CoreMedia.h>
+#include <CoreVideo/CVMetalTexture.h>
+#include <CoreVideo/CVMetalTextureCache.h>
 #include <VideoToolbox/VideoToolbox.h>
+#include <Metal/Metal.h>
+#include <simd/simd.h>
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -17,6 +22,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <sys/resource.h>
 #include <thread>
 #include <vector>
 
@@ -402,6 +408,562 @@ int RunDecodeProbe(int argc, char** argv) {
     return failed == 0 && silent == 0 ? 0 : 1;
 }
 
+// Stage-8 S3: Normalize720p candidate comparison. The identity path hands the
+// input buffer straight back, the transform path writes one new buffer (full
+// black fill, then the fitted rectangle), so each frame costs 0 or 1 copies.
+// The candidates differ only in where that output buffer comes from: per-call
+// CVPixelBufferCreate (baseline) or a CVPixelBufferPool. The shared
+// km::Letterbox transform is identical in both, so the difference on the line
+// is allocation only.
+//
+//   km_macos_pipeline_test --normbench [frames]
+//     frames  iterations per mode (default 600)
+double RusageUs() {
+    struct rusage usage {};
+    if (getrusage(RUSAGE_SELF, &usage) != 0) return -1;
+    return double(usage.ru_utime.tv_sec) * 1e6 + double(usage.ru_utime.tv_usec) +
+           double(usage.ru_stime.tv_sec) * 1e6 + double(usage.ru_stime.tv_usec);
+}
+
+CVPixelBufferPoolRef MakeNormPool(int minCount, std::string& error) {
+    NSDictionary* poolAttrs = @{
+        (__bridge NSString*)kCVPixelBufferPoolMinimumBufferCountKey: @(minCount)
+    };
+    NSDictionary* pixelAttrs = @{
+        (__bridge NSString*)kCVPixelBufferWidthKey: @1280,
+        (__bridge NSString*)kCVPixelBufferHeightKey: @720,
+        (__bridge NSString*)kCVPixelBufferPixelFormatTypeKey:
+            @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+        (__bridge NSString*)kCVPixelBufferIOSurfacePropertiesKey: @{},
+        (__bridge NSString*)kCVPixelBufferMetalCompatibilityKey: @YES
+    };
+    CVPixelBufferPoolRef pool = nullptr;
+    const CVReturn status = CVPixelBufferPoolCreate(kCFAllocatorDefault,
+        (__bridge CFDictionaryRef)poolAttrs, (__bridge CFDictionaryRef)pixelAttrs, &pool);
+    if (status != kCVReturnSuccess || !pool)
+        error = "CVPixelBufferPoolCreate: " + std::to_string(status);
+    return pool;
+}
+
+// A filled input, so the timed loop reads the same memory a decoded frame
+// would. IOSurface strides may exceed width; both paths must honour stride.
+km::mac::PixelBuffer MakeNormInput(int width, int height, OSType format, std::string& error) {
+    error.clear();
+    NSDictionary* attrs = @{
+        (__bridge NSString*)kCVPixelBufferIOSurfacePropertiesKey: @{},
+        (__bridge NSString*)kCVPixelBufferMetalCompatibilityKey: @YES,
+        // Wider than the width for both bench inputs, so the transform proves
+        // it walks rows by stride instead of assuming a packed plane.
+        (__bridge NSString*)kCVPixelBufferBytesPerRowAlignmentKey: @512
+    };
+    CVPixelBufferRef raw = nullptr;
+    const CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, format,
+        (__bridge CFDictionaryRef)attrs, &raw);
+    if (status != kCVReturnSuccess || !raw) {
+        error = "input CVPixelBufferCreate: " + std::to_string(status);
+        return {};
+    }
+    km::mac::PixelBuffer buffer(raw);
+    if (CVPixelBufferLockBaseAddress(raw, 0) != kCVReturnSuccess) {
+        error = "input lock failed";
+        return {};
+    }
+    const size_t planeCount = CVPixelBufferGetPlaneCount(raw);
+    for (size_t p = 0; p < planeCount; ++p) {
+        uint8_t* base = static_cast<uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(raw, p));
+        const size_t stride = CVPixelBufferGetBytesPerRowOfPlane(raw, p);
+        const size_t rows = CVPixelBufferGetHeightOfPlane(raw, p);
+        const size_t cols = CVPixelBufferGetWidthOfPlane(raw, p);
+        for (size_t y = 0; y < rows; ++y)
+            for (size_t x = 0; x < cols; ++x)
+                base[y * stride + x] = p == 0 ? uint8_t((x * 4 + y * 2) & 0xFF) : uint8_t(128 + (x & 0x3F));
+    }
+    CVPixelBufferUnlockBaseAddress(raw, 0);
+    return buffer;
+}
+
+struct NormSample {
+    double wallAvgUs = 0;
+    double wallMaxUs = 0;
+    double cpuUs = 0;
+    bool reusesInput = false;
+    int distinctOutputs = 0;
+};
+
+bool MeasureNormalize(CVPixelBufferRef input, int rotation, int frames, bool usePool,
+                      CVPixelBufferPoolRef pool, NormSample& out, std::string& error) {
+    std::vector<CVPixelBufferRef> seen;
+    double wallSum = 0, wallMax = 0;
+    const double cpu0 = RusageUs();
+    for (int i = 0; i < frames; ++i) {
+        const auto t0 = std::chrono::steady_clock::now();
+        km::mac::PixelBuffer result =
+            km::mac::Normalize720p(input, rotation, error, usePool ? pool : nullptr);
+        const auto t1 = std::chrono::steady_clock::now();
+        if (!result) return false;
+        const double us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+        wallSum += us;
+        if (us > wallMax) wallMax = us;
+        if (result.get() == input) out.reusesInput = true;
+        if (std::find(seen.begin(), seen.end(), result.get()) == seen.end())
+            seen.push_back(result.get());
+    }
+    const double cpu1 = RusageUs();
+    out.wallAvgUs = wallSum / double(frames);
+    out.wallMaxUs = wallMax;
+    out.cpuUs = cpu1 >= 0 && cpu0 >= 0 ? (cpu1 - cpu0) / double(frames) : -1;
+    out.distinctOutputs = int(seen.size());
+    return true;
+}
+
+void PrintNormSample(const char* label, const NormSample& s) {
+    std::cout << "  " << label << " wallAvgUs=" << s.wallAvgUs << " wallMaxUs=" << s.wallMaxUs
+              << " cpuUs=" << s.cpuUs << " copies=" << (s.reusesInput ? 0 : 1)
+              << " distinctOutputs=" << s.distinctOutputs << "\n";
+}
+
+// Stage-8 S3 candidate 2: the same nearest-neighbour letterbox on the GPU. The
+// shader mirrors km::Letterbox arithmetic one line at a time, so the result is
+// diffed against the CPU path instead of trusted. One dispatch per plane; the
+// fitted rectangle and the black margin are written by the same kernel, which
+// is what FillBlack plus the CPU loop do.
+const char* kNormMetalSource = R"metal(
+#include <metal_stdlib>
+using namespace metal;
+struct Params {
+    int4 rect;    // ox, oy, w, h of the fitted rectangle, in plane pixels
+    int4 fit;     // w, h, rotatedW, rotatedH, in plane pixels
+    int4 src;     // sw, sh, rotation, plane (0 = Y, 1 = UV)
+    int2 outSize; // destination plane size
+    int2 pad;
+};
+kernel void kmLetterbox(texture2d<float, access::read> src [[texture(0)]],
+                        texture2d<float, access::write> dst [[texture(1)]],
+                        constant Params& p [[buffer(0)]],
+                        uint2 gid [[thread_position_in_grid]]) {
+    if (int(gid.x) >= p.outSize.x || int(gid.y) >= p.outSize.y) return;
+    const bool inside = int(gid.x) >= p.rect.x && int(gid.x) < p.rect.x + p.fit.x &&
+                        int(gid.y) >= p.rect.y && int(gid.y) < p.rect.y + p.fit.y;
+    if (!inside) {
+        const float black = p.src.w == 0 ? 16.0f / 255.0f : 128.0f / 255.0f;
+        dst.write(float4(black, black, black, 1.0f), gid);
+        return;
+    }
+    const int x = int(gid.x) - p.rect.x;
+    const int y = int(gid.y) - p.rect.y;
+    const int rx = x * p.fit.z / p.fit.x;
+    const int ry = y * p.fit.w / p.fit.y;
+    int sx = rx, sy = ry;
+    if (p.src.z == 90) { sx = ry; sy = p.src.y - 1 - rx; }
+    else if (p.src.z == 180) { sx = p.src.x - 1 - rx; sy = p.src.y - 1 - ry; }
+    else if (p.src.z == 270) { sx = p.src.x - 1 - ry; sy = rx; }
+    dst.write(src.read(uint2(sx, sy)), gid);
+}
+)metal";
+
+struct MetalNormalize {
+    id<MTLDevice> device = nil;
+    id<MTLCommandQueue> queue = nil;
+    id<MTLComputePipelineState> pipeline = nil;
+    CVMetalTextureCacheRef cache = nullptr;
+};
+
+bool MakeMetalNormalize(MetalNormalize& metal, std::string& error) {
+    metal.device = MTLCreateSystemDefaultDevice();
+    if (!metal.device) {
+        error = "MTLCreateSystemDefaultDevice failed";
+        return false;
+    }
+    NSError* nsError = nil;
+    id<MTLLibrary> library = [metal.device
+        newLibraryWithSource:[NSString stringWithUTF8String:kNormMetalSource]
+                     options:nil
+                       error:&nsError];
+    if (!library) {
+        error = std::string("Metal library: ") + nsError.localizedDescription.UTF8String;
+        return false;
+    }
+    id<MTLFunction> function = [library newFunctionWithName:@"kmLetterbox"];
+    if (!function) {
+        error = "Metal function kmLetterbox not found";
+        return false;
+    }
+    metal.pipeline = [metal.device newComputePipelineStateWithFunction:function error:&nsError];
+    if (!metal.pipeline) {
+        error = std::string("Metal pipeline: ") + nsError.localizedDescription.UTF8String;
+        return false;
+    }
+    metal.queue = [metal.device newCommandQueue];
+    if (!metal.queue) {
+        error = "newCommandQueue failed";
+        return false;
+    }
+    NSDictionary* usage = @{
+        (__bridge NSString*)kCVMetalTextureUsage:
+            @(MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite)
+    };
+    const CVReturn status = CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr,
+        metal.device, (__bridge CFDictionaryRef)usage, &metal.cache);
+    if (status != kCVReturnSuccess || !metal.cache) {
+        error = "CVMetalTextureCacheCreate: " + std::to_string(status);
+        return false;
+    }
+    return true;
+}
+
+struct NormParams {
+    simd_int4 rect;
+    simd_int4 fit;
+    simd_int4 src;
+    simd_int2 outSize;
+    simd_int2 pad;
+};
+
+// Fitted rectangle and mapping constants, copied from km::Letterbox so the two
+// implementations are compared rather than assumed equal.
+bool FillNormParams(int rotation, int inW, int inH, int outW, int outH, NormParams& params) {
+    const int unit = params.src.w ? 2 : 1;
+    const int rw = (rotation % 180) ? inH : inW;
+    const int rh = (rotation % 180) ? inW : inH;
+    int fw = outW, fh = outH;
+    if (int64_t(rw) * outH > int64_t(rh) * outW)
+        fh = int(int64_t(outW) * rh / rw) & ~1;
+    else
+        fw = int(int64_t(outH) * rw / rh) & ~1;
+    if (fw < 2 || fh < 2) return false;
+    const int ox = ((outW - fw) / 2) & ~1, oy = ((outH - fh) / 2) & ~1;
+    const int sw = inW / unit, sh = inH / unit;
+    const int w = fw / unit, h = fh / unit;
+    params.rect = simd_make_int4(ox / unit, oy / unit, w, h);
+    params.fit = simd_make_int4(w, h, rw / unit, rh / unit);
+    params.src = simd_make_int4(sw, sh, rotation, params.src.w);
+    params.outSize = simd_make_int2(outW / unit, outH / unit);
+    params.pad = simd_make_int2(0, 0);
+    return true;
+}
+
+CVMetalTextureRef MakeMetalTexture(const MetalNormalize& metal, CVPixelBufferRef buffer,
+                                   size_t plane, MTLPixelFormat format, std::string& error) {
+    const size_t width = plane ? CVPixelBufferGetWidthOfPlane(buffer, plane)
+                               : CVPixelBufferGetWidth(buffer);
+    const size_t height = plane ? CVPixelBufferGetHeightOfPlane(buffer, plane)
+                                : CVPixelBufferGetHeight(buffer);
+    CVMetalTextureRef texture = nullptr;
+    const CVReturn status = CVMetalTextureCacheCreateTextureFromImage(
+        kCFAllocatorDefault, metal.cache, buffer, nullptr,
+        format, width, height, uint32_t(plane), &texture);
+    if (status != kCVReturnSuccess || !texture)
+        error = "CVMetalTextureCacheCreateTextureFromImage: " + std::to_string(status);
+    return texture;
+}
+
+// One transform: texture wrappers, one encoder with two dispatches, then wait.
+// GPU time comes from the command buffer itself.
+bool MetalNormalizeOnce(const MetalNormalize& metal, CVPixelBufferRef input,
+                        CVPixelBufferRef output, int rotation, double& gpuUs,
+                        std::string& error) {
+    CVMetalTextureRef yIn = MakeMetalTexture(metal, input, 0, MTLPixelFormatR8Unorm, error);
+    if (!yIn) return false;
+    CVMetalTextureRef uvIn = MakeMetalTexture(metal, input, 1, MTLPixelFormatRG8Unorm, error);
+    if (!uvIn) { CFRelease(yIn); return false; }
+    CVMetalTextureRef yOut = MakeMetalTexture(metal, output, 0, MTLPixelFormatR8Unorm, error);
+    if (!yOut) { CFRelease(uvIn); CFRelease(yIn); return false; }
+    CVMetalTextureRef uvOut = MakeMetalTexture(metal, output, 1, MTLPixelFormatRG8Unorm, error);
+    if (!uvOut) { CFRelease(yOut); CFRelease(uvIn); CFRelease(yIn); return false; }
+    id<MTLTexture> inY = CVMetalTextureGetTexture(yIn);
+    id<MTLTexture> inUV = CVMetalTextureGetTexture(uvIn);
+    id<MTLTexture> outY = CVMetalTextureGetTexture(yOut);
+    id<MTLTexture> outUV = CVMetalTextureGetTexture(uvOut);
+    bool ok = inY && inUV && outY && outUV;
+    if (ok) {
+        id<MTLCommandBuffer> command = [metal.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:metal.pipeline];
+        const int inW = int(CVPixelBufferGetWidth(input));
+        const int inH = int(CVPixelBufferGetHeight(input));
+        const int outW = int(CVPixelBufferGetWidth(output));
+        const int outH = int(CVPixelBufferGetHeight(output));
+        for (int plane = 0; plane < 2; ++plane) {
+            NormParams params;
+            params.src = simd_make_int4(0, 0, 0, plane);
+            if (!FillNormParams(rotation, inW, inH, outW, outH, params)) {
+                error = "fitted rectangle is too small";
+                ok = false;
+                break;
+            }
+            [encoder setTexture:(plane ? inUV : inY) atIndex:0];
+            [encoder setTexture:(plane ? outUV : outY) atIndex:1];
+            [encoder setBytes:&params length:sizeof(params) atIndex:0];
+            [encoder dispatchThreads:MTLSizeMake(size_t(params.outSize.x), size_t(params.outSize.y), 1)
+                threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+        }
+        [encoder endEncoding];
+        if (ok) {
+            [command commit];
+            [command waitUntilCompleted];
+            gpuUs = command.GPUEndTime > command.GPUStartTime
+                ? (command.GPUEndTime - command.GPUStartTime) * 1e6
+                : -1;
+            if (command.status == MTLCommandBufferStatusError) {
+                error = std::string("Metal command buffer: ")
+                    + command.error.localizedDescription.UTF8String;
+                ok = false;
+            }
+        }
+    } else {
+        error = "Metal texture is nil for a plane";
+    }
+    CFRelease(uvOut);
+    CFRelease(yOut);
+    CFRelease(uvIn);
+    CFRelease(yIn);
+    return ok;
+}
+
+int64_t DiffByteCount(CVPixelBufferRef a, CVPixelBufferRef b) {
+    if (CVPixelBufferGetWidth(a) != CVPixelBufferGetWidth(b) ||
+        CVPixelBufferGetHeight(a) != CVPixelBufferGetHeight(b) ||
+        CVPixelBufferGetPixelFormatType(a) != CVPixelBufferGetPixelFormatType(b)) return -1;
+    CVPixelBufferLockBaseAddress(a, kCVPixelBufferLock_ReadOnly);
+    CVPixelBufferLockBaseAddress(b, kCVPixelBufferLock_ReadOnly);
+    int64_t diff = 0;
+    const size_t planeCount = CVPixelBufferGetPlaneCount(a);
+    for (size_t p = 0; p < planeCount; ++p) {
+        const uint8_t* pa = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(a, p));
+        const uint8_t* pb = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(b, p));
+        const size_t sa = CVPixelBufferGetBytesPerRowOfPlane(a, p);
+        const size_t sb = CVPixelBufferGetBytesPerRowOfPlane(b, p);
+        const size_t rows = CVPixelBufferGetHeightOfPlane(a, p);
+        const size_t cols = CVPixelBufferGetWidthOfPlane(a, p);
+        if (!pa || !pb) { diff = -1; break; }
+        for (size_t y = 0; y < rows; ++y)
+            for (size_t x = 0; x < cols; ++x)
+                if (pa[y * sa + x] != pb[y * sb + x]) ++diff;
+    }
+    CVPixelBufferUnlockBaseAddress(b, kCVPixelBufferLock_ReadOnly);
+    CVPixelBufferUnlockBaseAddress(a, kCVPixelBufferLock_ReadOnly);
+    return diff;
+}
+
+struct MetalSample {
+    double wallAvgUs = 0;
+    double wallMaxUs = 0;
+    double gpuAvgUs = 0;
+    double gpuMaxUs = 0;
+    double cpuUs = 0;
+    int64_t diffBytes = -1;
+};
+
+bool MeasureMetal(const MetalNormalize& metal, CVPixelBufferRef input, int rotation, int frames,
+                  MetalSample& out, std::string& error) {
+    double wallSum = 0, wallMax = 0, gpuSum = 0, gpuMax = 0;
+    int gpuSamples = 0;
+    // Same warm-up as the CPU rows, so the first dispatch does not land in max.
+    {
+        km::mac::PixelBuffer warm = km::mac::Normalize720p(input, rotation, error);
+        if (!warm) return false;
+        for (int i = 0; i < 5; ++i) {
+            double warmGpuUs = -1;
+            if (!MetalNormalizeOnce(metal, input, warm.get(), rotation, warmGpuUs, error))
+                return false;
+        }
+    }
+    const double cpu0 = RusageUs();
+    for (int i = 0; i < frames; ++i) {
+        // The pool case already showed allocation apart from the transform, so
+        // the GPU row uses the same per-call create as the CPU baseline.
+        CVPixelBufferRef raw = nullptr;
+        NSDictionary* attrs = @{
+            (__bridge NSString*)kCVPixelBufferIOSurfacePropertiesKey: @{},
+            (__bridge NSString*)kCVPixelBufferMetalCompatibilityKey: @YES
+        };
+        const CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault, 1280, 720,
+            kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, (__bridge CFDictionaryRef)attrs, &raw);
+        if (status != kCVReturnSuccess) {
+            error = "metal output CVPixelBufferCreate: " + std::to_string(status);
+            return false;
+        }
+        km::mac::PixelBuffer outputBuffer(raw);
+        const auto t0 = std::chrono::steady_clock::now();
+        double gpuUs = -1;
+        const bool ok = MetalNormalizeOnce(metal, input, outputBuffer.get(), rotation, gpuUs, error);
+        const auto t1 = std::chrono::steady_clock::now();
+        if (!ok) return false;
+        const double us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+        wallSum += us;
+        if (us > wallMax) wallMax = us;
+        if (gpuUs >= 0) {
+            gpuSum += gpuUs;
+            if (gpuUs > gpuMax) gpuMax = gpuUs;
+            ++gpuSamples;
+        }
+    }
+    const double cpu1 = RusageUs();
+    out.wallAvgUs = wallSum / double(frames);
+    out.wallMaxUs = wallMax;
+    out.gpuAvgUs = gpuSamples ? gpuSum / double(gpuSamples) : -1;
+    out.gpuMaxUs = gpuSamples ? gpuMax : -1;
+    out.cpuUs = cpu1 >= 0 && cpu0 >= 0 ? (cpu1 - cpu0) / double(frames) : -1;
+    return true;
+}
+
+void PrintMetalSample(const char* label, const MetalSample& s) {
+    std::cout << "  " << label << " wallAvgUs=" << s.wallAvgUs << " wallMaxUs=" << s.wallMaxUs
+              << " gpuAvgUs=" << s.gpuAvgUs << " gpuMaxUs=" << s.gpuMaxUs
+              << " cpuUs=" << s.cpuUs << " copies=1 diffBytes=" << s.diffBytes << "\n";
+}
+
+int RunNormBench(int argc, char** argv) {
+    int frames = 600;
+    if (argc > 2) frames = std::atoi(argv[2]);
+    if (frames <= 0 || frames > 100000) {
+        std::cerr << "normbench arguments out of range\n";
+        return 1;
+    }
+    std::string error;
+    struct Case { const char* name; int width; int height; int rotation; };
+    const Case cases[] = {
+        {"identity", 1280, 720, 0},
+        {"letterbox", 960, 540, 0},
+        {"rotate90", 1280, 720, 90},
+    };
+    CVPixelBufferPoolRef pool = MakeNormPool(2, error);
+    if (!pool) {
+        std::cerr << error << "\n";
+        return 1;
+    }
+    std::cout << "normbench frames=" << frames << "\n";
+    MetalNormalize metalState;
+    bool metalReady = false;
+    for (const Case& c : cases) {
+        km::mac::PixelBuffer input = MakeNormInput(c.width, c.height,
+            kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, error);
+        if (!input) {
+            std::cerr << error << "\n";
+            CFRelease(pool);
+            return 1;
+        }
+        std::cout << "case " << c.name << " input=" << c.width << "x" << c.height
+                  << " strideY=" << CVPixelBufferGetBytesPerRowOfPlane(input.get(), 0)
+                  << " rotation=" << c.rotation << "\n";
+        for (int i = 0; i < 5; ++i) {
+            km::mac::PixelBuffer warm = km::mac::Normalize720p(input.get(), c.rotation, error);
+            if (!warm) {
+                std::cerr << "baseline warmup: " << error << "\n";
+                CFRelease(pool);
+                return 1;
+            }
+            km::mac::PixelBuffer warmPool =
+                km::mac::Normalize720p(input.get(), c.rotation, error, pool);
+            if (!warmPool) {
+                std::cerr << "pool warmup: " << error << "\n";
+                CFRelease(pool);
+                return 1;
+            }
+        }
+        NormSample baseline, pooled;
+        if (!MeasureNormalize(input.get(), c.rotation, frames, false, pool, baseline, error)) {
+            std::cerr << "baseline: " << error << "\n";
+            CFRelease(pool);
+            return 1;
+        }
+        if (!MeasureNormalize(input.get(), c.rotation, frames, true, pool, pooled, error)) {
+            std::cerr << "pool: " << error << "\n";
+            CFRelease(pool);
+            return 1;
+        }
+        PrintNormSample("baseline", baseline);
+        PrintNormSample("pool    ", pooled);
+        if (baseline.reusesInput) {
+            std::cout << "  metal   not-applicable (identity path hands the input back)\n";
+            continue;
+        }
+        if (!metalReady && !MakeMetalNormalize(metalState, error)) {
+            std::cerr << error << "\n";
+            CFRelease(pool);
+            return 1;
+        }
+        metalReady = true;
+        MetalSample metal;
+        if (!MeasureMetal(metalState, input.get(), c.rotation, frames, metal, error)) {
+            std::cerr << "metal: " << error << "\n";
+            CFRelease(pool);
+            return 1;
+        }
+        // Correctness: the GPU result must equal the CPU reference byte for
+        // byte, otherwise the timing compares two different transforms.
+        {
+            km::mac::PixelBuffer cpuOut = km::mac::Normalize720p(input.get(), c.rotation, error);
+            CVPixelBufferRef raw = nullptr;
+            NSDictionary* attrs = @{
+                (__bridge NSString*)kCVPixelBufferIOSurfacePropertiesKey: @{},
+                (__bridge NSString*)kCVPixelBufferMetalCompatibilityKey: @YES
+            };
+            const CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault, 1280, 720,
+                kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                (__bridge CFDictionaryRef)attrs, &raw);
+            if (!cpuOut || status != kCVReturnSuccess) {
+                std::cerr << "diff setup: " << error << "\n";
+                CFRelease(pool);
+                return 1;
+            }
+            km::mac::PixelBuffer gpuOut(raw);
+            double gpuUs = -1;
+            if (!MetalNormalizeOnce(metalState, input.get(), gpuOut.get(), c.rotation, gpuUs,
+                                    error)) {
+                std::cerr << "metal diff run: " << error << "\n";
+                CFRelease(pool);
+                return 1;
+            }
+            metal.diffBytes = DiffByteCount(cpuOut.get(), gpuOut.get());
+        }
+        PrintMetalSample("metal   ", metal);
+    }
+    // A format change is refused with a reason rather than converted silently.
+    {
+        km::mac::PixelBuffer fullRange = MakeNormInput(1280, 720,
+            kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, error);
+        error.clear();
+        km::mac::PixelBuffer rejected =
+            fullRange ? km::mac::Normalize720p(fullRange.get(), 0, error) : km::mac::PixelBuffer();
+        std::cout << "format-change fullRange accepted=" << (rejected ? 1 : 0)
+                  << " reason=" << (error.empty() ? "(none)" : error) << "\n";
+        if (rejected) {
+            std::cerr << "full range input must not be accepted\n";
+            CFRelease(pool);
+            return 1;
+        }
+    }
+    // Pool exhaustion: hold one buffer out of a pool capped at one, then ask
+    // for another with an allocation threshold. The pool must refuse instead
+    // of growing past its cap.
+    {
+        std::string poolError;
+        CVPixelBufferPoolRef small = MakeNormPool(1, poolError);
+        if (!small) {
+            std::cerr << poolError << "\n";
+            CFRelease(pool);
+            return 1;
+        }
+        CVPixelBufferRef heldRaw = nullptr;
+        const CVReturn held = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, small, &heldRaw);
+        km::mac::PixelBuffer heldBuffer(heldRaw);
+        NSDictionary* aux = @{
+            (__bridge NSString*)kCVPixelBufferPoolAllocationThresholdKey: @1
+        };
+        CVPixelBufferRef extraRaw = nullptr;
+        const CVReturn refused = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(
+            kCFAllocatorDefault, small, (__bridge CFDictionaryRef)aux, &extraRaw);
+        km::mac::PixelBuffer extraBuffer(extraRaw);
+        std::cout << "pool-exhaustion held=" << held << " refill=" << refused
+                  << " extraBuffer=" << (extraBuffer ? 1 : 0) << "\n";
+        CFRelease(small);
+    }
+    CFRelease(pool);
+    std::cout << "normbench done\n";
+    return 0;
+}
+
 // Stage-8 S1 baseline: feeds pre-encoded 720p H.264 through the pipeline and
 // prints the timing counters, so the same numbers can be compared before and
 // after the decoder changes. Not registered with ctest; run it by hand and keep
@@ -543,6 +1105,7 @@ int RunBench(int argc, char** argv) {
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--bench") return RunBench(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "--decodeprobe") return RunDecodeProbe(argc, argv);
+    if (argc > 1 && std::string(argv[1]) == "--normbench") return RunNormBench(argc, argv);
     Encoder encoder;
     if (!encoder.ok()) {
         std::cerr << encoder.error() << "\n";

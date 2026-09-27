@@ -26,7 +26,13 @@ private:
     CVPixelBufferRef value_ = nullptr;
 };
 PixelBuffer MakeBlack720p(std::string& error);
-PixelBuffer Normalize720p(CVPixelBufferRef input, int clockwiseRotation, std::string& error);
+// pool is optional. Normal callers pass nothing and keep the per-call
+// CVPixelBufferCreate; the stage-8 S3 candidate comparison passes a
+// CVPixelBufferPool so the output buffer comes from the pool instead.
+// The pool must be configured for 1280x720 420v or the call fails with a
+// reason instead of silently producing another format.
+PixelBuffer Normalize720p(CVPixelBufferRef input, int clockwiseRotation, std::string& error,
+                          CVPixelBufferPoolRef pool = nullptr);
 // Owner thread only. Do not call from the UI thread, an RTC callback or the
 // Camera Extension.
 //
