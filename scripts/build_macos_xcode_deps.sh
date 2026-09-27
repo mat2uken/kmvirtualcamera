@@ -22,9 +22,12 @@ if [ ! -f "$foundation/CMakeCache.txt" ] || grep -q '^KM_BUILD_RTC_SHARED:BOOL=O
         -DKM_BUILD_RTC_SHARED=OFF -DKM_FETCH_DATACHANNEL=OFF
 fi
 cmake --build "$foundation" --parallel
-if [ ! -f "$rtc/CMakeCache.txt" ] || ! grep -q '^KM_BUILD_RTC_SHARED:BOOL=ON' "$rtc/CMakeCache.txt"; then
+# The app links -lopus (macos/project.yml), so this tree must be configured
+# with Opus on; a cache left at OFF is reconfigured instead of failing at link.
+if [ ! -f "$rtc/CMakeCache.txt" ] || ! grep -q '^KM_BUILD_RTC_SHARED:BOOL=ON' "$rtc/CMakeCache.txt" \
+    || ! grep -q '^KM_ENABLE_OPUS:BOOL=ON' "$rtc/CMakeCache.txt"; then
     cmake -S "$root" -B "$rtc" -DCMAKE_BUILD_TYPE=Debug \
         -DKM_BUILD_TESTS=ON -DKM_BUILD_MACOS=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=12.3 \
-        -DKM_BUILD_RTC_SHARED=ON -DKM_FETCH_DATACHANNEL=ON
+        -DKM_BUILD_RTC_SHARED=ON -DKM_FETCH_DATACHANNEL=ON -DKM_ENABLE_OPUS=ON
 fi
 cmake --build "$rtc" --parallel

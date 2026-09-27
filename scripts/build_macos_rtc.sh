@@ -13,6 +13,6 @@ build=${1:-"$root/build/macos-rtc"}
 xcrun --sdk macosx --show-sdk-path >/dev/null
 cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Debug \
     -DKM_BUILD_TESTS=ON -DKM_BUILD_MACOS=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=12.3 \
-    -DKM_BUILD_RTC_SHARED=ON -DKM_FETCH_DATACHANNEL=ON
+    -DKM_BUILD_RTC_SHARED=ON -DKM_FETCH_DATACHANNEL=ON -DKM_ENABLE_OPUS=ON
 cmake --build "$build" --parallel
 ctest --test-dir "$build" --output-on-failure
