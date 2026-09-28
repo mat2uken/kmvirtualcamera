@@ -13,11 +13,11 @@ static NSString* const kKMSinkStreamIDString = @"8ac04e93-75dd-4725-b372-2a51f26
 
 // Stage 6 (W6-2): the OS-checked requirement the single sink producer must satisfy.
 // identifier = host PRODUCT_BUNDLE_IDENTIFIER, certificate leaf OU = DEVELOPMENT_TEAM.
-// Development placeholder values; the product identifiers are undecided (stage 8).
+// Product values (stage 10 item 1).
 static NSString* const kKMHostProducerRequirement =
-    @"identifier \"com.mat2uken.kmvirtualcamera\" and certificate leaf[subject.OU] = K7VNGA9K78";
+    @"identifier \"jp.yasagure.kmvirtualcamera.macos\" and certificate leaf[subject.OU] = K7VNGA9K78";
 // The client's signing identifier must equal this too (macOS 13+ cross-check).
-static NSString* const kKMHostSigningIdentifier = @"com.mat2uken.kmvirtualcamera";
+static NSString* const kKMHostSigningIdentifier = @"jp.yasagure.kmvirtualcamera.macos";
 
 // Stage 6 (W6-2): shared App Group used by producer_auth mode C. The sandboxed
 // extension cannot read the host's on-disk executable (measured EPERM), so the

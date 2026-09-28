@@ -281,6 +281,50 @@ A6の新規test2件が両treeで通った。rtc 15件は既存13件へ音声2件
 
 C4は「同じ版で音声（Core Audio出力まで）」で決まり、A6を実施した。A7は対象外である。A1からA5の値は、A6の比較基準として残す。
 
+### 段階10 C1決定（2026-09-28）
+
+| 項目 | 値 |
+|---|---|
+| Team ID | `K7VNGA9K78` |
+| host bundle ID | `jp.yasagure.kmvirtualcamera.macos` |
+| extension bundle ID | `jp.yasagure.kmvirtualcamera.macos.camera-extension` |
+| App Group | 既存の `K7VNGA9K78.com.mat2uken.kmvirtualcamera` を沿用（新規不要） |
+| 配布形式 | App Store、macOS/Windows |
+| Intel対応 | 不要 |
+| 署名 | 開発署名（Apple Development） |
+
+App Group は bundle ID と独立しており、team prefix だけで決まる。開発署名ならXcodeの自動プロビジョニングがビルド時に作成するため、ポータルでの新規作成は不要である。
+
+### A7 署名（開発用、段階10 item1）
+
+| 項目 | 内容 |
+|---|---|
+| 目的・合格条件 | 新bundle IDでhost・Extensionが署名され、entitlementsが実生成物で確認できる |
+| 結果 | 成功（host/extension とも bundle ID・team・App Group・署名が一致） |
+| ログ | `work/records/10a-gate-xcodebuild.txt`・`10a-gate-foundation.txt` |
+
+変更は3ファイルである。`macos/project.yml` は bundleIdPrefix と各 PRODUCT_BUNDLE_IDENTIFIER を直す。`app_delegate.mm` は extension 識別子を直す。`ids.h` は host の AMFI 要求と署名識別子を直す。App Group は変更なし。
+
+| 確認対象 | 値 |
+|---|---|
+| host bundle ID | `jp.yasagure.kmvirtualcamera.macos` |
+| extension bundle ID | `jp.yasagure.kmvirtualcamera.macos.camera-extension` |
+| host team identifier | `K7VNGA9K78` |
+| extension team identifier | `K7VNGA9K78` |
+| App Group（両者） | `K7VNGA9K78.com.mat2uken.kmvirtualcamera` |
+| 署名 | Apple Development: Kenichi Matsumoto (M4FBGCLF45) |
+
+`codesign --verify --deep --strict` はhost・extensionともに通り、entitlementsのteam-identifierとApp Groupが一致した。
+
+AMFI要求は host の実 bundle ID・team と一致する。文字列は `identifier "jp.yasagure.kmvirtualcamera.macos" and certificate leaf[subject.OU] = K7VNGA9K78`。
+
+| ゲート | 結果 | 証跡 |
+|---|---|---|
+| `sh scripts/test_macos_foundation.sh` | 12/12 pass、警告0 | `work/records/10a-gate-foundation.txt` |
+| `xcodebuild` Debug（`-allowProvisioningUpdates`） | BUILD SUCCEEDED、警告0 | `work/records/10a-gate-xcodebuild.txt` |
+
+`-allowProvisioningUpdates` は新bundle IDのApp IDとprofileの自動作成に必要である。
+
 ## 段階10: 署名・更新・配布
 
 **開始条件**: 段階8の品質判定が済み、配布対象OS・CPU・音声範囲・Team ID・bundle ID・App Group・配布経路を確定する。開発用署名での動作と、配布物の導入結果を分ける。

@@ -18,7 +18,7 @@
 #include <vector>
 #include "../../windows/third_party/qr/qrcodegen.hpp"
 // Development identifier; must match PRODUCT_BUNDLE_IDENTIFIER of the extension target.
-static NSString* const kKMExtensionIdentifier = @"com.mat2uken.kmvirtualcamera.camera-extension";
+static NSString* const kKMExtensionIdentifier = @"jp.yasagure.kmvirtualcamera.macos.camera-extension";
 
 namespace {
 constexpr int32_t kFps = 30;

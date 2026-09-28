@@ -392,8 +392,8 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
 				OTHER_LDFLAGS = "$(inherited) -lkm_camera_relay -lkm_macos_buffers";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.mat2uken.kmvirtualcamera.camera-extension";
-				PRODUCT_NAME = "com.mat2uken.kmvirtualcamera.camera-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.yasagure.kmvirtualcamera.macos.camera-extension";
+				PRODUCT_NAME = "jp.yasagure.kmvirtualcamera.macos.camera-extension";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -481,7 +481,7 @@
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-rtc/macos $(SRCROOT)/../build/macos-rtc $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libjuice $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libsrtp $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/usrsctp/usrsctplib $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/library $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/everest $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/p256-m $(SRCROOT)/../build/macos-rtc/_deps/km_opus-build";
 				OTHER_CFLAGS = "$(inherited) -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/include -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/deps/plog/include";
 				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker -lkm_macos_pipeline -lkm_macos_decoder -lkm_rtc_shared -lkm_receiver_engine -lkm_audio -lkm_media_core -lopus -ldatachannel-static -lusrsctp -lsrtp2 -lmbedtls -lmbedcrypto -lmbedx509 -ljuice-static -leverest -lp256m -lkm_macos_audio_output -framework VideoToolbox -framework AudioToolbox -framework CoreAudio -framework CoreFoundation";
-				PRODUCT_BUNDLE_IDENTIFIER = com.mat2uken.kmvirtualcamera;
+				PRODUCT_BUNDLE_IDENTIFIER = jp.yasagure.kmvirtualcamera.macos;
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -562,7 +562,7 @@
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-rtc/macos $(SRCROOT)/../build/macos-rtc $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libjuice $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/libsrtp $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-build/deps/usrsctp/usrsctplib $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/library $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/everest $(SRCROOT)/../build/macos-rtc/_deps/mbedtls-build/3rdparty/p256-m $(SRCROOT)/../build/macos-rtc/_deps/km_opus-build";
 				OTHER_CFLAGS = "$(inherited) -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/include -isystem $(SRCROOT)/../build/macos-rtc/_deps/libdatachannel-src/deps/plog/include";
 				OTHER_LDFLAGS = "$(inherited) -lkm_extension_manager -lkm_macos_buffers -lkm_macos_signaling -lkm_signaling_worker -lkm_macos_pipeline -lkm_macos_decoder -lkm_rtc_shared -lkm_receiver_engine -lkm_audio -lkm_media_core -lopus -ldatachannel-static -lusrsctp -lsrtp2 -lmbedtls -lmbedcrypto -lmbedx509 -ljuice-static -leverest -lp256m -lkm_macos_audio_output -framework VideoToolbox -framework AudioToolbox -framework CoreAudio -framework CoreFoundation";
-				PRODUCT_BUNDLE_IDENTIFIER = com.mat2uken.kmvirtualcamera;
+				PRODUCT_BUNDLE_IDENTIFIER = jp.yasagure.kmvirtualcamera.macos;
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -582,8 +582,8 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../build/macos-foundation/macos";
 				OTHER_LDFLAGS = "$(inherited) -lkm_camera_relay -lkm_macos_buffers";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.mat2uken.kmvirtualcamera.camera-extension";
-				PRODUCT_NAME = "com.mat2uken.kmvirtualcamera.camera-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.yasagure.kmvirtualcamera.macos.camera-extension";
+				PRODUCT_NAME = "jp.yasagure.kmvirtualcamera.macos.camera-extension";
 				SDKROOT = macosx;
 			};
 			name = Release;

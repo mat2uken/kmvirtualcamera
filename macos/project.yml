@@ -1,9 +1,9 @@
 # Xcode project spec for the AppKit host and the Camera Extension.
 # Generate with: sh scripts/generate_xcode_project.sh
-# DEVELOPMENT_TEAM below is a temporary development value, NOT a product setting.
+# Product signing values (stage 10 item 1).
 name: KMVirtualCamera
 options:
-  bundleIdPrefix: com.mat2uken.kmvirtualcamera
+  bundleIdPrefix: jp.yasagure.kmvirtualcamera.macos
   createIntermediateGroups: true
   deploymentTarget:
     macOS: "12.3"
@@ -32,7 +32,7 @@ targets:
       - path: ../windows/third_party/qr/qrcodegen.cpp
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mat2uken.kmvirtualcamera
+        PRODUCT_BUNDLE_IDENTIFIER: jp.yasagure.kmvirtualcamera.macos
         INFOPLIST_FILE: host/Info.plist
         CODE_SIGN_ENTITLEMENTS: config/Host.entitlements
         GENERATE_INFOPLIST_FILE: NO
@@ -72,10 +72,10 @@ targets:
       - path: camera-extension/producer_auth.mm
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mat2uken.kmvirtualcamera.camera-extension
+        PRODUCT_BUNDLE_IDENTIFIER: jp.yasagure.kmvirtualcamera.macos.camera-extension
         # sysextd requires the .systemextension directory name to equal
         # CFBundleIdentifier ("bundle identifier and service path did not match").
-        PRODUCT_NAME: com.mat2uken.kmvirtualcamera.camera-extension
+        PRODUCT_NAME: jp.yasagure.kmvirtualcamera.macos.camera-extension
         EXECUTABLE_NAME: KMVirtualCameraExtension
         INFOPLIST_FILE: camera-extension/Info.plist
         CODE_SIGN_ENTITLEMENTS: config/CameraExtension.entitlements
