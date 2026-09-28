@@ -339,6 +339,27 @@ AMFI要求は host の実 bundle ID・team と一致する。文字列は `ident
 
 **完了条件**: 配布する正確なartifactが、対象OS・CPUの通常設定で導入され、一般アプリで映像をcaptureできる。署名、notarization、更新、削除、依存点検、ライセンス、同梱内容、手順書を同じ版とartifactハッシュへ結び付けて記録する。未実施のOS・CPU・音声経路は対応対象へ含めない。
 
+### 依存点検（段階10 item4）
+
+`npm ci --prefix cloud` 時点のauditでは15件の警告（2 low、5 moderate、6 high、2 critical）があった。
+
+| パッケージ | 深刻度 | 種別 | 影響 |
+|---|---|---|---|
+| @vitest/mocker | moderate | devDep | Vitestモックリダイレクト経由のファイル読み取り。開発時のみ |
+| cookie / youch | high | devDep | miniflare（ローカルワーカーランタイム）内のcookie解析。開発時のみ |
+| devalue | high | devDep | プロトタイプ汚染・DoS。Svelte内包。開発時のみ |
+| esbuild | moderate | devDep | 開発サーバーへの外部リクエスト。開発時のみ |
+| undici | high | devDep | HTTP/1.1応答分割等。miniflare内。開発時のみ |
+| ws | high | devDep | 未初期化メモリ開示・DoS。miniflare内。開発時のみ |
+
+全件が devDependencies（vitest・wrangler・miniflare）に閉じており、プロダクション依存は影響を受けない。これらのツールはローカル開発時のみ動作し、同梱物には含まれない。
+
+| 項目 | 内容 |
+|---|---|
+| 影響範囲 | ローカル開発環境のみ。プロダクションコード・同梱物への影響なし |
+| 更新可否 | `audit fix --force` はメジャーアップデートを要求。互換性検証が必要 |
+| 対処方針 | 開発ツールは最新のマイナー系に追従。プロダクション依存は変更なし。CIで audit を定期実行 |
+
 ## 残る判断の担当と時期
 
 段階4の署名前に開発用識別子を設定する担当を決める。段階8の測定後に映像の許容fps・遅延・負荷と対応OSを決める。段階9の開始前に音声の製品範囲を決める。段階10の配布作業前に配布経路と配布用署名の管理方法を決める。決定した値と根拠は[設計判断](../../docs/macos/08_DECISIONS_AND_REFERENCES.md)または後続の決定記録へ反映する。
