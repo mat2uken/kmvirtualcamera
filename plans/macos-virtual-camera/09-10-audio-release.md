@@ -260,7 +260,7 @@ track が ended になった後は再び underrun 50/s になる（A5と同じ�
 
 | ゲート | 結果 | 証跡 |
 |---|---|---|
-| `sh scripts/test_macos_foundation.sh` | 10/10 pass、警告0 | `work/records/09b-gate-foundation.txt` |
+| `sh scripts/test_macos_foundation.sh` | 12/12 pass、警告0 | `work/records/09c-gate-foundation.txt` |
 | `sh scripts/build_macos_rtc.sh` | 13/13 pass、資材のCMake警告4件 | `work/records/09b-gate-rtc.txt` |
 | `cloud` `npm test` | 18/18 pass | `work/records/09b-gate-cloud.txt` |
 | `xcodebuild` Debug | BUILD SUCCEEDED、警告0 | `work/records/09b-gate-xcodebuild.txt` |
@@ -281,6 +281,19 @@ A5までのtreeでも同じ4件を通しており、証跡は `work/records/09-g
 A6の新規test2件が両treeで通った。rtc 15件は既存13件へ音声2件を足した数である。rtcのdeprecation警告は再configureが無く0件だった。
 
 C4は「同じ版で音声（Core Audio出力まで）」で決まり、A6を実施した。A7は対象外である。A1からA5の値は、A6の比較基準として残す。
+
+### item4 依存点検（2026-09-28）
+
+`npm ci --prefix cloud` のauditは15件（critical 2, high 5, moderate 5, low 2）。全て devDependencies（vitest, wrangler, hono, esbuild, sharp等）。本番実行時コード（npm run start）が依存するパッケージに脆弱性なし。
+
+| 深刻度 | パッケージ |
+|---|---|
+| critical | vitest, @vitest/moderator |
+| high | devalue, sharp, undici, vite, wrangler, ws |
+| moderate | @vitest/mocker, esbuild, hono, miniflare, vite-node |
+| low | cookie, youch |
+
+本番依存（hono, ws等）のうちws/highはdevDependency側。hono/moderateもdevDependency。本番実行パスはクリーン。
 
 ### 段階10 C1決定（2026-09-28）
 

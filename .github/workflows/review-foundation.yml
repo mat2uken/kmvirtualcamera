@@ -35,3 +35,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sh scripts/test_macos_foundation.sh
+      - run: sh scripts/build_macos_rtc.sh
