@@ -25,7 +25,7 @@ static NSString* const kKMHostSigningIdentifier = @"jp.yasagure.kmvirtualcamera.
 // this container; the extension validates the copy with SecStaticCodeCheckValidity
 // and binds it to the client pid via proc_pidpath. Dev placeholder team value.
 static NSString* const kKMAppGroupIdentifier =
-    @"K7VNGA9K78.com.mat2uken.kmvirtualcamera";
+    @"group.jp.yasagure.kmvirtualcamera.k7vnga9k78";
 static NSString* const kKMHostEvidenceBinaryName = @"host-executable.bin";
 static NSString* const kKMHostEvidencePathName = @"host-executable.path";
 

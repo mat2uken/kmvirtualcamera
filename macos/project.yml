@@ -32,7 +32,7 @@ targets:
       - path: ../windows/third_party/qr/qrcodegen.cpp
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: jp.yasagure.kmvirtualcamera.macos
+        PRODUCT_BUNDLE_IDENTIFIER: jp.yasagure.kmvirtualcamera.macos.app
         INFOPLIST_FILE: host/Info.plist
         CODE_SIGN_ENTITLEMENTS: config/Host.entitlements
         GENERATE_INFOPLIST_FILE: NO
@@ -72,13 +72,14 @@ targets:
       - path: camera-extension/producer_auth.mm
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: jp.yasagure.kmvirtualcamera.macos.camera-extension
+        PRODUCT_BUNDLE_IDENTIFIER: jp.yasagure.kmvirtualcamera.macos.camext
         # sysextd requires the .systemextension directory name to equal
         # CFBundleIdentifier ("bundle identifier and service path did not match").
-        PRODUCT_NAME: jp.yasagure.kmvirtualcamera.macos.camera-extension
+        PRODUCT_NAME: jp.yasagure.kmvirtualcamera.macos.camext
         EXECUTABLE_NAME: KMVirtualCameraExtension
         INFOPLIST_FILE: camera-extension/Info.plist
         CODE_SIGN_ENTITLEMENTS: config/CameraExtension.entitlements
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
         GENERATE_INFOPLIST_FILE: NO
         LIBRARY_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../build/macos-foundation/macos"
         OTHER_LDFLAGS: "$(inherited) -lkm_camera_relay -lkm_macos_buffers"

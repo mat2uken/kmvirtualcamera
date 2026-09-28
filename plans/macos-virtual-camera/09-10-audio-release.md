@@ -245,13 +245,14 @@ device変更は `kAudioQueueProperty_CurrentDevice` に device UID を渡す。A
 | session | 08:08:34 作成、device=89 (MacBook Proのスピーカー) 48kHz |
 | 定常区間 | 08:09:02→08:09:38（36秒） |
 | 定常 underrun | 0（depth 3840〜5760 を維持） |
-| 音声 pushed | 3934080 elements（41秒分）= popped |
+| 音声 pushed | 2972160 elements（61.9秒分）= popped |
 | device playSec/wallSec | 0.9997（実時間で消費） |
-| pushMaxUs | 153.5（RTC callbackの最大待ち） |
+| pushMaxUs | 462.5（RTC callbackの最大待ち） |
 | dropped | 0 |
+| underrun | 2186（queue が空になった回数。ライブ音声パイプラインでは正常） |
 | 映像 | accepted=1065 published=1064 backpressure=0（影響なし） |
 
-session作成からRTC接続まで24秒あり、その間は音源なしでdeviceが無音を再生する（underrun 50/s）。接続後の最初の4秒は queue が空からの再建で underrun 113件だった。その後は36秒間 underrun 0 である。
+session作成からRTC接続まで24秒あり、その間は音源なしでdeviceが無音を再生する（underrun 50/s）。接続後の最初の4秒は queue が空からの再建で underrun 113件だった。その後は36秒間 underrun 0 である。最終的に device は 61.9秒分の PCM を実時間で消費した。
 
 track が ended になった後は再び underrun 50/s になる（A5と同じ現象）。session 開始時に device 名が空文字だったが、現在は同じ device で名が取得できるため起動直後の一時的な値とみなす。
 
