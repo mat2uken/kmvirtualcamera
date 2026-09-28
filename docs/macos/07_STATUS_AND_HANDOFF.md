@@ -24,6 +24,7 @@ macOS仮想カメラの実装土台。段階0–9が完了し、段階10（署�
 | 映像受信 | 720p 30fps、30分連続 | [08-stability](08-stability.md) |
 | 音声受信 | Opus 48kHz stereo、mean 26.8ms | [09-10-audio-release](09-10-audio-release.md) |
 | 音声出力 | 定常 underrun=0、rate比0.9997 | 同上 |
+| 開発署名 | host/extension とも bundle ID・team・App Group・署名が一致 | `10a-gate-xcodebuild.txt` |
 
 ## 未検証
 
@@ -34,9 +35,9 @@ macOS仮想カメラの実装土台。段階0–9が完了し、段階10（署�
 
 ## 依然として未実装のmacOS機能
 
-署名済みhost app、Camera ExtensionのProvider/Device/StreamSource、配布物の作成と導入である。
-host・sink publisher・VideoToolbox受信パイプライン・Core Audio出力は実装・実測済みだが、
-署名と導入を伴わない。仮想マイクはC4で対象外とした。
+段階10 item2–5 が未着手である。notarization・stapling・パッケージ化（item2）、
+更新・差し替え・削除・残留確認（item3）、依存点検（item4）、CI追加（item5）。
+item1（開発署名）は完了した。host・sink publisher・VideoToolbox受信パイプライン・Core Audio出力は実装・実測済み。仮想マイクはC4で対象外とした。
 
 ## 次の担当者
 
