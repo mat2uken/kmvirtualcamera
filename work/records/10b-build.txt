@@ -1,0 +1,1354 @@
+Command line invocation:
+    /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin/xcodebuild -project macos/KMVirtualCamera.xcodeproj -scheme KMVirtualCamera -configuration Debug -derivedDataPath macos/DerivedData -allowProvisioningUpdates build
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00006034-001401141462001C, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00006034-001401141462001C, name:My Mac }
+{ platform:macOS, name:Any Mac }
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (2 targets)
+    Target 'KMVirtualCamera' in project 'KMVirtualCamera'
+        ➜ Explicit dependency on target 'KMVirtualCameraExtension' in project 'KMVirtualCamera'
+    Target 'KMVirtualCameraExtension' in project 'KMVirtualCamera' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+note: Run script build phase 'Build km_macos static libraries' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'KMVirtualCameraExtension' from project 'KMVirtualCamera')
+PhaseScriptExecution Build\ km_macos\ static\ libraries /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Script-DE8BD71F8290C638678632A7.sh (in target 'KMVirtualCameraExtension' from project 'KMVirtualCamera')
+    cd /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export ACTION\=build
+    export AD_HOC_CODE_SIGNING_ALLOWED\=YES
+    export ALLOW_BUILD_REQUEST_OVERRIDES\=NO
+    export ALLOW_TARGET_PLATFORM_SPECIALIZATION\=NO
+    export ALTERNATE_GROUP\=staff
+    export ALTERNATE_MODE\=u+w,go-w,a+rX
+    export ALTERNATE_OWNER\=kenichim
+    export ALTERNATIVE_DISTRIBUTION_WEB\=NO
+    export ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES\=NO
+    export ALWAYS_SEARCH_USER_PATHS\=NO
+    export ALWAYS_USE_SEPARATE_HEADERMAPS\=NO
+    export ANDROID_DEPLOYMENT_TARGET\=21.0
+    export APPLICATION_EXTENSION_API_ONLY\=NO
+    export APPLY_RULES_IN_COPY_FILES\=NO
+    export APPLY_RULES_IN_COPY_HEADERS\=NO
+    export APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING\=YES
+    export ARCHS\=arm64
+    export ARCHS_BASE\=arm64
+    export ARCHS_STANDARD\=arm64\ x86_64
+    export ARCHS_STANDARD_32_64_BIT\=arm64\ x86_64\ i386
+    export ARCHS_STANDARD_32_BIT\=i386
+    export ARCHS_STANDARD_64_BIT\=arm64\ x86_64
+    export ARCHS_STANDARD_INCLUDING_64_BIT\=arm64\ x86_64
+    export AUTOMATICALLY_MERGE_DEPENDENCIES\=NO
+    export AUTOMATION_APPLE_EVENTS\=NO
+    export AVAILABLE_PLATFORMS\=android\ appletvos\ appletvsimulator\ driverkit\ freebsd\ iphoneos\ iphonesimulator\ linux\ macosx\ none\ openbsd\ qnx\ watchos\ watchsimulator\ webassembly\ xros\ xrsimulator
+    export AppIdentifierPrefix\=UD793F7A59.
+    export BUILD_ACTIVE_RESOURCES_ONLY\=NO
+    export BUILD_COMPONENTS\=headers\ build
+    export BUILD_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products
+    export BUILD_LIBRARY_FOR_DISTRIBUTION\=NO
+    export BUILD_ONLY_KNOWN_LOCALIZATIONS\=NO
+    export BUILD_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products
+    export BUILD_STYLE\=
+    export BUILD_VARIANTS\=normal
+    export BUILT_PRODUCTS_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug
+    export BUNDLE_CONTENTS_FOLDER_PATH\=Contents/
+    export BUNDLE_CONTENTS_FOLDER_PATH_deep\=Contents/
+    export BUNDLE_EXECUTABLE_FOLDER_NAME_deep\=MacOS
+    export BUNDLE_EXECUTABLE_FOLDER_PATH\=Contents/MacOS
+    export BUNDLE_EXTENSIONS_FOLDER_PATH\=Contents/Extensions
+    export BUNDLE_FORMAT\=deep
+    export BUNDLE_FRAMEWORKS_FOLDER_PATH\=Contents/Frameworks
+    export BUNDLE_PLUGINS_FOLDER_PATH\=Contents/PlugIns
+    export BUNDLE_PRIVATE_HEADERS_FOLDER_PATH\=Contents/PrivateHeaders
+    export BUNDLE_PUBLIC_HEADERS_FOLDER_PATH\=Contents/Headers
+    export CACHE_ROOT\=/var/folders/b_/l4tstdxd2y5fz82svbpvr9s40000gp/C/com.apple.DeveloperTools/26.6-17F113/Xcode
+    export CCHROOT\=/var/folders/b_/l4tstdxd2y5fz82svbpvr9s40000gp/C/com.apple.DeveloperTools/26.6-17F113/Xcode
+    export CHMOD\=/bin/chmod
+    export CHOWN\=chown
+    export CLANG_ANALYZER_NONNULL\=YES
+    export CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION\=YES_AGGRESSIVE
+    export CLANG_CACHE_FINE_GRAINED_OUTPUTS\=YES
+    export CLANG_CXX_LANGUAGE_STANDARD\=c++20
+    export CLANG_CXX_LIBRARY\=libc++
+    export CLANG_ENABLE_EXPLICIT_MODULES\=YES
+    export CLANG_ENABLE_MODULES\=YES
+    export CLANG_ENABLE_OBJC_ARC\=YES
+    export CLANG_ENABLE_OBJC_WEAK\=YES
+    export CLANG_MODULES_BUILD_SESSION_FILE\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/ModuleCache.noindex/Session.modulevalidation
+    export CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING\=YES
+    export CLANG_WARN_BOOL_CONVERSION\=YES
+    export CLANG_WARN_COMMA\=YES
+    export CLANG_WARN_CONSTANT_CONVERSION\=YES
+    export CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS\=YES
+    export CLANG_WARN_DIRECT_OBJC_ISA_USAGE\=YES_ERROR
+    export CLANG_WARN_DOCUMENTATION_COMMENTS\=YES
+    export CLANG_WARN_EMPTY_BODY\=YES
+    export CLANG_WARN_ENUM_CONVERSION\=YES
+    export CLANG_WARN_INFINITE_RECURSION\=YES
+    export CLANG_WARN_INT_CONVERSION\=YES
+    export CLANG_WARN_NON_LITERAL_NULL_CONVERSION\=YES
+    export CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF\=YES
+    export CLANG_WARN_OBJC_LITERAL_CONVERSION\=YES
+    export CLANG_WARN_OBJC_ROOT_CLASS\=YES_ERROR
+    export CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER\=YES
+    export CLANG_WARN_RANGE_LOOP_ANALYSIS\=YES
+    export CLANG_WARN_STRICT_PROTOTYPES\=YES
+    export CLANG_WARN_SUSPICIOUS_MOVE\=YES
+    export CLANG_WARN_UNGUARDED_AVAILABILITY\=YES_AGGRESSIVE
+    export CLANG_WARN_UNREACHABLE_CODE\=YES
+    export CLANG_WARN__DUPLICATE_METHOD_MATCH\=YES
+    export CLASS_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/JavaClasses
+    export CLEAN_PRECOMPS\=YES
+    export CLONE_HEADERS\=NO
+    export CODESIGNING_FOLDER_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug/jp.yasagure.kmvirtualcamera.macos.camext.systemextension
+    export CODE_SIGNING_ALLOWED\=YES
+    export CODE_SIGNING_REQUIRED\=YES
+    export CODE_SIGN_ENTITLEMENTS\=config/CameraExtension.entitlements
+    export CODE_SIGN_IDENTITY\=Apple\ Development
+    export CODE_SIGN_IDENTITY_NO\=Apple\ Development
+    export CODE_SIGN_IDENTITY_YES\=-
+    export CODE_SIGN_INJECT_BASE_ENTITLEMENTS\=NO
+    export CODE_SIGN_STYLE\=Automatic
+    export COLOR_DIAGNOSTICS\=NO
+    export COMBINE_HIDPI_IMAGES\=YES
+    export COMPILATION_CACHE_CAS_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/CompilationCache.noindex
+    export COMPILATION_CACHE_KEEP_CAS_DIRECTORY\=YES
+    export COMPILER_INDEX_STORE_ENABLE\=Default
+    export COMPOSITE_SDK_DIRS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/CompositeSDKs
+    export COMPRESS_PNG_FILES\=NO
+    export CONFIGURATION\=Debug
+    export CONFIGURATION_BUILD_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug
+    export CONFIGURATION_TEMP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug
+    export CONTENTS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents
+    export CONTENTS_FOLDER_PATH_SHALLOW_BUNDLE_NO\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents
+    export CONTENTS_FOLDER_PATH_SHALLOW_BUNDLE_YES\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension
+    export COPYING_PRESERVES_HFS_DATA\=NO
+    export COPY_HEADERS_RUN_UNIFDEF\=NO
+    export COPY_PHASE_STRIP\=NO
+    export CP\=/bin/cp
+    export CREATE_INFOPLIST_SECTION_IN_BINARY\=NO
+    export CURRENT_ARCH\=undefined_arch
+    export CURRENT_VARIANT\=normal
+    export DEAD_CODE_STRIPPING\=NO
+    export DEBUGGING_SYMBOLS\=YES
+    export DEBUG_INFORMATION_FORMAT\=dwarf
+    export DEBUG_INFORMATION_VERSION\=compiler-default
+    export DEFAULT_COMPILER\=com.apple.compilers.llvm.clang.1_0
+    export DEFAULT_DEXT_INSTALL_PATH\=/System/Library/DriverExtensions
+    export DEFAULT_KEXT_INSTALL_PATH\=/System/Library/Extensions
+    export DEFINES_MODULE\=NO
+    export DEPLOYMENT_LOCATION\=NO
+    export DEPLOYMENT_POSTPROCESSING\=NO
+    export DEPLOYMENT_TARGET_SETTING_NAME\=MACOSX_DEPLOYMENT_TARGET
+    export DEPLOYMENT_TARGET_SUGGESTED_VALUES\=10.13\ 10.14\ 10.15\ 11.0\ 11.1\ 11.2\ 11.3\ 11.4\ 11.5\ 12.0\ 12.2\ 12.3\ 12.4\ 13.0\ 13.1\ 13.2\ 13.3\ 13.4\ 13.5\ 14.0\ 14.1\ 14.2\ 14.3\ 14.4\ 14.5\ 14.6\ 15.0\ 15.1\ 15.2\ 15.3\ 15.4\ 15.5\ 15.6\ 26.0\ 26.1\ 26.2\ 26.3\ 26.4\ 26.5
+    export DERIVED_FILES_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/DerivedSources
+    export DERIVED_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/DerivedSources
+    export DERIVED_SOURCES_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/DerivedSources
+    export DEVELOPER_APPLICATIONS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications
+    export DEVELOPER_BIN_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin
+    export DEVELOPER_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer
+    export DEVELOPER_FRAMEWORKS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library/Frameworks
+    export DEVELOPER_FRAMEWORKS_DIR_QUOTED\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library/Frameworks
+    export DEVELOPER_LIBRARY_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library
+    export DEVELOPER_SDK_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
+    export DEVELOPER_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Tools
+    export DEVELOPER_USR_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr
+    export DEVELOPMENT_LANGUAGE\=en
+    export DEVELOPMENT_TEAM\=K7VNGA9K78
+    export DIAGNOSE_MISSING_TARGET_DEPENDENCIES\=YES
+    export DIFF\=/usr/bin/diff
+    export DOCUMENTATION_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Resources/en.lproj/Documentation
+    export DONT_GENERATE_INFOPLIST_FILE\=NO
+    export DSTROOT\=/tmp/KMVirtualCamera.dst
+    export DT_TOOLCHAIN_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain
+    export DUMP_DEPENDENCIES\=NO
+    export DUMP_DEPENDENCIES_OUTPUT_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/KMVirtualCameraExtension-BuildDependencyInfo.json
+    export DWARF_DSYM_FILE_NAME\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension.dSYM
+    export DWARF_DSYM_FILE_SHOULD_ACCOMPANY_PRODUCT\=NO
+    export DWARF_DSYM_FOLDER_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug
+    export DYNAMIC_LIBRARY_EXTENSION\=dylib
+    export EAGER_COMPILATION_ALLOW_SCRIPTS\=NO
+    export EAGER_LINKING\=NO
+    export EFFECTIVE_SWIFT_VERSION\=5
+    export EMBEDDED_CONTENT_CONTAINS_SWIFT\=NO
+    export EMBEDDED_PROFILE_NAME\=embedded.provisionprofile
+    export EMBED_ASSET_PACKS_IN_PRODUCT_BUNDLE\=NO
+    export ENABLE_APP_SANDBOX\=NO
+    export ENABLE_CODE_COVERAGE\=YES
+    export ENABLE_COHORT_ARCHS\=NO
+    export ENABLE_CPLUSPLUS_BOUNDS_SAFE_BUFFERS\=NO
+    export ENABLE_C_BOUNDS_SAFETY\=NO
+    export ENABLE_DEFAULT_HEADER_SEARCH_PATHS\=YES
+    export ENABLE_DEFAULT_SEARCH_PATHS\=YES
+    export ENABLE_ENHANCED_SECURITY\=NO
+    export ENABLE_HARDENED_RUNTIME\=YES
+    export ENABLE_HEADER_DEPENDENCIES\=YES
+    export ENABLE_INCOMING_NETWORK_CONNECTIONS\=NO
+    export ENABLE_ON_DEMAND_RESOURCES\=NO
+    export ENABLE_OUTGOING_NETWORK_CONNECTIONS\=NO
+    export ENABLE_POINTER_AUTHENTICATION\=NO
+    export ENABLE_PREVIEWS\=NO
+    export ENABLE_RESOURCE_ACCESS_AUDIO_INPUT\=NO
+    export ENABLE_RESOURCE_ACCESS_BLUETOOTH\=NO
+    export ENABLE_RESOURCE_ACCESS_CALENDARS\=NO
+    export ENABLE_RESOURCE_ACCESS_CAMERA\=NO
+    export ENABLE_RESOURCE_ACCESS_CONTACTS\=NO
+    export ENABLE_RESOURCE_ACCESS_LOCATION\=NO
+    export ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY\=NO
+    export ENABLE_RESOURCE_ACCESS_PRINTING\=NO
+    export ENABLE_RESOURCE_ACCESS_USB\=NO
+    export ENABLE_SDK_IMPORTS\=NO
+    export ENABLE_SECURITY_COMPILER_WARNINGS\=NO
+    export ENABLE_STRICT_OBJC_MSGSEND\=YES
+    export ENABLE_TESTABILITY\=YES
+    export ENABLE_TESTING_SEARCH_PATHS\=NO
+    export ENABLE_USER_SCRIPT_SANDBOXING\=NO
+    export ENABLE_XOJIT_PREVIEWS\=YES
+    export ENFORCE_VALID_ARCHS\=YES
+    export ENTITLEMENTS_DESTINATION\=Signature
+    export ENTITLEMENTS_REQUIRED\=NO
+    export EXCLUDED_INSTALLSRC_SUBDIRECTORY_PATTERNS\=.DS_Store\ .svn\ .git\ .hg\ CVS
+    export EXCLUDED_RECURSIVE_SEARCH_PATH_SUBDIRECTORIES\=\*.nib\ \*.lproj\ \*.framework\ \*.gch\ \*.xcode\*\ \*.xcassets\ \*.icon\ \(\*\)\ .DS_Store\ CVS\ .svn\ .git\ .hg\ \*.pbproj\ \*.pbxproj
+    export EXECUTABLES_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Executables
+    export EXECUTABLE_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/MacOS
+    export EXECUTABLE_FOLDER_PATH_SHALLOW_BUNDLE_NO\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/MacOS
+    export EXECUTABLE_FOLDER_PATH_SHALLOW_BUNDLE_YES\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents
+    export EXECUTABLE_NAME\=KMVirtualCameraExtension
+    export EXECUTABLE_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/MacOS/KMVirtualCameraExtension
+    export EXPANDED_CODE_SIGN_IDENTITY\=C8353EB87CD3C009AC37C249CC5ACF02C6A0DC58
+    export EXPANDED_CODE_SIGN_IDENTITY_NAME\=Apple\ Development:\ Kenichi\ Matsumoto\ \(M4FBGCLF45\)
+    export EXPANDED_PROVISIONING_PROFILE\=e4f38800-c81d-4708-b273-b324c5c9f392
+    export EXTENSIONS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Extensions
+    export FILE_LIST\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects/LinkFileList
+    export FIXED_FILES_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/FixedFiles
+    export FRAMEWORKS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Frameworks
+    export FRAMEWORK_FLAG_PREFIX\=-framework
+    export FRAMEWORK_SEARCH_PATHS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug\ 
+    export FRAMEWORK_VERSION\=A
+    export FULL_PRODUCT_NAME\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension
+    export FUSE_BUILD_PHASES\=YES
+    export FUSE_BUILD_SCRIPT_PHASES\=NO
+    export GCC3_VERSION\=3.3
+    export GCC_C_LANGUAGE_STANDARD\=gnu11
+    export GCC_DYNAMIC_NO_PIC\=NO
+    export GCC_INLINES_ARE_PRIVATE_EXTERN\=YES
+    export GCC_NO_COMMON_BLOCKS\=YES
+    export GCC_OPTIMIZATION_LEVEL\=0
+    export GCC_PFE_FILE_C_DIALECTS\=c\ objective-c\ c++\ objective-c++
+    export GCC_PREPROCESSOR_DEFINITIONS\=\ DEBUG\=1
+    export GCC_TREAT_WARNINGS_AS_ERRORS\=NO
+    export GCC_VERSION\=com.apple.compilers.llvm.clang.1_0
+    export GCC_VERSION_IDENTIFIER\=com_apple_compilers_llvm_clang_1_0
+    export GCC_WARN_64_TO_32_BIT_CONVERSION\=YES
+    export GCC_WARN_ABOUT_RETURN_TYPE\=YES_ERROR
+    export GCC_WARN_UNDECLARED_SELECTOR\=YES
+    export GCC_WARN_UNINITIALIZED_AUTOS\=YES_AGGRESSIVE
+    export GCC_WARN_UNUSED_FUNCTION\=YES
+    export GCC_WARN_UNUSED_VARIABLE\=YES
+    export GENERATED_MODULEMAP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/GeneratedModuleMaps
+    export GENERATE_INFOPLIST_FILE\=NO
+    export GENERATE_INTERMEDIATE_TEXT_BASED_STUBS\=YES
+    export GENERATE_PKGINFO_FILE\=NO
+    export GENERATE_PRELINK_OBJECT_FILE\=NO
+    export GENERATE_PROFILING_CODE\=NO
+    export GENERATE_TEXT_BASED_STUBS\=NO
+    export GID\=20
+    export GROUP\=staff
+    export HEADERMAP_INCLUDES_FLAT_ENTRIES_FOR_TARGET_BEING_BUILT\=YES
+    export HEADERMAP_INCLUDES_FRAMEWORK_ENTRIES_FOR_ALL_PRODUCT_TYPES\=YES
+    export HEADERMAP_INCLUDES_FRAMEWORK_ENTRIES_FOR_TARGETS_NOT_BEING_BUILT\=YES
+    export HEADERMAP_INCLUDES_NONPUBLIC_NONPRIVATE_HEADERS\=YES
+    export HEADERMAP_INCLUDES_PROJECT_HEADERS\=YES
+    export HEADERMAP_USES_FRAMEWORK_PREFIX_ENTRIES\=YES
+    export HEADERMAP_USES_VFS\=NO
+    export HEADER_SEARCH_PATHS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug/include\ \ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../shared
+    export HOME\=/Users/kenichim
+    export HOST_ARCH\=arm64
+    export HOST_PLATFORM\=macosx
+    export ICONV\=/usr/bin/iconv
+    export IMPLICIT_DEPENDENCY_DOMAIN\=default
+    export INDEX_STORE_COMPRESS\=NO
+    export INDEX_STORE_ONLY_PROJECT_FILES\=NO
+    export INFOPLIST_ENABLE_CFBUNDLEICONS_MERGE\=YES
+    export INFOPLIST_EXPAND_BUILD_SETTINGS\=YES
+    export INFOPLIST_FILE\=camera-extension/Info.plist
+    export INFOPLIST_OUTPUT_FORMAT\=same-as-input
+    export INFOPLIST_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Info.plist
+    export INFOPLIST_PREPROCESS\=NO
+    export INFOSTRINGS_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Resources/en.lproj/InfoPlist.strings
+    export INLINE_PRIVATE_FRAMEWORKS\=NO
+    export INSTALLAPI_IGNORE_SKIP_INSTALL\=YES
+    export INSTALLHDRS_COPY_PHASE\=NO
+    export INSTALLHDRS_SCRIPT_PHASE\=NO
+    export INSTALL_DIR\=/tmp/KMVirtualCamera.dst
+    export INSTALL_GROUP\=staff
+    export INSTALL_MODE_FLAG\=u+w,go-w,a+rX
+    export INSTALL_OWNER\=kenichim
+    export INSTALL_ROOT\=/tmp/KMVirtualCamera.dst
+    export IOS_UNZIPPERED_TWIN_PREFIX_PATH\=/System/iOSSupport
+    export IS_MACCATALYST\=NO
+    export IS_UNOPTIMIZED_BUILD\=YES
+    export JAVAC_DEFAULT_FLAGS\=-J-Xms64m\ -J-XX:NewSize\=4M\ -J-Dfile.encoding\=UTF8
+    export JAVA_APP_STUB\=/System/Library/Frameworks/JavaVM.framework/Resources/MacOS/JavaApplicationStub
+    export JAVA_ARCHIVE_CLASSES\=YES
+    export JAVA_ARCHIVE_TYPE\=JAR
+    export JAVA_COMPILER\=/usr/bin/javac
+    export JAVA_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Resources/Java
+    export JAVA_FRAMEWORK_RESOURCES_DIRS\=Resources
+    export JAVA_JAR_FLAGS\=cv
+    export JAVA_SOURCE_SUBDIR\=.
+    export JAVA_USE_DEPENDENCIES\=YES
+    export JAVA_ZIP_FLAGS\=-urg
+    export JIKES_DEFAULT_FLAGS\=+E\ +OLDCSO
+    export KASAN_CFLAGS_CLASSIC\=-DKASAN\=1\ -DKASAN_CLASSIC\=1\ -fsanitize\=address\ -mllvm\ -asan-globals-live-support\ -mllvm\ -asan-force-dynamic-shadow
+    export KASAN_CFLAGS_TBI\=-DKASAN\=1\ -DKASAN_TBI\=1\ -fsanitize\=kernel-hwaddress\ -mllvm\ -hwasan-recover\=0\ -mllvm\ -hwasan-instrument-atomics\=0\ -mllvm\ -hwasan-instrument-stack\=1\ -mllvm\ -hwasan-generate-tags-with-calls\=1\ -mllvm\ -hwasan-instrument-with-calls\=1\ -mllvm\ -hwasan-use-short-granules\=0\ -mllvm\ -hwasan-memory-access-callback-prefix\=__asan_
+    export KASAN_DEFAULT_CFLAGS\=-DKASAN\=1\ -DKASAN_CLASSIC\=1\ -fsanitize\=address\ -mllvm\ -asan-globals-live-support\ -mllvm\ -asan-force-dynamic-shadow
+    export KEEP_PRIVATE_EXTERNS\=NO
+    export LD_DEPENDENCY_INFO_FILE\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal/undefined_arch/jp.yasagure.kmvirtualcamera.macos.camext_dependency_info.dat
+    export LD_EXPORT_SYMBOLS\=YES
+    export LD_GENERATE_MAP_FILE\=NO
+    export LD_MAP_FILE_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/jp.yasagure.kmvirtualcamera.macos.camext-LinkMap-normal-undefined_arch.txt
+    export LD_NO_PIE\=NO
+    export LD_QUOTE_LINKER_ARGUMENTS_FOR_COMPILER_DRIVER\=YES
+    export LD_RUNPATH_SEARCH_PATHS\=\ @executable_path/../Frameworks
+    export LD_SHARED_CACHE_ELIGIBLE\=Automatic
+    export LD_WARN_DUPLICATE_LIBRARIES\=NO
+    export LD_WARN_UNUSED_DYLIBS\=NO
+    export LEGACY_DEVELOPER_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/PlugIns/Xcode3Core.ideplugin/Contents/SharedSupport/Developer
+    export LEX\=lex
+    export LIBRARY_DEXT_INSTALL_PATH\=/Library/DriverExtensions
+    export LIBRARY_FLAG_NOSPACE\=YES
+    export LIBRARY_FLAG_PREFIX\=-l
+    export LIBRARY_KEXT_INSTALL_PATH\=/Library/Extensions
+    export LIBRARY_SEARCH_PATHS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug\ \ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-foundation/macos
+    export LINKER_DISPLAYS_MANGLED_NAMES\=NO
+    export LINK_FILE_LIST_normal_arm64\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal/arm64/jp.yasagure.kmvirtualcamera.macos.camext.LinkFileList
+    export LINK_OBJC_RUNTIME\=YES
+    export LINK_WITH_STANDARD_LIBRARIES\=YES
+    export LLVM_TARGET_TRIPLE_OS_VERSION\=macos12.3
+    export LLVM_TARGET_TRIPLE_OS_VERSION_NO\=macos12.3
+    export LLVM_TARGET_TRIPLE_OS_VERSION_YES\=macos26.5
+    export LLVM_TARGET_TRIPLE_VENDOR\=apple
+    export LM_AUX_CONST_METADATA_LIST_PATH_normal_arm64\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal/arm64/jp.yasagure.kmvirtualcamera.macos.camext.SwiftConstValuesFileList
+    export LOCALIZATION_EXPORT_SUPPORTED\=YES
+    export LOCALIZATION_PREFERS_STRING_CATALOGS\=NO
+    export LOCALIZED_RESOURCES_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Resources/en.lproj
+    export LOCALIZED_STRING_CODE_COMMENTS\=NO
+    export LOCALIZED_STRING_MACRO_NAMES\=NSLocalizedString\ CFCopyLocalizedString
+    export LOCALIZED_STRING_SWIFTUI_SUPPORT\=YES
+    export LOCAL_ADMIN_APPS_DIR\=/Applications/Utilities
+    export LOCAL_APPS_DIR\=/Applications
+    export LOCAL_DEVELOPER_DIR\=/Library/Developer
+    export LOCAL_LIBRARY_DIR\=/Library
+    export LOCROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export LOCSYMROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export MACH_O_TYPE\=mh_execute
+    export MACOSX_DEPLOYMENT_TARGET\=12.3
+    export MAC_OS_X_PRODUCT_BUILD_VERSION\=25G229
+    export MAC_OS_X_VERSION_ACTUAL\=260700
+    export MAC_OS_X_VERSION_MAJOR\=260000
+    export MAC_OS_X_VERSION_MINOR\=260700
+    export MAKE_MERGEABLE\=NO
+    export MERGEABLE_LIBRARY\=NO
+    export MERGED_BINARY_TYPE\=none
+    export MERGE_LINKED_LIBRARIES\=NO
+    export METAL_LIBRARY_FILE_BASE\=default
+    export METAL_LIBRARY_OUTPUT_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug/jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Resources
+    export MODULES_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Modules
+    export MODULE_CACHE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/ModuleCache.noindex
+    export MTL_ENABLE_DEBUG_INFO\=INCLUDE_SOURCE
+    export MTL_FAST_MATH\=YES
+    export NATIVE_ARCH\=arm64
+    export NATIVE_ARCH_32_BIT\=arm
+    export NATIVE_ARCH_64_BIT\=arm64
+    export NATIVE_ARCH_ACTUAL\=arm64
+    export NO_COMMON\=YES
+    export OBJECT_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects
+    export OBJECT_FILE_DIR_normal\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal
+    export OBJROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex
+    export ONLY_ACTIVE_ARCH\=YES
+    export OS\=MACOS
+    export OSAC\=/usr/bin/osacompile
+    export OTHER_LDFLAGS\=\ -lkm_camera_relay\ -lkm_macos_buffers
+    export PACKAGE_TYPE\=com.apple.package-type.wrapper.system-extension
+    export PASCAL_STRINGS\=YES
+    export PATH\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/SharedFrameworks/SwiftBuild.framework/Versions/A/PlugIns/SWBBuildService.bundle/Contents/PlugIns/SWBUniversalPlatformPlugin.bundle/Contents/Frameworks/SWBUniversalPlatform.framework/Resources:/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.4RVUI0/Metal.xctoolchain/usr/bin:/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.4RVUI0/Metal.xctoolchain/usr/local/bin:/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.4RVUI0/Metal.xctoolchain/usr/libexec:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/local/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/libexec:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/usr/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/usr/local/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/local/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/kenichim/.local/bin:/Users/kenichim/.nvm/versions/node/v24.12.0/bin:/Users/kenichim/.opencode/bin:/opt/homebrew/opt/openjdk@21/bin:/Users/kenichim/.pyenv/shims:/Users/kenichim/.pyenv/bin:/Users/kenichim/Desktop/work/flutter/flutter/bin:/opt/homebrew/opt/node@22/bin:/Users/kenichim/Library/Android/sdk/platform-tools:/Users/kenichim/.rbenv/shims:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/Users/kenichim/.cargo/bin:/Applications/Android\ Studio.app/Contents/MacOS:/Users/kenichim/Desktop/work/flutter/sdk/flutter/bin:/Users/kenichim/.gem/bin
+    export PATH_PREFIXES_EXCLUDED_FROM_HEADER_DEPENDENCIES\=/usr/include\ /usr/local/include\ /System/Library/Frameworks\ /System/Library/PrivateFrameworks\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Headers\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/SDKs\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms
+    export PBDEVELOPMENTPLIST_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/pbdevelopment.plist
+    export PER_ARCH_MODULE_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal/undefined_arch
+    export PER_ARCH_OBJECT_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal/undefined_arch
+    export PER_VARIANT_OBJECT_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal
+    export PKGINFO_FILE_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/PkgInfo
+    export PKGINFO_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/PkgInfo
+    export PLATFORM_DEVELOPER_APPLICATIONS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications
+    export PLATFORM_DEVELOPER_BIN_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin
+    export PLATFORM_DEVELOPER_LIBRARY_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library
+    export PLATFORM_DEVELOPER_SDK_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
+    export PLATFORM_DEVELOPER_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Tools
+    export PLATFORM_DEVELOPER_USR_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr
+    export PLATFORM_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform
+    export PLATFORM_DISPLAY_NAME\=macOS
+    export PLATFORM_FAMILY_NAME\=macOS
+    export PLATFORM_NAME\=macosx
+    export PLATFORM_PREFERRED_ARCH\=x86_64
+    export PLATFORM_PRODUCT_BUILD_VERSION\=25F70
+    export PLATFORM_REQUIRES_SWIFT_AUTOLINK_EXTRACT\=NO
+    export PLATFORM_REQUIRES_SWIFT_MODULEWRAP\=NO
+    export PLATFORM_USES_DSYMS\=YES
+    export PLIST_FILE_OUTPUT_FORMAT\=same-as-input
+    export PLUGINS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/PlugIns
+    export PRECOMPS_INCLUDE_HEADERS_FROM_BUILT_PRODUCTS_DIR\=YES
+    export PRECOMP_DESTINATION_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/PrefixHeaders
+    export PRIVATE_HEADERS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/PrivateHeaders
+    export PROCESSED_INFOPLIST_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal/undefined_arch/Processed-Info.plist
+    export PRODUCT_BUNDLE_IDENTIFIER\=jp.yasagure.kmvirtualcamera.macos.camext
+    export PRODUCT_BUNDLE_PACKAGE_TYPE\=SYSX
+    export PRODUCT_MODULE_NAME\=jp_yasagure_kmvirtualcamera_macos_camext
+    export PRODUCT_NAME\=jp.yasagure.kmvirtualcamera.macos.camext
+    export PRODUCT_SETTINGS_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/camera-extension/Info.plist
+    export PRODUCT_TYPE\=com.apple.product-type.system-extension
+    export PROFILING_CODE\=NO
+    export PROJECT\=KMVirtualCamera
+    export PROJECT_DERIVED_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/DerivedSources
+    export PROJECT_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export PROJECT_FILE_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/KMVirtualCamera.xcodeproj
+    export PROJECT_GUID\=3dfed0f0d49db0ee898add66cecc0005
+    export PROJECT_NAME\=KMVirtualCamera
+    export PROJECT_TEMP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build
+    export PROJECT_TEMP_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex
+    export PROVISIONING_PROFILE_REQUIRED\=NO
+    export PROVISIONING_PROFILE_SUPPORTED\=YES
+    export PUBLIC_HEADERS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Headers
+    export RECOMMENDED_MACOSX_DEPLOYMENT_TARGET\=11.0
+    export RECURSIVE_SEARCH_PATHS_FOLLOW_SYMLINKS\=YES
+    export REMOVE_CVS_FROM_RESOURCES\=YES
+    export REMOVE_GIT_FROM_RESOURCES\=YES
+    export REMOVE_HEADERS_FROM_EMBEDDED_BUNDLES\=YES
+    export REMOVE_HG_FROM_RESOURCES\=YES
+    export REMOVE_STATIC_EXECUTABLES_FROM_EMBEDDED_BUNDLES\=YES
+    export REMOVE_SVN_FROM_RESOURCES\=YES
+    export RESCHEDULE_INDEPENDENT_HEADERS_PHASES\=YES
+    export REZ_COLLECTOR_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/ResourceManagerResources
+    export REZ_OBJECTS_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/ResourceManagerResources/Objects
+    export REZ_SEARCH_PATHS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug\ 
+    export RPATH_ORIGIN\=@loader_path
+    export RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES\=NO
+    export RUNTIME_EXCEPTION_ALLOW_JIT\=NO
+    export RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY\=NO
+    export RUNTIME_EXCEPTION_DEBUGGING_TOOL\=NO
+    export RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION\=NO
+    export RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION\=NO
+    export SCANNING_PCM_KEEP_CACHE_DIRECTORY\=YES
+    export SCAN_ALL_SOURCE_FILES_FOR_INCLUDES\=NO
+    export SCRIPTS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Resources/Scripts
+    export SCRIPT_INPUT_FILE_COUNT\=0
+    export SCRIPT_INPUT_FILE_LIST_COUNT\=0
+    export SCRIPT_OUTPUT_FILE_COUNT\=0
+    export SCRIPT_OUTPUT_FILE_LIST_COUNT\=0
+    export SDKROOT\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk
+    export SDK_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk
+    export SDK_DIR_macosx\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk
+    export SDK_DIR_macosx26_5\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk
+    export SDK_NAME\=macosx26.5
+    export SDK_NAMES\=macosx26.5
+    export SDK_PRODUCT_BUILD_VERSION\=25F70
+    export SDK_STAT_CACHE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData
+    export SDK_STAT_CACHE_ENABLE\=YES
+    export SDK_STAT_CACHE_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448fa57390314b4fd4b49b5487f11925bcac.sdkstatcache
+    export SDK_VERSION\=26.5
+    export SDK_VERSION_ACTUAL\=260500
+    export SDK_VERSION_MAJOR\=260000
+    export SDK_VERSION_MINOR\=260500
+    export SED\=/usr/bin/sed
+    export SEPARATE_STRIP\=NO
+    export SEPARATE_SYMBOL_EDIT\=NO
+    export SET_DIR_MODE_OWNER_GROUP\=YES
+    export SET_FILE_MODE_OWNER_GROUP\=NO
+    export SHALLOW_BUNDLE\=NO
+    export SHALLOW_BUNDLE_PLATFORM\=NO
+    export SHALLOW_BUNDLE_TRIPLE\=macos
+    export SHALLOW_BUNDLE_ios_macabi\=NO
+    export SHALLOW_BUNDLE_macos\=NO
+    export SHARED_DERIVED_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug/DerivedSources
+    export SHARED_FRAMEWORKS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/SharedFrameworks
+    export SHARED_PRECOMPS_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/PrecompiledHeaders
+    export SHARED_SUPPORT_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/SharedSupport
+    export SKIP_INSTALL\=YES
+    export SKIP_MERGEABLE_LIBRARY_BUNDLE_HOOK\=NO
+    export SOURCE_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export SRCROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export STRINGSDATA_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal/undefined_arch
+    export STRINGSDATA_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build
+    export STRINGS_FILE_INFOPLIST_RENAME\=YES
+    export STRINGS_FILE_OUTPUT_ENCODING\=UTF-16
+    export STRING_CATALOG_GENERATE_SYMBOLS\=NO
+    export STRIP_BITCODE_FROM_COPIED_FILES\=NO
+    export STRIP_INSTALLED_PRODUCT\=NO
+    export STRIP_PNG_TEXT\=NO
+    export STRIP_STYLE\=non-global
+    export STRIP_SWIFT_SYMBOLS\=YES
+    export SUPPORTED_PLATFORMS\=macosx
+    export SUPPORTS_TEXT_BASED_API\=NO
+    export SUPPRESS_WARNINGS\=NO
+    export SWIFT_ACTIVE_COMPILATION_CONDITIONS\=DEBUG
+    export SWIFT_EMIT_CONST_VALUE_PROTOCOLS\=AnyResolverProviding\ AppEntity\ AppEnum\ AppExtension\ AppIntent\ AppIntentsPackage\ AppShortcutProviding\ AppShortcutsProvider\ DynamicOptionsProvider\ EntityQuery\ ExtensionPointDefining\ IntentValueQuery\ Resolver\ TransientEntity\ _AssistantIntentsProvider\ _GenerativeFunctionExtractable\ _IntentValueRepresentable
+    export SWIFT_EMIT_LOC_STRINGS\=NO
+    export SWIFT_ENABLE_EXPLICIT_MODULES\=YES
+    export SWIFT_OPTIMIZATION_LEVEL\=-Onone
+    export SWIFT_PLATFORM_TARGET_PREFIX\=macos
+    export SWIFT_RESPONSE_FILE_PATH_normal_arm64\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Objects-normal/arm64/jp.yasagure.kmvirtualcamera.macos.camext.SwiftFileList
+    export SWIFT_VERSION\=5.0
+    export SYMROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products
+    export SYSTEM_ADMIN_APPS_DIR\=/Applications/Utilities
+    export SYSTEM_APPS_DIR\=/Applications
+    export SYSTEM_CORE_SERVICES_DIR\=/System/Library/CoreServices
+    export SYSTEM_DEMOS_DIR\=/Applications/Extras
+    export SYSTEM_DEVELOPER_APPS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications
+    export SYSTEM_DEVELOPER_BIN_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin
+    export SYSTEM_DEVELOPER_DEMOS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Utilities/Built\ Examples
+    export SYSTEM_DEVELOPER_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer
+    export SYSTEM_DEVELOPER_DOC_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/ADC\ Reference\ Library
+    export SYSTEM_DEVELOPER_GRAPHICS_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Graphics\ Tools
+    export SYSTEM_DEVELOPER_JAVA_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Java\ Tools
+    export SYSTEM_DEVELOPER_PERFORMANCE_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Performance\ Tools
+    export SYSTEM_DEVELOPER_RELEASENOTES_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/ADC\ Reference\ Library/releasenotes
+    export SYSTEM_DEVELOPER_TOOLS\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Tools
+    export SYSTEM_DEVELOPER_TOOLS_DOC_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/ADC\ Reference\ Library/documentation/DeveloperTools
+    export SYSTEM_DEVELOPER_TOOLS_RELEASENOTES_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/ADC\ Reference\ Library/releasenotes/DeveloperTools
+    export SYSTEM_DEVELOPER_USR_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr
+    export SYSTEM_DEVELOPER_UTILITIES_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Utilities
+    export SYSTEM_DEXT_INSTALL_PATH\=/System/Library/DriverExtensions
+    export SYSTEM_DOCUMENTATION_DIR\=/Library/Documentation
+    export SYSTEM_EXTENSIONS_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Library/SystemExtensions
+    export SYSTEM_EXTENSIONS_FOLDER_PATH_SHALLOW_BUNDLE_NO\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Library/SystemExtensions
+    export SYSTEM_EXTENSIONS_FOLDER_PATH_SHALLOW_BUNDLE_YES\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/SystemExtensions
+    export SYSTEM_KEXT_INSTALL_PATH\=/System/Library/Extensions
+    export SYSTEM_LIBRARY_DIR\=/System/Library
+    export TAPI_DEMANGLE\=YES
+    export TAPI_ENABLE_PROJECT_HEADERS\=NO
+    export TAPI_LANGUAGE\=objective-c
+    export TAPI_LANGUAGE_STANDARD\=compiler-default
+    export TAPI_USE_SRCROOT\=YES
+    export TAPI_VERIFY_MODE\=Pedantic
+    export TARGETNAME\=KMVirtualCameraExtension
+    export TARGET_BUILD_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug
+    export TARGET_NAME\=KMVirtualCameraExtension
+    export TARGET_TEMP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build
+    export TEMP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build
+    export TEMP_FILES_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build
+    export TEMP_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build
+    export TEMP_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex
+    export TEMP_SANDBOX_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/TemporaryTaskSandboxes
+    export TEST_FRAMEWORK_SEARCH_PATHS\=\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks
+    export TEST_LIBRARY_SEARCH_PATHS\=\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib
+    export TOOLCHAINS\=com.apple.dt.toolchain.Metal.32023.883\ com.apple.dt.toolchain.XcodeDefault
+    export TOOLCHAIN_DIR\=/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.4RVUI0/Metal.xctoolchain
+    export TOOLCHAIN_VERSION\=32023.883
+    export TREAT_MISSING_BASELINES_AS_TEST_FAILURES\=NO
+    export TREAT_MISSING_SCRIPT_PHASE_OUTPUTS_AS_ERRORS\=NO
+    export TeamIdentifierPrefix\=K7VNGA9K78.
+    export UID\=502
+    export UNINSTALLED_PRODUCTS_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/UninstalledProducts
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Resources
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH_SHALLOW_BUNDLE_NO\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/Resources
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH_SHALLOW_BUNDLE_YES\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents
+    export UNSTRIPPED_PRODUCT\=NO
+    export USER\=kenichim
+    export USER_APPS_DIR\=/Users/kenichim/Applications
+    export USER_LIBRARY_DIR\=/Users/kenichim/Library
+    export USE_DYNAMIC_NO_PIC\=YES
+    export USE_HEADERMAP\=YES
+    export USE_HEADER_SYMLINKS\=NO
+    export VALIDATE_DEVELOPMENT_ASSET_PATHS\=YES_ERROR
+    export VALIDATE_PRODUCT\=NO
+    export VALID_ARCHS\=arm64\ arm64e\ i386\ x86_64
+    export VERBOSE_PBXCP\=NO
+    export VERSIONPLIST_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/version.plist
+    export VERSION_INFO_BUILDER\=kenichim
+    export VERSION_INFO_FILE\=jp.yasagure.kmvirtualcamera.macos.camext_vers.c
+    export VERSION_INFO_STRING\=\"@\(\#\)PROGRAM:jp.yasagure.kmvirtualcamera.macos.camext\ \ PROJECT:KMVirtualCamera-\"
+    export WORKSPACE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/KMVirtualCamera.xcodeproj
+    export WRAPPER_EXTENSION\=systemextension
+    export WRAPPER_NAME\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension
+    export WRAPPER_SUFFIX\=.systemextension
+    export WRAP_ASSET_PACKS_IN_SEPARATE_DIRECTORIES\=NO
+    export XCODE_APP_SUPPORT_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library/Xcode
+    export XCODE_PRODUCT_BUILD_VERSION\=17F113
+    export XCODE_VERSION_ACTUAL\=2660
+    export XCODE_VERSION_MAJOR\=2600
+    export XCODE_VERSION_MINOR\=2660
+    export XPCSERVICES_FOLDER_PATH\=jp.yasagure.kmvirtualcamera.macos.camext.systemextension/Contents/XPCServices
+    export YACC\=yacc
+    export _BOOL_\=NO
+    export _BOOL_NO\=NO
+    export _BOOL_YES\=YES
+    export _DEVELOPMENT_TEAM_IS_EMPTY\=NO
+    export _DISCOVER_COMMAND_LINE_LINKER_INPUTS\=YES
+    export _DISCOVER_COMMAND_LINE_LINKER_INPUTS_INCLUDE_WL\=YES
+    export _IS_EMPTY_\=YES
+    export _LD_MULTIARCH\=YES
+    export _MACOSX_DEPLOYMENT_TARGET_IS_EMPTY\=NO
+    export _WRAPPER_CONTENTS_DIR\=/Contents
+    export _WRAPPER_CONTENTS_DIR_SHALLOW_BUNDLE_NO\=/Contents
+    export _WRAPPER_PARENT_PATH\=/..
+    export _WRAPPER_PARENT_PATH_SHALLOW_BUNDLE_NO\=/..
+    export _WRAPPER_RESOURCES_DIR\=/Resources
+    export _WRAPPER_RESOURCES_DIR_SHALLOW_BUNDLE_NO\=/Resources
+    export __DIAGNOSE_DEPRECATED_ARCHS\=YES
+    export __ORIGINAL_SDK_DEFINED_LLVM_TARGET_TRIPLE_SYS\=macos
+    export arch\=undefined_arch
+    export variant\=normal
+    /bin/sh -c /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCameraExtension.build/Script-DE8BD71F8290C638678632A7.sh
+[  4%] Built target km_macos_audio_pcm_queue_test
+[ 14%] Built target km_media_core
+[ 18%] Built target km_signaling_worker
+[ 18%] Built target km_macos_audio_output
+[ 25%] Built target km_extension_manager
+[ 27%] Built target km_macos_signaling
+[ 35%] Built target km_macos_buffers
+[ 37%] Built target km_macos_qr_test
+[ 41%] Built target km_audio
+[ 45%] Built target km_receiver_engine
+[ 50%] Built target km_core_tests
+[ 58%] Built target km_macos_http_tests
+[ 58%] Built target km_review_tests
+[ 62%] Built target km_dc_tests
+[ 66%] Built target km_macos_audio_output_test
+[ 70%] Built target km_session_tests
+[ 75%] Built target km_signaling_worker_tests
+[ 81%] Built target km_camera_relay
+[ 83%] Built target km_macos_decoder
+[ 87%] Built target km_engine_tests
+[ 91%] Built target km_macos_pipeline
+[ 95%] Built target km_macos_media_smoke
+[100%] Built target km_macos_pipeline_test
+[  1%] Built target everest
+[  1%] Built target p256m
+[  2%] Built target km_signaling_worker
+[  4%] Built target km_macos_audio_pcm_queue_test
+[  6%] Built target juice
+[ 10%] Built target juice-static
+[ 11%] Built target km_macos_audio_output
+[ 11%] Built target km_extension_manager
+[ 11%] Built target km_media_core
+[ 15%] Built target srtp2
+[ 16%] Built target km_macos_buffers
+[ 17%] Built target km_macos_signaling
+[ 18%] Built target km_macos_qr_test
+[ 22%] Built target usrsctp
+[ 50%] Built target opus
+[ 50%] Built target km_signaling_worker_tests
+[ 50%] Built target km_core_tests
+[ 52%] Built target km_dc_tests
+[ 59%] Built target km_session_tests
+[ 64%] Built target km_review_tests
+[ 66%] Built target mbedcrypto
+[ 66%] Built target km_receiver_engine
+[ 66%] Built target km_macos_audio_output_test
+[ 66%] Built target km_macos_http_tests
+[ 66%] Built target km_macos_decoder
+[ 67%] Built target km_camera_relay
+[ 67%] Built target km_audio
+[ 69%] Built target mbedx509
+[ 70%] Built target km_engine_tests
+[ 71%] Built target km_opus_tests
+[ 72%] Built target km_macos_media_smoke
+[ 72%] Built target km_macos_pipeline
+[ 75%] Built target mbedtls
+[ 96%] Built target datachannel-static
+[ 97%] Built target datachannel
+[ 98%] Built target km_macos_pipeline_test
+[ 99%] Built target km_rtc_shared
+[ 99%] Built target km_rtc_load_tests
+[100%] Built target km_rtc_answer_tests
+
+ClangStatCache /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448fa57390314b4fd4b49b5487f11925bcac.sdkstatcache
+    cd /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/KMVirtualCamera.xcodeproj
+    /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -o /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448fa57390314b4fd4b49b5487f11925bcac.sdkstatcache
+
+note: Run script build phase 'Build km_macos static libraries' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'KMVirtualCamera' from project 'KMVirtualCamera')
+PhaseScriptExecution Build\ km_macos\ static\ libraries /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Script-9BD2AC63D54D964BF3A82629.sh (in target 'KMVirtualCamera' from project 'KMVirtualCamera')
+    cd /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export ACTION\=build
+    export AD_HOC_CODE_SIGNING_ALLOWED\=YES
+    export AGGREGATE_TRACKED_DOMAINS\=YES
+    export ALLOW_BUILD_REQUEST_OVERRIDES\=NO
+    export ALLOW_TARGET_PLATFORM_SPECIALIZATION\=NO
+    export ALTERNATE_GROUP\=staff
+    export ALTERNATE_MODE\=u+w,go-w,a+rX
+    export ALTERNATE_OWNER\=kenichim
+    export ALTERNATIVE_DISTRIBUTION_WEB\=NO
+    export ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES\=NO
+    export ALWAYS_SEARCH_USER_PATHS\=NO
+    export ALWAYS_USE_SEPARATE_HEADERMAPS\=NO
+    export ANDROID_DEPLOYMENT_TARGET\=21.0
+    export APPLICATION_EXTENSION_API_ONLY\=NO
+    export APPLY_RULES_IN_COPY_FILES\=NO
+    export APPLY_RULES_IN_COPY_HEADERS\=NO
+    export APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING\=YES
+    export ARCHS\=arm64
+    export ARCHS_BASE\=arm64
+    export ARCHS_STANDARD\=arm64\ x86_64
+    export ARCHS_STANDARD_32_64_BIT\=arm64\ x86_64\ i386
+    export ARCHS_STANDARD_32_BIT\=i386
+    export ARCHS_STANDARD_64_BIT\=arm64\ x86_64
+    export ARCHS_STANDARD_INCLUDING_64_BIT\=arm64\ x86_64
+    export ASSETCATALOG_COMPILER_APPICON_NAME\=AppIcon
+    export AUTOMATICALLY_MERGE_DEPENDENCIES\=NO
+    export AUTOMATION_APPLE_EVENTS\=NO
+    export AVAILABLE_PLATFORMS\=android\ appletvos\ appletvsimulator\ driverkit\ freebsd\ iphoneos\ iphonesimulator\ linux\ macosx\ none\ openbsd\ qnx\ watchos\ watchsimulator\ webassembly\ xros\ xrsimulator
+    export AppIdentifierPrefix\=K7VNGA9K78.
+    export BUILD_ACTIVE_RESOURCES_ONLY\=NO
+    export BUILD_COMPONENTS\=headers\ build
+    export BUILD_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products
+    export BUILD_LIBRARY_FOR_DISTRIBUTION\=NO
+    export BUILD_ONLY_KNOWN_LOCALIZATIONS\=NO
+    export BUILD_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products
+    export BUILD_STYLE\=
+    export BUILD_VARIANTS\=normal
+    export BUILT_PRODUCTS_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug
+    export BUNDLE_CONTENTS_FOLDER_PATH\=Contents/
+    export BUNDLE_CONTENTS_FOLDER_PATH_deep\=Contents/
+    export BUNDLE_EXECUTABLE_FOLDER_NAME_deep\=MacOS
+    export BUNDLE_EXECUTABLE_FOLDER_PATH\=Contents/MacOS
+    export BUNDLE_EXTENSIONS_FOLDER_PATH\=Contents/Extensions
+    export BUNDLE_FORMAT\=deep
+    export BUNDLE_FRAMEWORKS_FOLDER_PATH\=Contents/Frameworks
+    export BUNDLE_PLUGINS_FOLDER_PATH\=Contents/PlugIns
+    export BUNDLE_PRIVATE_HEADERS_FOLDER_PATH\=Contents/PrivateHeaders
+    export BUNDLE_PUBLIC_HEADERS_FOLDER_PATH\=Contents/Headers
+    export CACHE_ROOT\=/var/folders/b_/l4tstdxd2y5fz82svbpvr9s40000gp/C/com.apple.DeveloperTools/26.6-17F113/Xcode
+    export CCHROOT\=/var/folders/b_/l4tstdxd2y5fz82svbpvr9s40000gp/C/com.apple.DeveloperTools/26.6-17F113/Xcode
+    export CHMOD\=/bin/chmod
+    export CHOWN\=chown
+    export CLANG_ANALYZER_NONNULL\=YES
+    export CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION\=YES_AGGRESSIVE
+    export CLANG_CACHE_FINE_GRAINED_OUTPUTS\=YES
+    export CLANG_CXX_LANGUAGE_STANDARD\=c++20
+    export CLANG_CXX_LIBRARY\=libc++
+    export CLANG_ENABLE_EXPLICIT_MODULES\=YES
+    export CLANG_ENABLE_MODULES\=YES
+    export CLANG_ENABLE_OBJC_ARC\=YES
+    export CLANG_ENABLE_OBJC_WEAK\=YES
+    export CLANG_MODULES_BUILD_SESSION_FILE\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/ModuleCache.noindex/Session.modulevalidation
+    export CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING\=YES
+    export CLANG_WARN_BOOL_CONVERSION\=YES
+    export CLANG_WARN_COMMA\=YES
+    export CLANG_WARN_CONSTANT_CONVERSION\=YES
+    export CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS\=YES
+    export CLANG_WARN_DIRECT_OBJC_ISA_USAGE\=YES_ERROR
+    export CLANG_WARN_DOCUMENTATION_COMMENTS\=YES
+    export CLANG_WARN_EMPTY_BODY\=YES
+    export CLANG_WARN_ENUM_CONVERSION\=YES
+    export CLANG_WARN_INFINITE_RECURSION\=YES
+    export CLANG_WARN_INT_CONVERSION\=YES
+    export CLANG_WARN_NON_LITERAL_NULL_CONVERSION\=YES
+    export CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF\=YES
+    export CLANG_WARN_OBJC_LITERAL_CONVERSION\=YES
+    export CLANG_WARN_OBJC_ROOT_CLASS\=YES_ERROR
+    export CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER\=YES
+    export CLANG_WARN_RANGE_LOOP_ANALYSIS\=YES
+    export CLANG_WARN_STRICT_PROTOTYPES\=YES
+    export CLANG_WARN_SUSPICIOUS_MOVE\=YES
+    export CLANG_WARN_UNGUARDED_AVAILABILITY\=YES_AGGRESSIVE
+    export CLANG_WARN_UNREACHABLE_CODE\=YES
+    export CLANG_WARN__DUPLICATE_METHOD_MATCH\=YES
+    export CLASS_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/JavaClasses
+    export CLEAN_PRECOMPS\=YES
+    export CLONE_HEADERS\=NO
+    export CODESIGNING_FOLDER_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug/KMVirtualCamera.app
+    export CODE_SIGNING_ALLOWED\=YES
+    export CODE_SIGNING_REQUIRED\=YES
+    export CODE_SIGN_ENTITLEMENTS\=config/Host.entitlements
+    export CODE_SIGN_IDENTITY\=Apple\ Development
+    export CODE_SIGN_IDENTITY_NO\=Apple\ Development
+    export CODE_SIGN_IDENTITY_YES\=-
+    export CODE_SIGN_INJECT_BASE_ENTITLEMENTS\=YES
+    export CODE_SIGN_STYLE\=Automatic
+    export COLOR_DIAGNOSTICS\=NO
+    export COMBINE_HIDPI_IMAGES\=YES
+    export COMPILATION_CACHE_CAS_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/CompilationCache.noindex
+    export COMPILATION_CACHE_KEEP_CAS_DIRECTORY\=YES
+    export COMPILER_INDEX_STORE_ENABLE\=Default
+    export COMPOSITE_SDK_DIRS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/CompositeSDKs
+    export COMPRESS_PNG_FILES\=NO
+    export CONFIGURATION\=Debug
+    export CONFIGURATION_BUILD_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug
+    export CONFIGURATION_TEMP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug
+    export CONTENTS_FOLDER_PATH\=KMVirtualCamera.app/Contents
+    export CONTENTS_FOLDER_PATH_SHALLOW_BUNDLE_NO\=KMVirtualCamera.app/Contents
+    export CONTENTS_FOLDER_PATH_SHALLOW_BUNDLE_YES\=KMVirtualCamera.app
+    export COPYING_PRESERVES_HFS_DATA\=NO
+    export COPY_HEADERS_RUN_UNIFDEF\=NO
+    export COPY_PHASE_STRIP\=NO
+    export CP\=/bin/cp
+    export CREATE_INFOPLIST_SECTION_IN_BINARY\=NO
+    export CURRENT_ARCH\=undefined_arch
+    export CURRENT_VARIANT\=normal
+    export DEAD_CODE_STRIPPING\=NO
+    export DEBUGGING_SYMBOLS\=YES
+    export DEBUG_INFORMATION_FORMAT\=dwarf
+    export DEBUG_INFORMATION_VERSION\=compiler-default
+    export DEFAULT_COMPILER\=com.apple.compilers.llvm.clang.1_0
+    export DEFAULT_DEXT_INSTALL_PATH\=/System/Library/DriverExtensions
+    export DEFAULT_KEXT_INSTALL_PATH\=/System/Library/Extensions
+    export DEFINES_MODULE\=NO
+    export DEPLOYMENT_LOCATION\=NO
+    export DEPLOYMENT_POSTPROCESSING\=NO
+    export DEPLOYMENT_TARGET_SETTING_NAME\=MACOSX_DEPLOYMENT_TARGET
+    export DEPLOYMENT_TARGET_SUGGESTED_VALUES\=10.13\ 10.14\ 10.15\ 11.0\ 11.1\ 11.2\ 11.3\ 11.4\ 11.5\ 12.0\ 12.2\ 12.3\ 12.4\ 13.0\ 13.1\ 13.2\ 13.3\ 13.4\ 13.5\ 14.0\ 14.1\ 14.2\ 14.3\ 14.4\ 14.5\ 14.6\ 15.0\ 15.1\ 15.2\ 15.3\ 15.4\ 15.5\ 15.6\ 26.0\ 26.1\ 26.2\ 26.3\ 26.4\ 26.5
+    export DERIVED_FILES_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/DerivedSources
+    export DERIVED_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/DerivedSources
+    export DERIVED_SOURCES_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/DerivedSources
+    export DEVELOPER_APPLICATIONS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications
+    export DEVELOPER_BIN_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin
+    export DEVELOPER_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer
+    export DEVELOPER_FRAMEWORKS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library/Frameworks
+    export DEVELOPER_FRAMEWORKS_DIR_QUOTED\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library/Frameworks
+    export DEVELOPER_LIBRARY_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library
+    export DEVELOPER_SDK_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
+    export DEVELOPER_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Tools
+    export DEVELOPER_USR_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr
+    export DEVELOPMENT_LANGUAGE\=en
+    export DEVELOPMENT_TEAM\=K7VNGA9K78
+    export DIAGNOSE_MISSING_TARGET_DEPENDENCIES\=YES
+    export DIFF\=/usr/bin/diff
+    export DOCUMENTATION_FOLDER_PATH\=KMVirtualCamera.app/Contents/Resources/en.lproj/Documentation
+    export DONT_GENERATE_INFOPLIST_FILE\=NO
+    export DSTROOT\=/tmp/KMVirtualCamera.dst
+    export DT_TOOLCHAIN_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain
+    export DUMP_DEPENDENCIES\=NO
+    export DUMP_DEPENDENCIES_OUTPUT_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/KMVirtualCamera-BuildDependencyInfo.json
+    export DWARF_DSYM_FILE_NAME\=KMVirtualCamera.app.dSYM
+    export DWARF_DSYM_FILE_SHOULD_ACCOMPANY_PRODUCT\=NO
+    export DWARF_DSYM_FOLDER_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug
+    export DYNAMIC_LIBRARY_EXTENSION\=dylib
+    export EAGER_COMPILATION_ALLOW_SCRIPTS\=NO
+    export EAGER_LINKING\=NO
+    export EFFECTIVE_SWIFT_VERSION\=5
+    export EMBEDDED_CONTENT_CONTAINS_SWIFT\=NO
+    export EMBEDDED_PROFILE_NAME\=embedded.provisionprofile
+    export EMBED_ASSET_PACKS_IN_PRODUCT_BUNDLE\=NO
+    export ENABLE_APP_SANDBOX\=NO
+    export ENABLE_CODE_COVERAGE\=YES
+    export ENABLE_COHORT_ARCHS\=NO
+    export ENABLE_CPLUSPLUS_BOUNDS_SAFE_BUFFERS\=NO
+    export ENABLE_C_BOUNDS_SAFETY\=NO
+    export ENABLE_DEBUG_DYLIB\=YES
+    export ENABLE_DEFAULT_HEADER_SEARCH_PATHS\=YES
+    export ENABLE_DEFAULT_SEARCH_PATHS\=YES
+    export ENABLE_ENHANCED_SECURITY\=NO
+    export ENABLE_HARDENED_RUNTIME\=YES
+    export ENABLE_HEADER_DEPENDENCIES\=YES
+    export ENABLE_INCOMING_NETWORK_CONNECTIONS\=NO
+    export ENABLE_ON_DEMAND_RESOURCES\=NO
+    export ENABLE_OUTGOING_NETWORK_CONNECTIONS\=NO
+    export ENABLE_POINTER_AUTHENTICATION\=NO
+    export ENABLE_PREVIEWS\=NO
+    export ENABLE_RESOURCE_ACCESS_AUDIO_INPUT\=NO
+    export ENABLE_RESOURCE_ACCESS_BLUETOOTH\=NO
+    export ENABLE_RESOURCE_ACCESS_CALENDARS\=NO
+    export ENABLE_RESOURCE_ACCESS_CAMERA\=NO
+    export ENABLE_RESOURCE_ACCESS_CONTACTS\=NO
+    export ENABLE_RESOURCE_ACCESS_LOCATION\=NO
+    export ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY\=NO
+    export ENABLE_RESOURCE_ACCESS_PRINTING\=NO
+    export ENABLE_RESOURCE_ACCESS_USB\=NO
+    export ENABLE_SDK_IMPORTS\=NO
+    export ENABLE_SECURITY_COMPILER_WARNINGS\=NO
+    export ENABLE_STRICT_OBJC_MSGSEND\=YES
+    export ENABLE_TESTABILITY\=YES
+    export ENABLE_TESTING_SEARCH_PATHS\=NO
+    export ENABLE_USER_SCRIPT_SANDBOXING\=NO
+    export ENABLE_XOJIT_PREVIEWS\=YES
+    export ENFORCE_VALID_ARCHS\=YES
+    export ENTITLEMENTS_ALLOWED\=YES
+    export ENTITLEMENTS_DESTINATION\=Signature
+    export ENTITLEMENTS_REQUIRED\=NO
+    export EXCLUDED_INSTALLSRC_SUBDIRECTORY_PATTERNS\=.DS_Store\ .svn\ .git\ .hg\ CVS
+    export EXCLUDED_RECURSIVE_SEARCH_PATH_SUBDIRECTORIES\=\*.nib\ \*.lproj\ \*.framework\ \*.gch\ \*.xcode\*\ \*.xcassets\ \*.icon\ \(\*\)\ .DS_Store\ CVS\ .svn\ .git\ .hg\ \*.pbproj\ \*.pbxproj
+    export EXECUTABLES_FOLDER_PATH\=KMVirtualCamera.app/Contents/Executables
+    export EXECUTABLE_BLANK_INJECTION_DYLIB_PATH\=KMVirtualCamera.app/Contents/MacOS/__preview.dylib
+    export EXECUTABLE_DEBUG_DYLIB_INSTALL_NAME\=@rpath/KMVirtualCamera.debug.dylib
+    export EXECUTABLE_DEBUG_DYLIB_PATH\=KMVirtualCamera.app/Contents/MacOS/KMVirtualCamera.debug.dylib
+    export EXECUTABLE_FOLDER_PATH\=KMVirtualCamera.app/Contents/MacOS
+    export EXECUTABLE_FOLDER_PATH_SHALLOW_BUNDLE_NO\=KMVirtualCamera.app/Contents/MacOS
+    export EXECUTABLE_FOLDER_PATH_SHALLOW_BUNDLE_YES\=KMVirtualCamera.app/Contents
+    export EXECUTABLE_NAME\=KMVirtualCamera
+    export EXECUTABLE_PATH\=KMVirtualCamera.app/Contents/MacOS/KMVirtualCamera
+    export EXPANDED_CODE_SIGN_IDENTITY\=C8353EB87CD3C009AC37C249CC5ACF02C6A0DC58
+    export EXPANDED_CODE_SIGN_IDENTITY_NAME\=Apple\ Development:\ Kenichi\ Matsumoto\ \(M4FBGCLF45\)
+    export EXPANDED_PROVISIONING_PROFILE\=14b98cb3-0614-45df-928d-90ef3c742b45
+    export EXTENSIONS_FOLDER_PATH\=KMVirtualCamera.app/Contents/Extensions
+    export FILE_LIST\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects/LinkFileList
+    export FIXED_FILES_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/FixedFiles
+    export FRAMEWORKS_FOLDER_PATH\=KMVirtualCamera.app/Contents/Frameworks
+    export FRAMEWORK_FLAG_PREFIX\=-framework
+    export FRAMEWORK_SEARCH_PATHS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug\ 
+    export FRAMEWORK_VERSION\=A
+    export FULL_PRODUCT_NAME\=KMVirtualCamera.app
+    export FUSE_BUILD_PHASES\=YES
+    export FUSE_BUILD_SCRIPT_PHASES\=NO
+    export GCC3_VERSION\=3.3
+    export GCC_C_LANGUAGE_STANDARD\=gnu11
+    export GCC_DYNAMIC_NO_PIC\=NO
+    export GCC_INLINES_ARE_PRIVATE_EXTERN\=YES
+    export GCC_NO_COMMON_BLOCKS\=YES
+    export GCC_OPTIMIZATION_LEVEL\=0
+    export GCC_PFE_FILE_C_DIALECTS\=c\ objective-c\ c++\ objective-c++
+    export GCC_PREPROCESSOR_DEFINITIONS\=\ DEBUG\=1
+    export GCC_SYMBOLS_PRIVATE_EXTERN\=NO
+    export GCC_TREAT_WARNINGS_AS_ERRORS\=NO
+    export GCC_VERSION\=com.apple.compilers.llvm.clang.1_0
+    export GCC_VERSION_IDENTIFIER\=com_apple_compilers_llvm_clang_1_0
+    export GCC_WARN_64_TO_32_BIT_CONVERSION\=YES
+    export GCC_WARN_ABOUT_RETURN_TYPE\=YES_ERROR
+    export GCC_WARN_UNDECLARED_SELECTOR\=YES
+    export GCC_WARN_UNINITIALIZED_AUTOS\=YES_AGGRESSIVE
+    export GCC_WARN_UNUSED_FUNCTION\=YES
+    export GCC_WARN_UNUSED_VARIABLE\=YES
+    export GENERATED_MODULEMAP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/GeneratedModuleMaps
+    export GENERATE_INFOPLIST_FILE\=NO
+    export GENERATE_INTERMEDIATE_TEXT_BASED_STUBS\=YES
+    export GENERATE_PKGINFO_FILE\=YES
+    export GENERATE_PRELINK_OBJECT_FILE\=NO
+    export GENERATE_PROFILING_CODE\=NO
+    export GENERATE_TEXT_BASED_STUBS\=NO
+    export GID\=20
+    export GROUP\=staff
+    export HEADERMAP_INCLUDES_FLAT_ENTRIES_FOR_TARGET_BEING_BUILT\=YES
+    export HEADERMAP_INCLUDES_FRAMEWORK_ENTRIES_FOR_ALL_PRODUCT_TYPES\=YES
+    export HEADERMAP_INCLUDES_FRAMEWORK_ENTRIES_FOR_TARGETS_NOT_BEING_BUILT\=YES
+    export HEADERMAP_INCLUDES_NONPUBLIC_NONPRIVATE_HEADERS\=YES
+    export HEADERMAP_INCLUDES_PROJECT_HEADERS\=YES
+    export HEADERMAP_USES_FRAMEWORK_PREFIX_ENTRIES\=YES
+    export HEADERMAP_USES_VFS\=NO
+    export HEADER_SEARCH_PATHS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug/include\ \ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../shared
+    export HOME\=/Users/kenichim
+    export HOST_ARCH\=arm64
+    export HOST_PLATFORM\=macosx
+    export ICONV\=/usr/bin/iconv
+    export IMPLICIT_DEPENDENCY_DOMAIN\=default
+    export INDEX_STORE_COMPRESS\=NO
+    export INDEX_STORE_ONLY_PROJECT_FILES\=NO
+    export INFOPLIST_ENABLE_CFBUNDLEICONS_MERGE\=YES
+    export INFOPLIST_EXPAND_BUILD_SETTINGS\=YES
+    export INFOPLIST_FILE\=host/Info.plist
+    export INFOPLIST_OUTPUT_FORMAT\=same-as-input
+    export INFOPLIST_PATH\=KMVirtualCamera.app/Contents/Info.plist
+    export INFOPLIST_PREPROCESS\=NO
+    export INFOSTRINGS_PATH\=KMVirtualCamera.app/Contents/Resources/en.lproj/InfoPlist.strings
+    export INLINE_PRIVATE_FRAMEWORKS\=NO
+    export INSTALLAPI_IGNORE_SKIP_INSTALL\=YES
+    export INSTALLHDRS_COPY_PHASE\=NO
+    export INSTALLHDRS_SCRIPT_PHASE\=NO
+    export INSTALL_DIR\=/tmp/KMVirtualCamera.dst/Applications
+    export INSTALL_GROUP\=staff
+    export INSTALL_MODE_FLAG\=u+w,go-w,a+rX
+    export INSTALL_OWNER\=kenichim
+    export INSTALL_PATH\=/Applications
+    export INSTALL_ROOT\=/tmp/KMVirtualCamera.dst
+    export IOS_UNZIPPERED_TWIN_PREFIX_PATH\=/System/iOSSupport
+    export IS_MACCATALYST\=NO
+    export IS_UNOPTIMIZED_BUILD\=YES
+    export JAVAC_DEFAULT_FLAGS\=-J-Xms64m\ -J-XX:NewSize\=4M\ -J-Dfile.encoding\=UTF8
+    export JAVA_APP_STUB\=/System/Library/Frameworks/JavaVM.framework/Resources/MacOS/JavaApplicationStub
+    export JAVA_ARCHIVE_CLASSES\=YES
+    export JAVA_ARCHIVE_TYPE\=JAR
+    export JAVA_COMPILER\=/usr/bin/javac
+    export JAVA_FOLDER_PATH\=KMVirtualCamera.app/Contents/Resources/Java
+    export JAVA_FRAMEWORK_RESOURCES_DIRS\=Resources
+    export JAVA_JAR_FLAGS\=cv
+    export JAVA_SOURCE_SUBDIR\=.
+    export JAVA_USE_DEPENDENCIES\=YES
+    export JAVA_ZIP_FLAGS\=-urg
+    export JIKES_DEFAULT_FLAGS\=+E\ +OLDCSO
+    export KASAN_CFLAGS_CLASSIC\=-DKASAN\=1\ -DKASAN_CLASSIC\=1\ -fsanitize\=address\ -mllvm\ -asan-globals-live-support\ -mllvm\ -asan-force-dynamic-shadow
+    export KASAN_CFLAGS_TBI\=-DKASAN\=1\ -DKASAN_TBI\=1\ -fsanitize\=kernel-hwaddress\ -mllvm\ -hwasan-recover\=0\ -mllvm\ -hwasan-instrument-atomics\=0\ -mllvm\ -hwasan-instrument-stack\=1\ -mllvm\ -hwasan-generate-tags-with-calls\=1\ -mllvm\ -hwasan-instrument-with-calls\=1\ -mllvm\ -hwasan-use-short-granules\=0\ -mllvm\ -hwasan-memory-access-callback-prefix\=__asan_
+    export KASAN_DEFAULT_CFLAGS\=-DKASAN\=1\ -DKASAN_CLASSIC\=1\ -fsanitize\=address\ -mllvm\ -asan-globals-live-support\ -mllvm\ -asan-force-dynamic-shadow
+    export KEEP_PRIVATE_EXTERNS\=NO
+    export LD_DEPENDENCY_INFO_FILE\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal/undefined_arch/KMVirtualCamera_dependency_info.dat
+    export LD_EXPORT_SYMBOLS\=YES
+    export LD_GENERATE_MAP_FILE\=NO
+    export LD_MAP_FILE_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/KMVirtualCamera-LinkMap-normal-undefined_arch.txt
+    export LD_NO_PIE\=NO
+    export LD_QUOTE_LINKER_ARGUMENTS_FOR_COMPILER_DRIVER\=YES
+    export LD_RUNPATH_SEARCH_PATHS\=\ @executable_path/../Frameworks
+    export LD_RUNPATH_SEARCH_PATHS_YES\=@loader_path/../Frameworks
+    export LD_SHARED_CACHE_ELIGIBLE\=Automatic
+    export LD_WARN_DUPLICATE_LIBRARIES\=NO
+    export LD_WARN_UNUSED_DYLIBS\=NO
+    export LEGACY_DEVELOPER_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/PlugIns/Xcode3Core.ideplugin/Contents/SharedSupport/Developer
+    export LEX\=lex
+    export LIBRARY_DEXT_INSTALL_PATH\=/Library/DriverExtensions
+    export LIBRARY_FLAG_NOSPACE\=YES
+    export LIBRARY_FLAG_PREFIX\=-l
+    export LIBRARY_KEXT_INSTALL_PATH\=/Library/Extensions
+    export LIBRARY_SEARCH_PATHS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug\ \ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/macos\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/libdatachannel-build\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/libdatachannel-build/deps/libjuice\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/libdatachannel-build/deps/libsrtp\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/libdatachannel-build/deps/usrsctp/usrsctplib\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/mbedtls-build/library\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/mbedtls-build/3rdparty/everest\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/mbedtls-build/3rdparty/p256-m\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/km_opus-build
+    export LINKER_DISPLAYS_MANGLED_NAMES\=NO
+    export LINK_FILE_LIST_normal_arm64\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal/arm64/KMVirtualCamera.LinkFileList
+    export LINK_OBJC_RUNTIME\=YES
+    export LINK_WITH_STANDARD_LIBRARIES\=YES
+    export LLVM_TARGET_TRIPLE_OS_VERSION\=macos12.3
+    export LLVM_TARGET_TRIPLE_OS_VERSION_NO\=macos12.3
+    export LLVM_TARGET_TRIPLE_OS_VERSION_YES\=macos26.5
+    export LLVM_TARGET_TRIPLE_VENDOR\=apple
+    export LM_AUX_CONST_METADATA_LIST_PATH_normal_arm64\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal/arm64/KMVirtualCamera.SwiftConstValuesFileList
+    export LOCALIZATION_EXPORT_SUPPORTED\=YES
+    export LOCALIZATION_PREFERS_STRING_CATALOGS\=NO
+    export LOCALIZED_RESOURCES_FOLDER_PATH\=KMVirtualCamera.app/Contents/Resources/en.lproj
+    export LOCALIZED_STRING_CODE_COMMENTS\=NO
+    export LOCALIZED_STRING_MACRO_NAMES\=NSLocalizedString\ CFCopyLocalizedString
+    export LOCALIZED_STRING_SWIFTUI_SUPPORT\=YES
+    export LOCAL_ADMIN_APPS_DIR\=/Applications/Utilities
+    export LOCAL_APPS_DIR\=/Applications
+    export LOCAL_DEVELOPER_DIR\=/Library/Developer
+    export LOCAL_LIBRARY_DIR\=/Library
+    export LOCROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export LOCSYMROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export MACH_O_TYPE\=mh_execute
+    export MACOSX_DEPLOYMENT_TARGET\=12.3
+    export MAC_OS_X_PRODUCT_BUILD_VERSION\=25G229
+    export MAC_OS_X_VERSION_ACTUAL\=260700
+    export MAC_OS_X_VERSION_MAJOR\=260000
+    export MAC_OS_X_VERSION_MINOR\=260700
+    export MAKE_MERGEABLE\=NO
+    export MERGEABLE_LIBRARY\=NO
+    export MERGED_BINARY_TYPE\=none
+    export MERGE_LINKED_LIBRARIES\=NO
+    export METAL_LIBRARY_FILE_BASE\=default
+    export METAL_LIBRARY_OUTPUT_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug/KMVirtualCamera.app/Contents/Resources
+    export MODULES_FOLDER_PATH\=KMVirtualCamera.app/Contents/Modules
+    export MODULE_CACHE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/ModuleCache.noindex
+    export MTL_ENABLE_DEBUG_INFO\=INCLUDE_SOURCE
+    export MTL_FAST_MATH\=YES
+    export NATIVE_ARCH\=arm64
+    export NATIVE_ARCH_32_BIT\=arm
+    export NATIVE_ARCH_64_BIT\=arm64
+    export NATIVE_ARCH_ACTUAL\=arm64
+    export NO_COMMON\=YES
+    export OBJECT_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects
+    export OBJECT_FILE_DIR_normal\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal
+    export OBJROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex
+    export ONLY_ACTIVE_ARCH\=YES
+    export OS\=MACOS
+    export OSAC\=/usr/bin/osacompile
+    export OTHER_CFLAGS\=\ -isystem\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/libdatachannel-src/include\ -isystem\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/libdatachannel-src/deps/plog/include
+    export OTHER_CPLUSPLUSFLAGS\=\ -isystem\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/libdatachannel-src/include\ -isystem\ /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/../build/macos-rtc/_deps/libdatachannel-src/deps/plog/include
+    export OTHER_LDFLAGS\=\ -lkm_extension_manager\ -lkm_macos_buffers\ -lkm_macos_signaling\ -lkm_signaling_worker\ -lkm_macos_pipeline\ -lkm_macos_decoder\ -lkm_rtc_shared\ -lkm_receiver_engine\ -lkm_audio\ -lkm_media_core\ -lopus\ -ldatachannel-static\ -lusrsctp\ -lsrtp2\ -lmbedtls\ -lmbedcrypto\ -lmbedx509\ -ljuice-static\ -leverest\ -lp256m\ -lkm_macos_audio_output\ -framework\ VideoToolbox\ -framework\ AudioToolbox\ -framework\ CoreAudio\ -framework\ CoreFoundation
+    export PACKAGE_TYPE\=com.apple.package-type.wrapper.application
+    export PASCAL_STRINGS\=YES
+    export PATH\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/SharedFrameworks/SwiftBuild.framework/Versions/A/PlugIns/SWBBuildService.bundle/Contents/PlugIns/SWBUniversalPlatformPlugin.bundle/Contents/Frameworks/SWBUniversalPlatform.framework/Resources:/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.4RVUI0/Metal.xctoolchain/usr/bin:/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.4RVUI0/Metal.xctoolchain/usr/local/bin:/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.4RVUI0/Metal.xctoolchain/usr/libexec:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/local/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/libexec:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/usr/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/usr/local/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/local/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin:/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/kenichim/.local/bin:/Users/kenichim/.nvm/versions/node/v24.12.0/bin:/Users/kenichim/.opencode/bin:/opt/homebrew/opt/openjdk@21/bin:/Users/kenichim/.pyenv/shims:/Users/kenichim/.pyenv/bin:/Users/kenichim/Desktop/work/flutter/flutter/bin:/opt/homebrew/opt/node@22/bin:/Users/kenichim/Library/Android/sdk/platform-tools:/Users/kenichim/.rbenv/shims:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/Users/kenichim/.cargo/bin:/Applications/Android\ Studio.app/Contents/MacOS:/Users/kenichim/Desktop/work/flutter/sdk/flutter/bin:/Users/kenichim/.gem/bin
+    export PATH_PREFIXES_EXCLUDED_FROM_HEADER_DEPENDENCIES\=/usr/include\ /usr/local/include\ /System/Library/Frameworks\ /System/Library/PrivateFrameworks\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Headers\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/SDKs\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms
+    export PBDEVELOPMENTPLIST_PATH\=KMVirtualCamera.app/Contents/pbdevelopment.plist
+    export PER_ARCH_MODULE_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal/undefined_arch
+    export PER_ARCH_OBJECT_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal/undefined_arch
+    export PER_VARIANT_OBJECT_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal
+    export PKGINFO_FILE_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/PkgInfo
+    export PKGINFO_PATH\=KMVirtualCamera.app/Contents/PkgInfo
+    export PLATFORM_DEVELOPER_APPLICATIONS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications
+    export PLATFORM_DEVELOPER_BIN_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin
+    export PLATFORM_DEVELOPER_LIBRARY_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library
+    export PLATFORM_DEVELOPER_SDK_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
+    export PLATFORM_DEVELOPER_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Tools
+    export PLATFORM_DEVELOPER_USR_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr
+    export PLATFORM_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform
+    export PLATFORM_DISPLAY_NAME\=macOS
+    export PLATFORM_FAMILY_NAME\=macOS
+    export PLATFORM_NAME\=macosx
+    export PLATFORM_PREFERRED_ARCH\=x86_64
+    export PLATFORM_PRODUCT_BUILD_VERSION\=25F70
+    export PLATFORM_REQUIRES_SWIFT_AUTOLINK_EXTRACT\=NO
+    export PLATFORM_REQUIRES_SWIFT_MODULEWRAP\=NO
+    export PLATFORM_USES_DSYMS\=YES
+    export PLIST_FILE_OUTPUT_FORMAT\=same-as-input
+    export PLUGINS_FOLDER_PATH\=KMVirtualCamera.app/Contents/PlugIns
+    export PRECOMPS_INCLUDE_HEADERS_FROM_BUILT_PRODUCTS_DIR\=YES
+    export PRECOMP_DESTINATION_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/PrefixHeaders
+    export PRIVATE_HEADERS_FOLDER_PATH\=KMVirtualCamera.app/Contents/PrivateHeaders
+    export PROCESSED_INFOPLIST_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal/undefined_arch/Processed-Info.plist
+    export PRODUCT_BUNDLE_IDENTIFIER\=jp.yasagure.kmvirtualcamera.macos.app
+    export PRODUCT_BUNDLE_PACKAGE_TYPE\=APPL
+    export PRODUCT_MODULE_NAME\=KMVirtualCamera
+    export PRODUCT_NAME\=KMVirtualCamera
+    export PRODUCT_SETTINGS_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/host/Info.plist
+    export PRODUCT_TYPE\=com.apple.product-type.application
+    export PROFILING_CODE\=NO
+    export PROJECT\=KMVirtualCamera
+    export PROJECT_DERIVED_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/DerivedSources
+    export PROJECT_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export PROJECT_FILE_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/KMVirtualCamera.xcodeproj
+    export PROJECT_GUID\=3dfed0f0d49db0ee898add66cecc0005
+    export PROJECT_NAME\=KMVirtualCamera
+    export PROJECT_TEMP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build
+    export PROJECT_TEMP_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex
+    export PROVISIONING_PROFILE_REQUIRED\=NO
+    export PROVISIONING_PROFILE_REQUIRED_YES_YES\=YES
+    export PROVISIONING_PROFILE_SUPPORTED\=YES
+    export PUBLIC_HEADERS_FOLDER_PATH\=KMVirtualCamera.app/Contents/Headers
+    export RECOMMENDED_MACOSX_DEPLOYMENT_TARGET\=11.0
+    export RECURSIVE_SEARCH_PATHS_FOLLOW_SYMLINKS\=YES
+    export REMOVE_CVS_FROM_RESOURCES\=YES
+    export REMOVE_GIT_FROM_RESOURCES\=YES
+    export REMOVE_HEADERS_FROM_EMBEDDED_BUNDLES\=YES
+    export REMOVE_HG_FROM_RESOURCES\=YES
+    export REMOVE_STATIC_EXECUTABLES_FROM_EMBEDDED_BUNDLES\=YES
+    export REMOVE_SVN_FROM_RESOURCES\=YES
+    export RESCHEDULE_INDEPENDENT_HEADERS_PHASES\=YES
+    export REZ_COLLECTOR_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/ResourceManagerResources
+    export REZ_OBJECTS_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/ResourceManagerResources/Objects
+    export REZ_SEARCH_PATHS\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug\ 
+    export RPATH_ORIGIN\=@loader_path
+    export RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES\=NO
+    export RUNTIME_EXCEPTION_ALLOW_JIT\=NO
+    export RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY\=NO
+    export RUNTIME_EXCEPTION_DEBUGGING_TOOL\=NO
+    export RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION\=NO
+    export RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION\=NO
+    export SCANNING_PCM_KEEP_CACHE_DIRECTORY\=YES
+    export SCAN_ALL_SOURCE_FILES_FOR_INCLUDES\=NO
+    export SCRIPTS_FOLDER_PATH\=KMVirtualCamera.app/Contents/Resources/Scripts
+    export SCRIPT_INPUT_FILE_COUNT\=0
+    export SCRIPT_INPUT_FILE_LIST_COUNT\=0
+    export SCRIPT_OUTPUT_FILE_COUNT\=0
+    export SCRIPT_OUTPUT_FILE_LIST_COUNT\=0
+    export SDKROOT\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk
+    export SDK_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk
+    export SDK_DIR_macosx\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk
+    export SDK_DIR_macosx26_5\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk
+    export SDK_NAME\=macosx26.5
+    export SDK_NAMES\=macosx26.5
+    export SDK_PRODUCT_BUILD_VERSION\=25F70
+    export SDK_STAT_CACHE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData
+    export SDK_STAT_CACHE_ENABLE\=YES
+    export SDK_STAT_CACHE_PATH\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448fa57390314b4fd4b49b5487f11925bcac.sdkstatcache
+    export SDK_VERSION\=26.5
+    export SDK_VERSION_ACTUAL\=260500
+    export SDK_VERSION_MAJOR\=260000
+    export SDK_VERSION_MINOR\=260500
+    export SED\=/usr/bin/sed
+    export SEPARATE_STRIP\=NO
+    export SEPARATE_SYMBOL_EDIT\=NO
+    export SET_DIR_MODE_OWNER_GROUP\=YES
+    export SET_FILE_MODE_OWNER_GROUP\=NO
+    export SHALLOW_BUNDLE\=NO
+    export SHALLOW_BUNDLE_PLATFORM\=NO
+    export SHALLOW_BUNDLE_TRIPLE\=macos
+    export SHALLOW_BUNDLE_ios_macabi\=NO
+    export SHALLOW_BUNDLE_macos\=NO
+    export SHARED_DERIVED_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug/DerivedSources
+    export SHARED_FRAMEWORKS_FOLDER_PATH\=KMVirtualCamera.app/Contents/SharedFrameworks
+    export SHARED_PRECOMPS_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/PrecompiledHeaders
+    export SHARED_SUPPORT_FOLDER_PATH\=KMVirtualCamera.app/Contents/SharedSupport
+    export SKIP_INSTALL\=NO
+    export SKIP_MERGEABLE_LIBRARY_BUNDLE_HOOK\=NO
+    export SOURCE_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export SRCROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos
+    export STRINGSDATA_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal/undefined_arch
+    export STRINGSDATA_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build
+    export STRINGS_FILE_INFOPLIST_RENAME\=YES
+    export STRINGS_FILE_OUTPUT_ENCODING\=UTF-16
+    export STRING_CATALOG_GENERATE_SYMBOLS\=NO
+    export STRIP_BITCODE_FROM_COPIED_FILES\=NO
+    export STRIP_INSTALLED_PRODUCT\=NO
+    export STRIP_PNG_TEXT\=NO
+    export STRIP_STYLE\=all
+    export STRIP_SWIFT_SYMBOLS\=YES
+    export SUPPORTED_PLATFORMS\=macosx
+    export SUPPORTS_MACCATALYST\=NO
+    export SUPPORTS_ON_DEMAND_RESOURCES\=NO
+    export SUPPORTS_TEXT_BASED_API\=NO
+    export SUPPRESS_WARNINGS\=NO
+    export SWIFT_ACTIVE_COMPILATION_CONDITIONS\=DEBUG
+    export SWIFT_EMIT_CONST_VALUE_PROTOCOLS\=AnyResolverProviding\ AppEntity\ AppEnum\ AppExtension\ AppIntent\ AppIntentsPackage\ AppShortcutProviding\ AppShortcutsProvider\ DynamicOptionsProvider\ EntityQuery\ ExtensionPointDefining\ IntentValueQuery\ Resolver\ TransientEntity\ _AssistantIntentsProvider\ _GenerativeFunctionExtractable\ _IntentValueRepresentable
+    export SWIFT_EMIT_LOC_STRINGS\=NO
+    export SWIFT_ENABLE_EXPLICIT_MODULES\=YES
+    export SWIFT_OPTIMIZATION_LEVEL\=-Onone
+    export SWIFT_PLATFORM_TARGET_PREFIX\=macos
+    export SWIFT_RESPONSE_FILE_PATH_normal_arm64\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Objects-normal/arm64/KMVirtualCamera.SwiftFileList
+    export SWIFT_VERSION\=5.0
+    export SYMROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products
+    export SYSTEM_ADMIN_APPS_DIR\=/Applications/Utilities
+    export SYSTEM_APPS_DIR\=/Applications
+    export SYSTEM_CORE_SERVICES_DIR\=/System/Library/CoreServices
+    export SYSTEM_DEMOS_DIR\=/Applications/Extras
+    export SYSTEM_DEVELOPER_APPS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications
+    export SYSTEM_DEVELOPER_BIN_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr/bin
+    export SYSTEM_DEVELOPER_DEMOS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Utilities/Built\ Examples
+    export SYSTEM_DEVELOPER_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer
+    export SYSTEM_DEVELOPER_DOC_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/ADC\ Reference\ Library
+    export SYSTEM_DEVELOPER_GRAPHICS_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Graphics\ Tools
+    export SYSTEM_DEVELOPER_JAVA_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Java\ Tools
+    export SYSTEM_DEVELOPER_PERFORMANCE_TOOLS_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Performance\ Tools
+    export SYSTEM_DEVELOPER_RELEASENOTES_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/ADC\ Reference\ Library/releasenotes
+    export SYSTEM_DEVELOPER_TOOLS\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Tools
+    export SYSTEM_DEVELOPER_TOOLS_DOC_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/ADC\ Reference\ Library/documentation/DeveloperTools
+    export SYSTEM_DEVELOPER_TOOLS_RELEASENOTES_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/ADC\ Reference\ Library/releasenotes/DeveloperTools
+    export SYSTEM_DEVELOPER_USR_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/usr
+    export SYSTEM_DEVELOPER_UTILITIES_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Applications/Utilities
+    export SYSTEM_DEXT_INSTALL_PATH\=/System/Library/DriverExtensions
+    export SYSTEM_DOCUMENTATION_DIR\=/Library/Documentation
+    export SYSTEM_EXTENSIONS_FOLDER_PATH\=KMVirtualCamera.app/Contents/Library/SystemExtensions
+    export SYSTEM_EXTENSIONS_FOLDER_PATH_SHALLOW_BUNDLE_NO\=KMVirtualCamera.app/Contents/Library/SystemExtensions
+    export SYSTEM_EXTENSIONS_FOLDER_PATH_SHALLOW_BUNDLE_YES\=KMVirtualCamera.app/Contents/SystemExtensions
+    export SYSTEM_KEXT_INSTALL_PATH\=/System/Library/Extensions
+    export SYSTEM_LIBRARY_DIR\=/System/Library
+    export TAPI_DEMANGLE\=YES
+    export TAPI_ENABLE_PROJECT_HEADERS\=NO
+    export TAPI_LANGUAGE\=objective-c
+    export TAPI_LANGUAGE_STANDARD\=compiler-default
+    export TAPI_USE_SRCROOT\=YES
+    export TAPI_VERIFY_MODE\=Pedantic
+    export TARGETNAME\=KMVirtualCamera
+    export TARGET_BUILD_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Products/Debug
+    export TARGET_NAME\=KMVirtualCamera
+    export TARGET_TEMP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build
+    export TEMP_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build
+    export TEMP_FILES_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build
+    export TEMP_FILE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build
+    export TEMP_ROOT\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex
+    export TEMP_SANDBOX_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/TemporaryTaskSandboxes
+    export TEST_FRAMEWORK_SEARCH_PATHS\=\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks
+    export TEST_LIBRARY_SEARCH_PATHS\=\ /Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib
+    export TOOLCHAINS\=com.apple.dt.toolchain.Metal.32023.883\ com.apple.dt.toolchain.XcodeDefault
+    export TOOLCHAIN_DIR\=/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.4RVUI0/Metal.xctoolchain
+    export TOOLCHAIN_VERSION\=32023.883
+    export TREAT_MISSING_BASELINES_AS_TEST_FAILURES\=NO
+    export TREAT_MISSING_SCRIPT_PHASE_OUTPUTS_AS_ERRORS\=NO
+    export TeamIdentifierPrefix\=K7VNGA9K78.
+    export UID\=502
+    export UNINSTALLED_PRODUCTS_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/UninstalledProducts
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH\=KMVirtualCamera.app/Contents/Resources
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH_SHALLOW_BUNDLE_NO\=KMVirtualCamera.app/Contents/Resources
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH_SHALLOW_BUNDLE_YES\=KMVirtualCamera.app/Contents
+    export UNSTRIPPED_PRODUCT\=NO
+    export USER\=kenichim
+    export USER_APPS_DIR\=/Users/kenichim/Applications
+    export USER_LIBRARY_DIR\=/Users/kenichim/Library
+    export USE_DYNAMIC_NO_PIC\=YES
+    export USE_HEADERMAP\=YES
+    export USE_HEADER_SYMLINKS\=NO
+    export VALIDATE_DEVELOPMENT_ASSET_PATHS\=YES_ERROR
+    export VALIDATE_PRODUCT\=NO
+    export VALID_ARCHS\=arm64\ arm64e\ i386\ x86_64
+    export VERBOSE_PBXCP\=NO
+    export VERSIONPLIST_PATH\=KMVirtualCamera.app/Contents/version.plist
+    export VERSION_INFO_BUILDER\=kenichim
+    export VERSION_INFO_FILE\=KMVirtualCamera_vers.c
+    export VERSION_INFO_STRING\=\"@\(\#\)PROGRAM:KMVirtualCamera\ \ PROJECT:KMVirtualCamera-\"
+    export WORKSPACE_DIR\=/Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/KMVirtualCamera.xcodeproj
+    export WRAPPER_EXTENSION\=app
+    export WRAPPER_NAME\=KMVirtualCamera.app
+    export WRAPPER_SUFFIX\=.app
+    export WRAP_ASSET_PACKS_IN_SEPARATE_DIRECTORIES\=NO
+    export XCODE_APP_SUPPORT_DIR\=/Users/kenichim/Desktop/Xcode-26.6.0.app/Contents/Developer/Library/Xcode
+    export XCODE_PRODUCT_BUILD_VERSION\=17F113
+    export XCODE_VERSION_ACTUAL\=2660
+    export XCODE_VERSION_MAJOR\=2600
+    export XCODE_VERSION_MINOR\=2660
+    export XPCSERVICES_FOLDER_PATH\=KMVirtualCamera.app/Contents/XPCServices
+    export YACC\=yacc
+    export _BOOL_\=NO
+    export _BOOL_NO\=NO
+    export _BOOL_YES\=YES
+    export _DEVELOPMENT_TEAM_IS_EMPTY\=NO
+    export _DISCOVER_COMMAND_LINE_LINKER_INPUTS\=YES
+    export _DISCOVER_COMMAND_LINE_LINKER_INPUTS_INCLUDE_WL\=YES
+    export _IS_EMPTY_\=YES
+    export _LD_MULTIARCH\=YES
+    export _MACOSX_DEPLOYMENT_TARGET_IS_EMPTY\=NO
+    export _WRAPPER_CONTENTS_DIR\=/Contents
+    export _WRAPPER_CONTENTS_DIR_SHALLOW_BUNDLE_NO\=/Contents
+    export _WRAPPER_PARENT_PATH\=/..
+    export _WRAPPER_PARENT_PATH_SHALLOW_BUNDLE_NO\=/..
+    export _WRAPPER_RESOURCES_DIR\=/Resources
+    export _WRAPPER_RESOURCES_DIR_SHALLOW_BUNDLE_NO\=/Resources
+    export __DIAGNOSE_DEPRECATED_ARCHS\=YES
+    export __IS_NOT_MACOS\=NO
+    export __IS_NOT_MACOS_macosx\=NO
+    export __IS_NOT_SIMULATOR\=YES
+    export __IS_NOT_SIMULATOR_simulator\=NO
+    export __ORIGINAL_SDK_DEFINED_LLVM_TARGET_TRIPLE_SYS\=macos
+    export arch\=undefined_arch
+    export variant\=normal
+    /bin/sh -c /Users/kenichim/Desktop/work/kmvirtualcamera-macos-coremediaio-foundation/macos/DerivedData/Build/Intermediates.noindex/KMVirtualCamera.build/Debug/KMVirtualCamera.build/Script-9BD2AC63D54D964BF3A82629.sh
+[  4%] Built target km_signaling_worker
+[ 12%] Built target km_macos_audio_pcm_queue_test
+[ 14%] Built target km_media_core
+[ 18%] Built target km_extension_manager
+[ 22%] Built target km_macos_audio_output
+[ 27%] Built target km_macos_signaling
+[ 31%] Built target km_macos_buffers
+[ 37%] Built target km_macos_qr_test
+[ 41%] Built target km_signaling_worker_tests
+[ 45%] Built target km_audio
+[ 50%] Built target km_receiver_engine
+[ 58%] Built target km_dc_tests
+[ 62%] Built target km_core_tests
+[ 62%] Built target km_session_tests
+[ 66%] Built target km_review_tests
+[ 70%] Built target km_macos_audio_output_test
+[ 75%] Built target km_macos_http_tests
+[ 79%] Built target km_camera_relay
+[ 83%] Built target km_macos_decoder
+[ 87%] Built target km_engine_tests
+[ 95%] Built target km_macos_media_smoke
+[ 95%] Built target km_macos_pipeline
+[100%] Built target km_macos_pipeline_test
+[  0%] Built target p256m
+[  1%] Built target everest
+[  1%] Built target km_media_core
+[  4%] Built target km_extension_manager
+[  4%] Built target km_signaling_worker
+[  6%] Built target juice-static
+[ 11%] Built target srtp2
+[ 17%] Built target usrsctp
+[ 19%] Built target juice
+[ 20%] Built target km_macos_signaling
+[ 21%] Built target km_macos_audio_output
+[ 21%] Built target km_macos_qr_test
+[ 21%] Built target km_macos_audio_pcm_queue_test
+[ 44%] Built target km_macos_buffers
+[ 50%] Built target opus
+[ 50%] Built target km_session_tests
+[ 50%] Built target km_receiver_engine
+[ 50%] Built target km_review_tests
+[ 50%] Built target km_macos_http_tests
+[ 50%] Built target km_core_tests
+[ 50%] Built target km_dc_tests
+[ 50%] Built target km_macos_decoder
+[ 50%] Built target km_macos_audio_output_test
+[ 51%] Built target km_signaling_worker_tests
+[ 66%] Built target mbedcrypto
+[ 66%] Built target km_audio
+[ 67%] Built target km_engine_tests
+[ 68%] Built target km_camera_relay
+[ 70%] Built target mbedx509
+[ 70%] Built target km_macos_pipeline
+[ 71%] Built target km_macos_media_smoke
+[ 72%] Built target km_opus_tests
+[ 91%] Built target datachannel
+[ 94%] Built target datachannel-static
+[ 97%] Built target mbedtls
+[ 98%] Built target km_macos_pipeline_test
+[ 99%] Built target km_rtc_shared
+[100%] Built target km_rtc_answer_tests
+[100%] Built target km_rtc_load_tests
+
+** BUILD SUCCEEDED **
+
+build=0
