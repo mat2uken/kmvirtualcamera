@@ -289,7 +289,7 @@ C4は「同じ版で音声（Core Audio出力まで）」で決まり、A6を実
 | Team ID | `K7VNGA9K78` |
 | host bundle ID | `jp.yasagure.kmvirtualcamera.macos` |
 | extension bundle ID | `jp.yasagure.kmvirtualcamera.macos.camera-extension` |
-| App Group | 既存の `K7VNGA9K78.com.mat2uken.kmvirtualcamera` を沿用（新規不要） |
+| App Group | 既存の `group.jp.yasagure.kmvirtualcamera.k7vnga9k78` を沿用（新規不要） |
 | 配布形式 | App Store、macOS/Windows |
 | Intel対応 | 不要 |
 | 署名 | 開発署名（Apple Development） |
@@ -312,7 +312,7 @@ App Group は bundle ID と独立しており、team prefix だけで決まる�
 | extension bundle ID | `jp.yasagure.kmvirtualcamera.macos.camera-extension` |
 | host team identifier | `K7VNGA9K78` |
 | extension team identifier | `K7VNGA9K78` |
-| App Group（両者） | `K7VNGA9K78.com.mat2uken.kmvirtualcamera` |
+| App Group（両者） | `group.jp.yasagure.kmvirtualcamera.k7vnga9k78` |
 | 署名 | Apple Development: Kenichi Matsumoto (M4FBGCLF45) |
 
 `codesign --verify --deep --strict` はhost・extensionともに通り、entitlementsのteam-identifierとApp Groupが一致した。
@@ -359,6 +359,16 @@ AMFI要求は host の実 bundle ID・team と一致する。文字列は `ident
 | 影響範囲 | ローカル開発環境のみ。プロダクションコード・同梱物への影響なし |
 | 更新可否 | `audit fix --force` はメジャーアップデートを要求。互換性検証が必要 |
 | 対処方針 | 開発ツールは最新のマイナー系に追従。プロダクション依存は変更なし。CIで audit を定期実行 |
+
+### 段階10 item4 依存点検（2026-09-28）
+
+| 項目 | 内容 |
+|---|---|
+| 目的・合格条件 | 依存の脆弱性・ライセンス・同梱版を点検する |
+| 結果 | 15件（2 low, 5 moderate, 6 high, 2 critical） |
+| 対象 | undici, ws（@cloudflare/vitest-pool-workers 依存） |
+| 影響 | 開発依存のみ。製品コード（ブラウザ送信・host）は影響なし |
+| 対処 | `npm audit fix --force` は破壊的変更のため、製品リリース前に要判断 |
 
 ## 残る判断の担当と時期
 
