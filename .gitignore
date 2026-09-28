@@ -2,6 +2,7 @@
 node_modules/
 dist/
 dist-release/
+dist-macos/
 cloud/dist/
 .wrangler/
 # Local wrangler dev secrets (TURN credentials, HMAC secrets) - never commit.

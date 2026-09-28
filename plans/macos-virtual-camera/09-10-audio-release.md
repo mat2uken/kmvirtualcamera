@@ -295,6 +295,22 @@ C4は「同じ版で音声（Core Audio出力まで）」で決まり、A6を実
 
 本番依存（hono, ws等）のうちws/highはdevDependency側。hono/moderateもdevDependency。本番実行パスはクリーン。
 
+### item2 notarization・stapling・DMG化（2026-09-28）
+
+Developer ID Application で app・extension を署名し、DMG を作成して notarytool で公証した。stapling 後に spctl が accepted を返した。
+
+| 手順 | 結果 |
+|---|---|
+| extension 署名（Developer ID） | 成功 |
+| app 全体署名（Developer ID） | 成功 |
+| DMG 作成 | 2.3MB |
+| DMG 署名（Developer ID） | 成功 |
+| notarytool submit | Accepted |
+| stapler staple | 成功 |
+| spctl 評価 | accepted（Notarized Developer ID） |
+
+Xcode の Automatic 署名は Apple Development 証明書を選ぶ。Developer ID 署名は codesign で明示指定する。extension は app の一部として自動署名されないため、個別に署名する必要がある。
+
 ### 段階10 C1決定（2026-09-28）
 
 | 項目 | 値 |
