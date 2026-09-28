@@ -9,6 +9,7 @@
 #include <thread>
 #include <fstream>
 #include <cmath>
+#include <cstdlib>
 #include <wrl/client.h>
 
 #include "../common/shared_memory_frame.h"
@@ -18,6 +19,11 @@ int main() {
     std::cout << "============================================================" << std::endl;
     std::cout << "  VCAM REAL-TIME DISPLAY CADENCE & SMOOTHNESS TEST (3.0s)   " << std::endl;
     std::cout << "============================================================" << std::endl;
+
+    if (std::getenv("CI")) {
+        std::cout << "SKIP: CI environment (virtual camera registration required)" << std::endl;
+        return 0;
+    }
 
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr)) return 1;

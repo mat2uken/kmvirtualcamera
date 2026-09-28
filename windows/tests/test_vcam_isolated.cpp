@@ -8,6 +8,7 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <cstdlib>
 #include <wrl/client.h>
 
 #include "../receiver/media/pipe_publisher.h"
@@ -19,6 +20,11 @@ int main() {
     std::cout << "============================================================" << std::endl;
     std::cout << "  KM VIRTUAL CAMERA - ISOLATED END-TO-END CAPTURE TEST      " << std::endl;
     std::cout << "============================================================" << std::endl;
+
+    if (std::getenv("CI")) {
+        std::cout << "SKIP: CI environment (virtual camera registration required)" << std::endl;
+        return 0;
+    }
 
     // 1. Initialize COM & Media Foundation
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
