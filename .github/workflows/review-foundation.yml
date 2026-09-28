@@ -36,3 +36,27 @@ jobs:
       - uses: actions/checkout@v4
       - run: sh scripts/test_macos_foundation.sh
       - run: sh scripts/build_macos_rtc.sh
+  macos-release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build macOS Release
+        run: |
+          xcodebuild -project macos/KMVirtualCamera.xcodeproj \
+            -scheme KMVirtualCamera \
+            -configuration Release \
+            -derivedDataPath macos/DerivedData \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+      - name: Verify build artifacts
+        run: |
+          ls -la macos/DerivedData/Build/Products/Release/KMVirtualCamera.app/Contents/MacOS/
+          codesign -dv --verbose=4 macos/DerivedData/Build/Products/Release/KMVirtualCamera.app 2>&1 | grep "Authority" | head -3
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S windows -B build/windows -DKM_ENABLE_OPUS=ON
+      - run: cmake --build build/windows --config Release --target Receiver VirtualCameraMediaSource test_h264_depacketizer test_receiver_startup test_webrtc_dtls
+      - run: ctest --test-dir build/windows -C Release --output-on-failure

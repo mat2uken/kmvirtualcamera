@@ -311,6 +311,33 @@ Developer ID Application で app・extension を署名し、DMG を作成して 
 
 Xcode の Automatic 署名は Apple Development 証明書を選ぶ。Developer ID 署名は codesign で明示指定する。extension は app の一部として自動署名されないため、個別に署名する必要がある。
 
+### item3 実機テスト（2026-09-28）
+
+この Mac で DMG から導入し、更新・deactivation・削除・残留確認を実施した。
+
+| 手順 | 結果 |
+|---|---|
+| 導入（DMG → /Applications） | 成功 |
+| app 起動 | 成功 |
+| 仮想カメラデバイス確認 | 存在（Unique ID: C1B67446-47CF-4D2E-9C5D-76A56127F3DE） |
+| host 終了後 | デバイス残存 |
+| アンインストール後 | デバイス残存、Extension は activated enabled |
+| 再インストール後 | Unique ID 同じ（stable ID 維持） |
+| Photo Booth 起動 | 成功 |
+
+host をアンインストールしても、Extension と仮想カメラデバイスが残る。再インストールしても Unique ID は変わらない。Extension は `/Library/SystemExtensions/` に残り、`activated enabled` のまま。
+
+### item5 CI追加（2026-09-28）
+
+CI に macOS リリースビルドと Windows リリーステストを追加した。
+
+| ジョブ | 内容 |
+|---|---|
+| macos-release | xcodebuild Release ビルド、署名確認 |
+| windows-release | Windows リリースビルド、全テスト実行 |
+
+CI 成功だけで物理 Mac の capture を成功としない。物理 Mac での capture は item3 の実機テストで別途記録する。
+
 ### 段階10 C1決定（2026-09-28）
 
 | 項目 | 値 |
