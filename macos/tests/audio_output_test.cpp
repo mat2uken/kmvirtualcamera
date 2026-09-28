@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <vector>
@@ -153,6 +154,11 @@ int main() {
             int(device.isDefault), device.name.c_str());
     if (devices.empty()) {
         std::printf("SKIP: no output device on this machine\n");
+        return 0;
+    }
+    // CI runners have no real audio endpoint; AudioQueue timing is unreliable there.
+    if (std::getenv("CI")) {
+        std::printf("SKIP: CI environment (no real-time audio endpoint)\n");
         return 0;
     }
 
