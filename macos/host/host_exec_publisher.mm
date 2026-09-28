@@ -2,17 +2,16 @@
 #import "../camera-extension/ids.h"
 
 // Neutral evidence directories, probed by the extension in the same order
-// (producer_auth mode C). The group container stays first in both lists; these
-// two exist because a system extension resolves its group container at a
+// (producer_auth mode C). The group container stays first in both lists; this
+// one exists because a system extension resolves its group container at a
 // different path than this app (measured: extension stage-31 ENOENT on the
 // user's container, and /Library/Group Containers does not exist). The team-ID
-// directory name avoids collisions; /private/tmp is sticky world-writable, so a
+// directory name avoids collisions; /Users/Shared is world-writable, so a
 // pre-created foreign directory can block publication (availability only - the
 // extension's path binding and OS signature check still apply). Dev values.
 static NSArray<NSString*>* KMEvidenceDirectoryPaths(void) {
-    NSString* leaf = @"K7VNGA9K78.com.mat2uken.kmvirtualcamera";
+    NSString* leaf = @"group.jp.yasagure.kmvirtualcamera.k7vnga9k78";
     return @[
-        [@"/private/tmp" stringByAppendingPathComponent:leaf],
         [@"/Users/Shared" stringByAppendingPathComponent:leaf],
     ];
 }

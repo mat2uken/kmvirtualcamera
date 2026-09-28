@@ -6,7 +6,7 @@
   <key>com.apple.security.app-sandbox</key>
   <true/>
   <key>com.apple.security.application-groups</key>
-  <array><string>$(TeamIdentifierPrefix)com.mat2uken.kmvirtualcamera</string></array>
+  <array><string>group.jp.yasagure.kmvirtualcamera.k7vnga9k78</string></array>
   <key>com.apple.security.network.client</key>
   <true/>
   <key>com.apple.security.network.server</key>
