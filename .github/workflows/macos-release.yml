@@ -40,9 +40,9 @@ jobs:
         timeout-minutes: 5
         run: |
           ext_path="macos/DerivedData/Build/Products/Release/KMVirtualCamera.app/Contents/Library/SystemExtensions/jp.yasagure.kmvirtualcamera.macos.camext.systemextension"
-          codesign --force --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime --entitlements macos/config/CameraExtension.entitlements "$ext_path"
-          codesign --force --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
-          codesign --verify --deep --strict --verbose=2 macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
+          codesign --force --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime --entitlements macos/config/CameraExtension.entitlements --keychain build.keychain "$ext_path"
+          codesign --force --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime --keychain build.keychain macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
+          codesign --verify --deep --strict --verbose=2 --keychain build.keychain macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
       - name: Create and sign DMG
         timeout-minutes: 5
         run: |
