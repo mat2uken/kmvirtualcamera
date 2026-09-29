@@ -356,6 +356,19 @@ CI の macos-release が成功し、成果物 DMG をこの Mac に導入した�
 
 証跡は `work/records/10c-artifact-verify.txt`、`10c-install-verify.txt`、`10c-device.txt` に残した。
 
+### リリース v1.0.0 の作成と確認（2026-09-29）
+
+feature を main へ統合し、タグ駆動の Release workflow を整備した。タグ `v1.0.0` で実行し、リリースページに両成果物を添付した。
+
+| 手順 | 結果 |
+|---|---|
+| Release workflow 実行 | macos・windows・publish 成功 |
+| DMG（2.3MB） | valid、accepted、staple 有効 |
+| ZIP（1.1MB） | 5 files（exe・dll・ps1×3） |
+| 実機導入・起動 | 成功、デバイス存在（Unique ID 同一） |
+
+初回は publish が checkout 不足で失敗した。checkout 追加後にタグを付け直して再実行し、成功した。証跡は `work/records/11-release-*.txt` に残した。
+
 ### 段階10 C1決定（2026-09-28）
 
 | 項目 | 値 |
