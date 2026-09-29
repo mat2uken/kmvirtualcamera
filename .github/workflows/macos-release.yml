@@ -1,5 +1,8 @@
 name: macOS Release
 on:
+  push:
+    branches: [feature/macos-coremediaio-foundation]
+    paths: ['.github/workflows/macos-release.yml']
   workflow_dispatch:
 permissions:
   contents: read
