@@ -6,9 +6,11 @@ permissions:
 jobs:
   macos-release:
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Import signing certificates
+        timeout-minutes: 5
         run: |
           echo "${{ secrets.MACOS_APP_CERT_P12 }}" | base64 --decode > /tmp/app_cert.p12
           echo "${{ secrets.MACOS_INSTALLER_CERT_P12 }}" | base64 --decode > /tmp/installer_cert.p12
@@ -20,6 +22,7 @@ jobs:
           security unlock-keychain -p "" build.keychain
           security list-keychains -d user -s build.keychain login.keychain
       - name: Build macOS Release (unsigned)
+        timeout-minutes: 15
         run: |
           xcodebuild -project macos/KMVirtualCamera.xcodeproj \
             -scheme KMVirtualCamera \
@@ -31,12 +34,14 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
       - name: Sign extension and app
+        timeout-minutes: 5
         run: |
           ext_path="macos/DerivedData/Build/Products/Release/KMVirtualCamera.app/Contents/Library/SystemExtensions/jp.yasagure.kmvirtualcamera.macos.camext.systemextension"
           codesign --force --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime --entitlements macos/config/CameraExtension.entitlements "$ext_path"
-          codesign --force --deep --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
+          codesign --force --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
           codesign --verify --deep --strict --verbose=2 macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
       - name: Create and sign DMG
+        timeout-minutes: 5
         run: |
           mkdir -p dist-macos
           hdiutil create -volname "KMVirtualCamera" -srcfolder macos/DerivedData/Build/Products/Release/KMVirtualCamera.app -ov -format UDRW dist-macos/tmp.dmg
@@ -48,6 +53,7 @@ jobs:
           codesign --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp dist-macos/KMVirtualCamera.dmg
           codesign --verify --verbose=2 dist-macos/KMVirtualCamera.dmg
       - name: Notarize and staple
+        timeout-minutes: 15
         run: |
           xcrun notarytool submit dist-macos/KMVirtualCamera.dmg \
             --key /tmp/notary_key.p8 \
