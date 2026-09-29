@@ -338,6 +338,24 @@ CI に macOS リリースビルドと Windows リリーステストを追加し�
 
 CI 成功だけで物理 Mac の capture を成功としない。物理 Mac での capture は item3 の実機テストで別途記録する。
 
+### CI成果物DMGの導入確認（2026-09-29）
+
+CI の macos-release が成功し、成果物 DMG をこの Mac に導入した。
+
+| 手順 | 結果 |
+|---|---|
+| DMG 署名検証 | valid on disk |
+| spctl 評価 | accepted（Notarized Developer ID） |
+| stapler validate | 成功 |
+| 導入（DMG → /Applications） | 成功 |
+| app 署名検証 | valid、Developer ID Application |
+| extension 署名検証 | valid |
+| app 起動 | 成功 |
+| 仮想カメラデバイス | 存在（Unique ID は item3 と同一） |
+| Extension 状態 | activated enabled |
+
+証跡は `work/records/10c-artifact-verify.txt`、`10c-install-verify.txt`、`10c-device.txt` に残した。
+
 ### 段階10 C1決定（2026-09-28）
 
 | 項目 | 値 |
