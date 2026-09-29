@@ -59,9 +59,7 @@ jobs:
             -derivedDataPath macos/DerivedData \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY="Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" \
-            CODE_SIGN_STYLE=Manual \
-            PROVISIONING_PROFILE_SPECIFIER="" \
+            CODE_SIGN_STYLE=Automatic \
             build
       - name: Sign extension and app
         run: |
