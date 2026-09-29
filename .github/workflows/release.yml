@@ -1,0 +1,139 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV; else echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV; fi
+      - name: Import signing certificates
+        timeout-minutes: 5
+        run: |
+          echo "${{ secrets.MACOS_APP_CERT_P12 }}" | base64 --decode > /tmp/app_cert.p12
+          echo "${{ secrets.MACOS_INSTALLER_CERT_P12 }}" | base64 --decode > /tmp/installer_cert.p12
+          echo "${{ secrets.MACOS_NOTARY_KEY_P8 }}" | base64 --decode > /tmp/notary_key.p8
+          security create-keychain -p "" build.keychain
+          security import /tmp/app_cert.p12 -k build.keychain -P "${{ secrets.MACOS_APP_CERT_PASSWORD }}" -T /usr/bin/codesign
+          security import /tmp/installer_cert.p12 -k build.keychain -P "${{ secrets.MACOS_INSTALLER_CERT_PASSWORD }}" -T /usr/bin/codesign
+          security set-keychain-settings -t 3600 -u build.keychain
+          security unlock-keychain -p "" build.keychain
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security list-keychains -d user -s build.keychain login.keychain
+      - name: Build macOS Release (unsigned)
+        timeout-minutes: 30
+        run: |
+          xcodebuild -project macos/KMVirtualCamera.xcodeproj \
+            -scheme KMVirtualCamera \
+            -configuration Release \
+            -derivedDataPath macos/DerivedData \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+      - name: Sign extension and app
+        timeout-minutes: 5
+        run: |
+          ext_path="macos/DerivedData/Build/Products/Release/KMVirtualCamera.app/Contents/Library/SystemExtensions/jp.yasagure.kmvirtualcamera.macos.camext.systemextension"
+          codesign --force --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime --entitlements macos/config/CameraExtension.entitlements --keychain build.keychain "$ext_path"
+          codesign --force --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp --options runtime --keychain build.keychain macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
+          codesign --verify --deep --strict --verbose=2 --keychain build.keychain macos/DerivedData/Build/Products/Release/KMVirtualCamera.app
+      - name: Create and sign DMG
+        timeout-minutes: 5
+        run: |
+          mkdir -p dist-macos
+          hdiutil create -volname "KMVirtualCamera" -srcfolder macos/DerivedData/Build/Products/Release/KMVirtualCamera.app -ov -format UDRW dist-macos/tmp.dmg
+          mount_point=$(hdiutil attach -readwrite -noverify dist-macos/tmp.dmg | grep -o '/Volumes/.*')
+          ln -sf /Applications "$mount_point/Applications"
+          hdiutil detach "$mount_point"
+          hdiutil convert dist-macos/tmp.dmg -format UDZO -o "dist-macos/KMVirtualCamera-${{ env.VERSION }}-macOS.dmg"
+          rm -f dist-macos/tmp.dmg
+          codesign --sign "Developer ID Application: Kenichi Matsumoto (K7VNGA9K78)" --timestamp "dist-macos/KMVirtualCamera-${{ env.VERSION }}-macOS.dmg"
+          codesign --verify --verbose=2 "dist-macos/KMVirtualCamera-${{ env.VERSION }}-macOS.dmg"
+      - name: Notarize and staple
+        timeout-minutes: 15
+        run: |
+          xcrun notarytool submit "dist-macos/KMVirtualCamera-${{ env.VERSION }}-macOS.dmg" \
+            --key /tmp/notary_key.p8 \
+            --key-id "${{ secrets.MACOS_NOTARY_KEY_ID }}" \
+            --issuer "${{ secrets.MACOS_NOTARY_ISSUER }}" \
+            --wait
+          xcrun stapler staple "dist-macos/KMVirtualCamera-${{ env.VERSION }}-macOS.dmg"
+          xcrun stapler validate "dist-macos/KMVirtualCamera-${{ env.VERSION }}-macOS.dmg"
+          spctl -a -t open --context context:primary-signature -v "dist-macos/KMVirtualCamera-${{ env.VERSION }}-macOS.dmg"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMVirtualCamera-macOS
+          path: dist-macos/KMVirtualCamera-*-macOS.dmg
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve version
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") { "VERSION=${{ inputs.version }}" >> $env:GITHUB_ENV } else { "VERSION=${{ github.ref_name }}" >> $env:GITHUB_ENV }
+      - name: Create self-signed certificate
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=KM Virtual Camera Project" -CertStoreLocation "Cert:\CurrentUser\My" -NotAfter (Get-Date).AddYears(5)
+          $pwd = ConvertTo-SecureString -String "1111" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath "$env:TEMP\kmvcam.pfx" -Password $pwd
+          echo "PFX_PATH=$env:TEMP\kmvcam.pfx" >> $env:GITHUB_ENV
+      - run: cmake -S windows -B build/windows -DKM_ENABLE_OPUS=ON
+      - run: cmake --build build/windows --config Release
+      - run: ctest --test-dir build/windows -C Release --output-on-failure
+      - name: Sign binaries
+        run: |
+          $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
+          if (Test-Path $signtool) {
+            & $signtool sign /v /fd SHA256 /a /f $env:PFX_PATH /p 1111 "build\windows\Release\Receiver.exe"
+            & $signtool sign /v /fd SHA256 /a /f $env:PFX_PATH /p 1111 "build\windows\Release\VirtualCameraMediaSource.dll"
+          }
+      - name: Package ZIP
+        run: |
+          New-Item -ItemType Directory -Path dist-windows -Force | Out-Null
+          $pkg = "dist-windows\KMVirtualCamera-$env:VERSION-Windows-x64"
+          New-Item -ItemType Directory -Path $pkg -Force | Out-Null
+          Copy-Item "build\windows\Release\Receiver.exe" "$pkg\" -Force
+          Copy-Item "build\windows\Release\VirtualCameraMediaSource.dll" "$pkg\" -Force
+          Copy-Item "scripts\register_vcam.ps1", "scripts\unregister_vcam.ps1", "scripts\run_receiver.ps1" "$pkg\" -Force
+          Compress-Archive -Path "$pkg\*" -DestinationPath "$pkg.zip" -Force
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMVirtualCamera-Windows
+          path: dist-windows/KMVirtualCamera-*-Windows-x64.zip
+  publish:
+    needs: [macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create GitHub Release
+        run: |
+          ls -R dist
+          gh release create "${{ github.ref_name }}" \
+            --title "KMVirtualCamera ${{ github.ref_name }}" \
+            --generate-notes \
+            dist/KMVirtualCamera-macOS/*.dmg \
+            dist/KMVirtualCamera-Windows/*.zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
