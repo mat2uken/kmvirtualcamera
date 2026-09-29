@@ -38,7 +38,6 @@ jobs:
       - run: sh scripts/build_macos_rtc.sh
   macos-release:
     runs-on: macos-latest
-    environment: macOS App
     steps:
       - uses: actions/checkout@v4
       - name: Import signing certificates
