@@ -23,6 +23,7 @@ jobs:
           security import /tmp/installer_cert.p12 -k build.keychain -P "${{ secrets.MACOS_INSTALLER_CERT_PASSWORD }}" -T /usr/bin/codesign
           security set-keychain-settings -t 3600 -u build.keychain
           security unlock-keychain -p "" build.keychain
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain login.keychain
       - name: Build macOS Release (unsigned)
         timeout-minutes: 30
